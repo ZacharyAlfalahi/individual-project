@@ -1,0 +1,24 @@
+# Generated data outputs — large, not committed
+data/development/*.parquet
+data/development/*.json
+data/holdout/*.parquet
+
+# Raw source data
+data/*.csv.gz
+data/*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+

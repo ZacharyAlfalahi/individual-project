@@ -1,0 +1,57 @@
+# All numerical thresholds for the pipeline.
+# Auditor reads this at runtime — nothing is hard-coded in agent code.
+# Every entry must carry a source citation.
+
+trace_cleaning:
+  # Dick-Nielsen (2009) "How to Clean Enhanced TRACE Data", p.528
+  # price_floor raised from 0.0 to 1.0 to exclude near-zero prices (e.g. 1e-6)
+  # that pass a strict >0 check but produce return blow-ups when present as a
+  # VWAP denominator. Validated against OSBAP expected mean (~0.6%/month);
+  # the ultra-distressed filter in OSBAP achieves the same effect.
+  price_floor: 1.0
+  price_ceiling: 300.0
+  # Project design decision — committed before first run, never changed
+  holdout_start_year: 2022
+  # Dick-Nielsen (2009) Table 1 Panel B: keep only blank asof_cd.
+  # Drops A (late report), R (reversal), D (delayed), X (cancellation).
+  # Keeping "A" risks double-counting trades reported as corrections of earlier submissions.
+  # NOTE: blank asof_cd in the CSV is read as NaN by pandas — the filter uses
+  #   isna() | (== asof_cd_keep). The equality check alone would silently drop
+  #   all on-time trades; both clauses are required.
+  asof_cd_keep: ""
+  # Dick-Nielsen (2009) p.528: prices above 30,000 cannot be corrected back into
+  # the valid range (0, price_ceiling] by any ÷10 or ÷100 shift and are unrecoverable.
+  # This is the wide pre-correction gate applied before the decimal-shift step.
+  pre_correction_ceiling: 30000.0
+  # Pre-2012 TRACE Enhanced universe has ~150 highly liquid benchmark bonds only.
+  # 2012+: ~3,500 bonds. sub_prdct is NULL for all pre-2012 records (field added 2012).
+  # Development window (2002-2021) includes both regimes; Quant agent filters sub_prdct as needed.
+  universe_note: "pre-2012 sparse (~150 bonds); 2012+ broad (~3500 bonds); sub_prdct NULL pre-2012"
+
+monthly_panel:
+  # Keep straight corporate bonds + pre-2012 records (NULL sub_prdct). Drop CHRC and ELN.
+  sub_prdct_keep:
+    - "CORP"
+    - ""
+  # Institutional-size filter: drop trades below this par value threshold (Bai, Bali, Wen 2019)
+  min_vol_qt: 100000
+  # Bonds with no trades in a month get NaN return (never impute)
+  min_trades_per_month: 1
+  # Volume-weighted average price within month as end-of-month price
+  price_agg_method: "vwap"
+  # FRED TB3MS series: 3-month T-bill rate (annualised %) used as risk-free rate
+  # Public endpoint — no API key required
+  rf_rate_series: "TB3MS"
+  rf_rate_url: "https://fred.stlouisfed.org/graph/fredgraph.csv?id=TB3MS"
+
+# PyBondLab post-aggregation filters.
+# These apply to the monthly return PANEL, not raw TRACE transactions.
+# Applied by the Quant agent's return-aggregation step, not by preprocess_trace.py.
+pybondlab_filters:
+  # Dickerson, Robotti, Rossetti (2025) / PyBondLab defaults
+  price_filter_threshold: 25.0
+  # WRDS-MMN (2025) bounce-back filter — verify exact value against Table A1 before first Quant run
+  bounce_filter_threshold: -0.25
+  # To be confirmed before first Quant run
+  trim_upper_bound: 0.40
+  winsorise_percentile: 99.5
