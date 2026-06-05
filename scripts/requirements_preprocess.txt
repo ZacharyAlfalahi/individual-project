@@ -3,3 +3,8 @@ pyarrow>=14.0.0
 pyyaml>=6.0
 tqdm>=4.65.0
 pandas>=1.5
+# DuckDB is used by scripts/bounce_back_filter.py for the per-partition
+# sort step — its external merge sort spills to disk and bounds peak RAM,
+# whereas polars sink_parquet materialises the full sorted frame and
+# OOM-kills on the 200M-row dev partition.
+duckdb>=0.10.0

@@ -67,3 +67,25 @@ def block_holdout_reads(monkeypatch):
         monkeypatch.setattr(pl, "scan_csv", guarded_pl_scan_csv)
     except ImportError:
         pass
+
+    try:
+        # pyarrow.parquet.ParquetFile is the only data-bearing read entry
+        # point we need to guard — bounce_back_filter.py uses it via
+        # iter_batches to stream row data. pq.read_metadata and pq.read_schema
+        # are header-only (no row data crosses the boundary) and are used
+        # legitimately by preprocess_trace.py for row-count verification of
+        # its own write to the holdout partition, so they remain allowed.
+        import pyarrow.parquet as _pq
+
+        _real_pq_parquetfile = _pq.ParquetFile
+
+        def _guarded_parquetfile(path, *args, **kwargs):
+            if "holdout" in str(path):
+                raise AssertionError(
+                    f"Attempted pq.ParquetFile on holdout: {path}"
+                )
+            return _real_pq_parquetfile(path, *args, **kwargs)
+
+        monkeypatch.setattr(_pq, "ParquetFile", _guarded_parquetfile)
+    except ImportError:
+        pass

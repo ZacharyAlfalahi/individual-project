@@ -55,3 +55,34 @@ pybondlab_filters:
   # To be confirmed before first Quant run
   trim_upper_bound: 0.40
   winsorise_percentile: 99.5
+
+# DRR (Dickerson, Robotti, Rossetti 2026) bounce-back filter, Table A.2.
+# Applied by scripts/bounce_back_filter.py as a post-processing step after
+# preprocess_trace.py. Input and output are both trace_clean.parquet.
+# Provenance and explicit divergences are documented in
+# docs/bounce_back_filter_spec.md §0.
+bounce_back_filter:
+  # Core spike detection (DRR Table A.2)
+  threshold_abs: 35.0        # Flag a trade if |price - anchor| exceeds this (price points)
+  lookahead: 5               # Number of subsequent trades to check for price recovery
+  window: 5                  # Number of unique prices in rolling trailing median
+  back_to_anchor_tol: 0.25   # A future price is a "recovery" if within this of anchor
+  candidate_slack_abs: 1.0   # Added to back_to_anchor_tol for recovery detection
+
+  # Cooldown after a par-block flag (DRR Table A.2, clause iii).
+  # Applied ONLY when the dropped trade was flagged via par-snap (its trailing
+  # window was a par-block) — matching the DRR description "rows skipped after
+  # flagging par blocks". Non-par drops do not trigger cooldown.
+  par_cooldown_after_flag: 2
+
+  # Par snap heuristic — for bonds trading near par, the FLAGGING anchor
+  # snaps to par_level (preventing false positives from minor median drift
+  # for at-par bonds). The RECOVERY check always uses the trailing median,
+  # regardless of par-snap, because recovery asks "did the bond return to its
+  # actual trading level" — that is the median by construction. Coupling the
+  # two created a dead zone for bonds in [par-par_band, par+par_band] off par.
+  # The anchor decoupling is a the project extension beyond DRR; see spec §0.
+  par_spike_heuristic: true
+  par_level: 100.0           # Par price
+  par_band: 15.0             # |price - par_level| <= par_band triggers the heuristic
+  par_min_run: 3             # Consecutive trades near par required to activate
