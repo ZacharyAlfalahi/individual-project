@@ -1,11 +1,12 @@
 # Architecture
-Six-agent LLM pipeline for corporate bond factor replication, bias detection, and repair. Two-layer corpus: anchor (KPP + BBW, n=2, fully manual) + scale (10–20 papers, pipeline + paper-statistics verification).
+Six-agent LLM pipeline for corporate bond factor replication, bias detection, and repair. Two-layer corpus: anchor (BBW + short-term reversal + six-month momentum, n=3, data-matched, fully manual; KPP methodology-exemplar and Duraj-Giesecke showcase sit outside it) + scale (10–20 papers, pipeline + paper-statistics verification).
 Every implementation is validated and verifiable.
 
 ## Research Questions
-RQ1 — Librarian extraction fidelity on anchor layer (n=2): per-field accuracy, multi-model agreement rate, failure taxonomy.
-RQ2 — Bias prevalence on scale corpus with anchor-layer calibration: fraction of strategies failing each of 5 bias checks.
-RQ3 — Repair rate: fraction of Scientist proposals that repair failing strategies, retain in-sample alpha, survive BH-FDR, show positive OOS Sharpe on 2022–2024 holdout.
+RQ1 — Librarian extraction fidelity on the gold-standard set (BBW, KPP, DG): field-level per-field accuracy, multi-model agreement rate, failure taxonomy (field-level reconstruction, NOT strategy-class routing).
+RQ2 — Quant implementation fidelity + coverage: reproduce as-published numbers within ±15% on the data-matched anchors; ReAct iteration distribution; fraction of the DRR zoo implementable via the 3 audited families vs gracefully refused.
+RQ3 — Bias prevalence (Auditor), differential: each strategy run uncorrected (as-published) vs corrected, bias = the gap; effect sizes with CIs (survival counts secondary); conservative lower bound on artefact; clean on the anchor set + traded-liquidity negative control, scale layer weaker/confounded.
+RQ4 — Repair rate (Scientist): fraction of proposals that repair failing strategies, retain in-sample alpha, survive BH-FDR, show positive OOS Sharpe on 2022–2024 holdout.
 Each RQ has a structurally independent validation path — failure in one component cannot contaminate another.
 
 ## Data Rules (inviolable)
@@ -14,7 +15,7 @@ Each RQ has a structurally independent validation path — failure in one compon
 - BAA-AAA spread median for regime conditioning must be computed on /data/development/ only; commit to /docs/extension_1_config.yaml before holdout opens
 
 ## Repository Key Paths
-/agents/quant/library/     — ipca.py, four_factor_sort.py, dnn_residual.py (hand-implemented; LLM configures, NEVER modifies)
+/agents/quant/library/     — ipca.py, four_factor_sort.py, dnn_residual.py (hand-implemented; LLM configures, NEVER modifies; correction-agnostic — run identically on the uncorrected and corrected panels the data layer emits)
 /agents/auditor/checks/    — deterministic only; zero LLM calls permitted here
 /schema/                   — Changes to it are deliberate, reviewed migrations
 /docs/thresholds.yaml      — ALL numerical thresholds; never hard-code values in agent code
@@ -25,9 +26,9 @@ Each RQ has a structurally independent validation path — failure in one compon
 
 **Librarian**: dual LLM extraction (stack TBD — see Open Decisions). A field is STATED only if both models agree on value AND verbatim quote. No self-reported confidence scores. UNKNOWN is a valid value, not an error.
 
-**Quant**: configures library modules; NEVER authors algorithmic code. Modifications to /agents/quant/library/ require manual review + all regression tests passing. ReAct loop hard cap: 8 iterations.
+**Quant**: configures library modules; NEVER authors algorithmic code. If strategy_class matches no audited module, emit a structured unsupported-strategy-class report (recorded for RQ2 coverage) and terminate gracefully — NEVER improvise an implementation. Modifications to /agents/quant/library/ require manual review + all regression tests passing. ReAct loop hard cap: 8 iterations.
 
-**Auditor**: /agents/auditor/checks/ is deterministic — zero LLM calls. LLM appears only in explainer.py after the verdict is produced. Refuses to opine when required fields are UNKNOWN or INFERRED without a matching rule. Silent iteration until pass is forbidden — it is p-hacking.
+**Auditor**: differential comparator — runs each strategy twice (uncorrected/as-published vs corrected) through the same module and measures the gap, NOT single-run inspection (single-run on a pre-cleaned pipeline finds nothing). Checks 1–4 differential; check 5 (multiple-testing) is a non-differential flag. /agents/auditor/checks/ is deterministic — zero LLM calls. LLM appears only in explainer.py after the verdict is produced. Refuses to opine when required fields are UNKNOWN or INFERRED without a matching rule. Silent iteration until pass is forbidden — it is p-hacking.
 
 **Scientist**: input = Auditor-failing strategy. Generates 4–8 repair proposals per the procedure committed to thresholds.yaml before first run. BH-FDR applied jointly across all proposals in-sample. Only FDR-survivors go to holdout. Failure taxonomy: Type 1 (wrong mechanism targeted), Type 2 (repair introduces new bias), Type 3 (repair valid but alpha was never real).
 
@@ -37,12 +38,12 @@ Each RQ has a structurally independent validation path — failure in one compon
 Every fact-bearing field: Fact[T] with value, provenance (STATED|INFERRED|UNKNOWN), and quote (required when STATED). INFERRED requires a rule ID from /docs/inference_rules.md. Schema is designed at end of week 3 after KPP and BBW replications are complete — not before.
 
 ## Replication Success Criterion
-Primary: Sharpe AND factor loadings AND per-quintile spreads all within 15% tolerance (thresholds.yaml). Coincidental Sharpe match alone is NOT success. Secondary diagnostic: bootstrap CI overlap reported as an additional column alongside the primary criterion.
+Applies to the data-matched anchors (BBW, str, momentum) on the uncorrected/as-published panel. Primary: Sharpe AND factor loadings AND per-quintile spreads all within 15% tolerance (thresholds.yaml). Coincidental Sharpe match alone is NOT success. KPP is exempt — validated methodologically only (correct IPCA procedure), NO ±15% target, as its ICE-based numbers are unrecoverable on WRDS-MMN. Secondary diagnostic: bootstrap CI overlap reported as an additional column alongside the primary criterion.
 
 ## Testing Requirements
 - All agents: unit tests in /tests/unit/
 - Auditor: synthetic bias injection tests verifying 100% recall for every injected bias type
-- Library modules: unit test on synthetic data with known analytical answer + regression test against paper headline metric
+- Library modules: unit test on synthetic data with known analytical answer + regression test against paper headline metric (data-matched anchors) or published procedure (KPP)
 
 ## Open Decisions (resolve before Librarian v1 runs on any corpus paper)
 D4 — LLM stack: commit chosen stack to thresholds.yaml before first Librarian run. Candidate: Claude Sonnet 4.6 + GPT-4o for anchor-layer dual extraction; cost-optimised single-model for scale corpus.
