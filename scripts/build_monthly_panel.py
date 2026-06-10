@@ -13,6 +13,13 @@ Pipeline:
 
 All thresholds come from docs/thresholds.yaml (nothing hard-coded here).
 
+Identifier carry-through:
+  Both bond_id (= TRACE bond_sym_id, primary within-TRACE key) and cusip_id
+  (populated on the 2026-06-09 WRDS re-pull, used downstream for FISD merging)
+  are emitted on the monthly panel. cusip_id is aggregated via .first() per
+  (bond_id, year_month); the per-run report includes
+  counts.bond_ids_with_multiple_cusips so any 1-to-many drift is visible.
+
 Return methodology note:
   Uses rptd_pr (clean/dirty price) without accrued interest adjustment. This is
   the standard approximation in TRACE-based papers (Bai, Bali, Wen 2019). Duration-
@@ -70,7 +77,10 @@ def build_panel(cfg: dict) -> dict:
 
     lazy = (
         pl.scan_parquet(str(TRACE_FILE))
-        .filter(pl.col("bond_id").is_not_null())
+        # Drop null AND empty-string bond_id — Stage 1 doesn't reject blank
+        # bond_sym_id rows, so an empty key would group-by into a synthetic
+        # "" bucket and silently aggregate unrelated trades together.
+        .filter(pl.col("bond_id").is_not_null() & (pl.col("bond_id") != ""))
         .filter(pl.col("entrd_vol_qt") >= min_vol)
         .filter(sub_filter)
         .with_columns(
@@ -83,6 +93,11 @@ def build_panel(cfg: dict) -> dict:
             pl.col("entrd_vol_qt").sum().alias("total_vol"),
             pl.col("rptd_pr").count().alias("n_trades"),
             pl.col("sub_prdct").first().alias("sub_prdct"),
+            pl.col("cusip_id").first().alias("cusip_id"),
+            # Distinct non-null cusip_id values per (bond, month). Should be 1
+            # for clean data; any value >1 means the bond mapped to multiple
+            # CUSIPs within the month — surfaced in the report for QA.
+            pl.col("cusip_id").drop_nulls().n_unique().alias("_cusip_n_unique"),
         )
         .with_columns(
             (pl.col("price_x_vol_sum") / pl.col("total_vol")).alias("price_eom"),
@@ -103,6 +118,11 @@ def build_panel(cfg: dict) -> dict:
         ret_non_null = 0
         xret_non_null = 0
         missing_rf = 0
+        bond_ids_with_multiple_cusips = 0
+        within_month_multi_cusip_bond_months = 0
+        cusip_populated_bond_months = 0
+        cusip_blank_bond_months = 0
+        multi_cusip_examples: list[dict] = []
     else:
         agg = agg.sort_values(["bond_id", "year_month"])
 
@@ -131,7 +151,35 @@ def build_panel(cfg: dict) -> dict:
         agg["xret"] = agg["ret"] - agg["rf_monthly"]
         xret_non_null = agg["xret"].notna().sum()
 
-    out_cols = ["bond_id", "year_month", "price_eom", "ret", "xret",
+        # CUSIP-coverage audit on the panel
+        # 1. Bond-months where this bond mapped to multiple CUSIPs *within* one month
+        within_month_multi_cusip_bond_months = int((agg["_cusip_n_unique"] > 1).sum())
+        # 2. Bonds whose cusip_id changes across months (excluding nulls)
+        bond_distinct_cusips = (
+            agg.dropna(subset=["cusip_id"])
+               .groupby("bond_id")["cusip_id"]
+               .nunique()
+        )
+        bond_ids_with_multiple_cusips = int((bond_distinct_cusips > 1).sum())
+        # 3. Bond-month CUSIP populated rate
+        cusip_populated_bond_months = int(agg["cusip_id"].notna().sum())
+        cusip_blank_bond_months = int(agg["cusip_id"].isna().sum())
+        # Surface the within-month multi-CUSIP rows (capped at MULTI_CUSIP_CAP).
+        # validation_plan.md §2.5 calls these out as data-integrity flags;
+        # silent .first() on the cusip_id agg picks one without recording
+        # which were affected, so this list gives the audit something to bite.
+        MULTI_CUSIP_CAP = 100
+        multi_cusip_examples = []
+        if within_month_multi_cusip_bond_months > 0:
+            flagged = agg.loc[agg["_cusip_n_unique"] > 1, ["bond_id", "year_month", "cusip_id"]]
+            multi_cusip_examples = [
+                {"bond_id": str(r.bond_id),
+                 "year_month": str(r.year_month),
+                 "first_cusip_seen": str(r.cusip_id)}
+                for r in flagged.head(MULTI_CUSIP_CAP).itertuples(index=False)
+            ]
+
+    out_cols = ["bond_id", "cusip_id", "year_month", "price_eom", "ret", "xret",
                 "n_trades", "total_vol", "sub_prdct", "rf_monthly"]
     panel = agg[out_cols].reset_index(drop=True)
 
@@ -150,6 +198,11 @@ def build_panel(cfg: dict) -> dict:
         "date_range_start": panel["year_month"].min(),
         "date_range_end": panel["year_month"].max(),
         "missing_rf_months": int(missing_rf),
+        "cusip_populated_bond_months": cusip_populated_bond_months,
+        "cusip_blank_bond_months": cusip_blank_bond_months,
+        "within_month_multi_cusip_bond_months": within_month_multi_cusip_bond_months,
+        "bond_ids_with_multiple_cusips": bond_ids_with_multiple_cusips,
+        "multi_cusip_examples": multi_cusip_examples,
     }
     return counts
 

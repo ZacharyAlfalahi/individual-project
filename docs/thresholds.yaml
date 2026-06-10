@@ -81,7 +81,7 @@ bounce_back_filter:
   # regardless of par-snap, because recovery asks "did the bond return to its
   # actual trading level" — that is the median by construction. Coupling the
   # two created a dead zone for bonds in [par-par_band, par+par_band] off par.
-  # The anchor decoupling is a the project extension beyond DRR; see spec §0.
+  # The anchor decoupling is an extension beyond DRR; see spec §0.
   par_spike_heuristic: true
   par_level: 100.0           # Par price
   par_band: 15.0             # |price - par_level| <= par_band triggers the heuristic

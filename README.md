@@ -71,6 +71,11 @@ Requires: `trace_clean.parquet` (after Stage 1 + Stage 2) + `rf_rate.parquet`. W
 
 Filters: CORP + pre-2012 null sub_prdct; institutional trades ≥100k par. Returns computed as `(P_t−P_{t-1})/P_{t-1}`; excess return = ret − rf_monthly (TB3MS/12/100).
 
+### 5. Characteristic-sort engine
+Signal-agnostic engine that measures what a "rank bonds by a property, buy the top group, sell the bottom group" strategy earned over history. One run measures one factor; the engine never computes the signal itself, only sorts on a column already in the panel. Supports equal- and size-weighted legs, single and independent double sorts, monthly rebalancing, and Newey–West HAC inference.
+
+Lives at `agents/quant/library/characteristic_sort.py`. Configured by the Quant agent per ARCHITECTURE.md hard constraints (LLM configures, never modifies). See `docs/characteristic_sort_engine_spec.md` for the build specification and `docs/characteristic_sort_engine_implementation.md` for the architecture, design decisions, and validation evidence.
+
 ---
 
 ## Tests

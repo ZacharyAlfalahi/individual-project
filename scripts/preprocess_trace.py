@@ -23,9 +23,11 @@ WRDS-MMN decimal-shift correction (Dickerson, Robotti, Rossetti 2025):
   prices in (3000, 30000] → divide by 100
   prices in (0, 300]      → keep as-is
 
-NOTE on cusip_id: blank on every row in this dataset. bond_sym_id is used as the primary
-bond identifier and renamed to bond_id in the output. No CUSIP mapping attempted; a WRDS
-crosswalk would be required and is not available in this repo.
+NOTE on cusip_id: populated on ~99.97% of rows in the 2026-06-09 WRDS re-pull
+(`trace_enhanced_repull.csv.gz`). Retained alongside `bond_sym_id` (renamed to `bond_id`)
+to enable downstream FISD merging. The primary within-TRACE key remains `bond_id` — switching
+to CUSIP as the primary key is a separate decision gated on a `bond_id ↔ cusip_id` mapping
+audit (count of multi-CUSIP bond_ids is surfaced by build_monthly_panel.py).
 
 NOTE on PyBondLab: PyBondLab has no clean_trace() function — it is a portfolio formation
 library. PyBondLab Filter (price, bounce, trim, winsorise) is applied to the monthly return
@@ -55,7 +57,7 @@ except ImportError:
         return it
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RAW_FILE = REPO_ROOT / "data" / "trace_enhanced_raw.csv.gz"
+RAW_FILE = REPO_ROOT / "data" / "trace_enhanced_repull.csv.gz"
 DEV_OUT = REPO_ROOT / "data" / "development" / "trace_clean.parquet"
 HOLD_OUT = REPO_ROOT / "data" / "holdout" / "trace_clean.parquet"
 REPORT_OUT = REPO_ROOT / "data" / "development" / "cleaning_report.json"
@@ -63,6 +65,7 @@ THRESHOLDS_FILE = REPO_ROOT / "docs" / "thresholds.yaml"
 
 KEEP_COLUMNS = [
     "bond_sym_id",       # renamed → bond_id
+    "cusip_id",          # populated on the 2026-06-09 re-pull; retained for FISD merge
     "company_symbol",
     "trd_exctn_dt",
     "trd_exctn_tm",
@@ -120,6 +123,10 @@ def _csv_reader(chunk_size: int = 500_000):
             "asof_cd": str,
             "wis_fl": str,
             "rpt_side_cd": str,
+            # Force cusip_id as string — all-digit CUSIPs (e.g. "000115139") would
+            # otherwise be coerced to int and lose their leading zeros.
+            "cusip_id": str,
+            "bond_sym_id": str,
         },
         on_bad_lines="skip",
         # NOTE: malformed rows (123 observed) are skipped silently by pandas;
@@ -258,6 +265,7 @@ def run_pandas(cfg: dict) -> dict:
     # differently across chunks (e.g. scrty_type_cd is numeric in some chunks, string in others).
     OUTPUT_SCHEMA = pa.schema([
         pa.field("bond_id",              pa.string()),
+        pa.field("cusip_id",             pa.string()),
         pa.field("company_symbol",       pa.string()),
         pa.field("trd_exctn_dt",         pa.timestamp("us")),
         pa.field("trd_exctn_tm",         pa.string()),
@@ -288,6 +296,12 @@ def run_pandas(cfg: dict) -> dict:
         "dropped_invalid_date": 0,
         "development_rows": 0,
         "holdout_rows": 0,
+        # Counted on rows that survive Pass-2 filters but *before* the bounce-back
+        # filter runs (bounce_back_filter.py adds *_post_bounce companions on its
+        # own report update). Naming makes scope explicit so downstream readers
+        # don't conflate these with final_clean_total.
+        "cusip_populated_pre_bounce": 0,
+        "cusip_blank_pre_bounce": 0,
     }
 
     try:
@@ -389,6 +403,12 @@ def run_pandas(cfg: dict) -> dict:
 
             chunk = chunk[KEEP_COLUMNS].rename(columns={"bond_sym_id": "bond_id"})
 
+            # CUSIP populated-rate audit (counted on rows that survived all filters)
+            cusip_col = chunk["cusip_id"]
+            blank_mask = cusip_col.isna() | (cusip_col.astype(str).str.strip() == "")
+            counts["cusip_blank_pre_bounce"] += int(blank_mask.sum())
+            counts["cusip_populated_pre_bounce"] += int(len(chunk) - blank_mask.sum())
+
             dev_chunk = chunk[chunk["trd_exctn_dt"].dt.year < holdout_year]
             hold_chunk = chunk[chunk["trd_exctn_dt"].dt.year >= holdout_year]
 
@@ -454,7 +474,14 @@ def write_report(row_counts: dict, cfg: dict, git_commit: str) -> None:
         "thresholds_used": cfg,
         "rows": row_counts,
         "identifier_decision": (
-            "bond_sym_id used as primary identifier; cusip_id is blank on all rows in this dataset"
+            "bond_sym_id (renamed bond_id) remains the primary within-TRACE key. "
+            "cusip_id is now populated on the 2026-06-09 WRDS re-pull and retained "
+            "as a column for downstream FISD merging. Populated rate is recorded "
+            "under counts.cusip_populated_pre_bounce / counts.cusip_blank_pre_bounce "
+            "(rows that survived Pass-2 filters across dev+holdout, BEFORE the "
+            "bounce-back filter removed its drops). bounce_back_filter.py adds "
+            "counts.cusip_populated_post_bounce_dev / cusip_blank_post_bounce_dev "
+            "on the dev partition only (holdout firewall — ARCHITECTURE.md)."
         ),
         "output_columns": [c if c != "bond_sym_id" else "bond_id" for c in KEEP_COLUMNS],
         "git_commit": git_commit,

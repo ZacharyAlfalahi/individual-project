@@ -5,7 +5,7 @@ Covers:
   - decimal_shift function — all branches
   - Dick-Nielsen filter pipeline — every filter case
   - Dev/holdout split correctness
-  - Output schema (bond_id present, cusip_id absent)
+  - Output schema (bond_id present, cusip_id present per the 2026-06-09 re-pull)
   - Holdout read guard
   - run_pandas end-to-end on a synthetic CSV
 """
@@ -376,8 +376,10 @@ class TestOutputSchema:
     def test_bond_id_present(self):
         assert "bond_id" in self.output.columns
 
-    def test_cusip_id_absent(self):
-        assert "cusip_id" not in self.output.columns
+    def test_cusip_id_present(self):
+        # Post 2026-06-09 re-pull: cusip_id is now populated and retained
+        # alongside bond_id for downstream FISD merging.
+        assert "cusip_id" in self.output.columns
 
     def test_expected_columns_present(self):
         expected = [c if c != "bond_sym_id" else "bond_id" for c in KEEP_COLUMNS]
@@ -404,9 +406,10 @@ class TestHoldoutGuard:
 
 def _make_synthetic_csv_gz(path: Path) -> int:
     """Write a gzipped CSV containing the synthetic test cases. Returns expected survivor count."""
-    # All columns that run_pandas needs (plus extras that get dropped)
-    all_cols = KEEP_COLUMNS + ["trc_st", "asof_cd", "wis_fl", "msg_seq_nb", "orig_msg_seq_nb",
-                                "cusip_id"]
+    # All columns that run_pandas needs (plus extras that get dropped).
+    # cusip_id is in KEEP_COLUMNS (since the 2026-06-09 re-pull); the rest are
+    # filter-only columns dropped after filtering.
+    all_cols = KEEP_COLUMNS + ["trc_st", "asof_cd", "wis_fl", "msg_seq_nb", "orig_msg_seq_nb"]
     survivors = 0
     rows = []
     for i, case in enumerate(SYNTHETIC_CASES):
@@ -475,7 +478,9 @@ class TestRunPandasEndToEnd:
         assert hold_out.exists(), "holdout parquet must be written (holdout_trade row is post-2022)"
         df_dev = pd.read_parquet(dev_out)
         assert "bond_id" in df_dev.columns
-        assert "cusip_id" not in df_dev.columns
+        # cusip_id is now retained as a column (2026-06-09 re-pull); the
+        # synthetic CSV leaves it blank, so the column is present but null.
+        assert "cusip_id" in df_dev.columns
         assert (df_dev["rptd_pr"] > FLOOR).all()
         assert (df_dev["rptd_pr"] <= CEILING).all()
         assert "TEST_holdout_trade" not in df_dev["bond_id"].values
@@ -504,3 +509,99 @@ class TestRunPandasEndToEnd:
         assert "dropped_cancelled_original" in report["rows"]
         assert "dropped_interdealer_duplicate" in report["rows"]
         assert not report_out.with_suffix(".tmp").exists(), ".tmp file should not remain after atomic replace"
+
+        # CUSIP counter keys must use the explicit pre-bounce scope (renamed
+        # 2026-06-10 after code review). The legacy unscoped keys must NOT
+        # appear or downstream consumers will silently miss the post-bounce
+        # companions that bounce_back_filter.py writes.
+        assert "cusip_populated_pre_bounce" in report["rows"]
+        assert "cusip_blank_pre_bounce" in report["rows"]
+        assert "cusip_populated" not in report["rows"], \
+            "legacy ambiguous key — must be renamed to *_pre_bounce"
+        assert "cusip_blank" not in report["rows"]
+        # All synthetic rows have cusip_id="" → 100% blank after Stage 1.
+        assert report["rows"]["cusip_blank_pre_bounce"] == expected_survivors
+        assert report["rows"]["cusip_populated_pre_bounce"] == 0
+
+
+class TestCusipBlankMaskCounting:
+    """Edge cases for the CUSIP populated/blank counter in run_pandas.
+
+    Locks the blank-mask behaviour: NaN cells (empty in CSV → NaN in pandas),
+    whitespace-only cells, and the empty string all count as blank; anything
+    else counts as populated. Added 2026-06-10 after code review flagged the
+    isna() + str.strip() guard as correct-but-fragile.
+    """
+
+    def _make_csv(self, path: Path, cusip_values: list[str]) -> None:
+        """Build a synthetic CSV where every row passes filters 1a–4 and
+        decimal-shift. Only cusip_id varies; the count assertions are deterministic.
+        """
+        all_cols = KEEP_COLUMNS + ["trc_st", "asof_cd", "wis_fl", "msg_seq_nb", "orig_msg_seq_nb"]
+        rows = []
+        for i, c in enumerate(cusip_values):
+            rows.append({
+                **{col: "" for col in all_cols},
+                "bond_sym_id": f"BND_{i:04d}",
+                "cusip_id": c,
+                "trd_exctn_dt": "2015-06-01",
+                "trd_exctn_tm": "10:00:00",
+                "trc_st": "T",
+                "asof_cd": "",
+                "wis_fl": "N",
+                "rptd_pr": 98.5,
+                "entrd_vol_qt": 10000.0,
+                "company_symbol": "TEST",
+                "rpt_side_cd": "B",
+                "msg_seq_nb": str(50000 + i),
+            })
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=all_cols)
+        w.writeheader()
+        w.writerows(rows)
+        with gzip.open(path, "wt") as f:
+            f.write(buf.getvalue())
+
+    def test_blank_mask_handles_nan_empty_and_whitespace(self, tmp_path, monkeypatch):
+        raw = tmp_path / "trace_raw.csv.gz"
+        # 3 populated + 4 blank-variants (empty CSV cell → NaN, "", "   ", "\t ")
+        cusip_values = [
+            "000115139", "AAA111BB2", "ZZ999CCC1",   # 3 valid (leading zero, mixed alnum)
+            "",                                       # empty string in CSV → NaN at read time
+            "",                                       # second NaN
+            "   ",                                    # whitespace-only
+            "\t ",                                    # tab + space
+        ]
+        self._make_csv(raw, cusip_values)
+
+        import preprocess_trace as pt
+        monkeypatch.setattr(pt, "RAW_FILE", raw)
+        monkeypatch.setattr(pt, "DEV_OUT", tmp_path / "development" / "trace_clean.parquet")
+        monkeypatch.setattr(pt, "HOLD_OUT", tmp_path / "holdout" / "trace_clean.parquet")
+        monkeypatch.setattr(pt, "REPORT_OUT", tmp_path / "development" / "cleaning_report.json")
+
+        counts = run_pandas(_cfg)
+        assert counts["cusip_populated_pre_bounce"] == 3
+        assert counts["cusip_blank_pre_bounce"] == 4
+        assert counts["cusip_populated_pre_bounce"] + counts["cusip_blank_pre_bounce"] \
+            == counts["final_clean_total"]
+
+    def test_leading_zero_preserved_in_parquet(self, tmp_path, monkeypatch):
+        # Regression: pandas would coerce all-digit cusip_id to int and drop
+        # leading zeros without the dtype={"cusip_id": str} in _csv_reader.
+        raw = tmp_path / "trace_raw.csv.gz"
+        self._make_csv(raw, ["000115139", "037833100", "912828YY0"])
+
+        import preprocess_trace as pt
+        dev_out = tmp_path / "development" / "trace_clean.parquet"
+        monkeypatch.setattr(pt, "RAW_FILE", raw)
+        monkeypatch.setattr(pt, "DEV_OUT", dev_out)
+        monkeypatch.setattr(pt, "HOLD_OUT", tmp_path / "holdout" / "trace_clean.parquet")
+        monkeypatch.setattr(pt, "REPORT_OUT", tmp_path / "development" / "cleaning_report.json")
+
+        run_pandas(_cfg)
+        df = pd.read_parquet(dev_out)
+        cusips = set(df["cusip_id"].dropna().tolist())
+        assert "000115139" in cusips, \
+            "leading zero stripped — dtype={'cusip_id': str} guard regressed"
+        assert "037833100" in cusips

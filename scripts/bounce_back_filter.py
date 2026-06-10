@@ -58,9 +58,11 @@ THRESHOLDS_FILE = REPO_ROOT / "docs" / "thresholds.yaml"
 
 # Identical to preprocess_trace.OUTPUT_SCHEMA — copied verbatim because the
 # downstream build_monthly_panel.py reads back from this exact schema and any
-# drift would break it. Keep in lockstep with preprocess_trace.py:259-272.
+# drift would break it. Keep in lockstep with the OUTPUT_SCHEMA defined inside
+# preprocess_trace.run_pandas (search for "OUTPUT_SCHEMA = pa.schema").
 OUTPUT_SCHEMA = pa.schema([
     pa.field("bond_id",              pa.string()),
+    pa.field("cusip_id",             pa.string()),
     pa.field("company_symbol",       pa.string()),
     pa.field("trd_exctn_dt",         pa.timestamp("us")),
     pa.field("trd_exctn_tm",         pa.string()),
@@ -81,7 +83,7 @@ REQUIRED_PARAM_KEYS = (
     "par_spike_heuristic", "par_level", "par_band", "par_min_run",
 )
 
-# Legacy keys from the removed initial-price-error filter (a the project cold-
+# Legacy keys from the removed initial-price-error filter (an earlier cold-
 # start patch with no DRR provenance). Their presence in a prior run's report
 # is a hard error — re-run preprocess_trace.py to regenerate a clean report.
 LEGACY_INIT_PRICE_KEYS = (
@@ -133,7 +135,7 @@ def _apply_bounce_back_loop(prices, params: dict):
 
     Returns (keep_mask, n_dropped). See spec Section 3.
 
-    Anchor decoupling (the project extension): par-snap, when active, applies
+    Anchor decoupling (extension beyond DRR): par-snap, when active, applies
     only to the *flagging* decision — it prevents false positives for at-par
     bonds whose trailing median has drifted slightly off par. The *recovery*
     check always uses the raw trailing median, because recovery asks "did the
@@ -406,8 +408,45 @@ def _assert_additivity(rows: dict) -> None:
         )
 
 
+def _post_bounce_cusip_counts_dev_only(dev_parquet: Path) -> tuple[int, int]:
+    """Stream the cusip_id column from the DEV parquet and tally populated/blank.
+
+    Surfaced so the cleaning_report has accurate post-bounce CUSIP coverage
+    against the dev partition that Librarian/Quant actually read — distinct
+    from the pre-bounce counts that preprocess_trace.py emits.
+
+    Scope is DEV-ONLY by design: per ARCHITECTURE.md and conftest.py guard, holdout
+    parquet content cannot be read or surfaced until walk-forward evaluation
+    (weeks 13-14). A CUSIP count is a statistic, and surfacing it now would
+    contaminate the firewall — even if the act is mechanical, the value lands
+    in cleaning_report.json which is repo-visible. Holdout post-bounce CUSIP
+    coverage will be measured at walk-forward time and added then.
+
+    Polars lazy scan reads only the cusip_id column from each row group; cost
+    is small relative to the bounce-back filter run itself.
+    """
+    if not dev_parquet.exists():
+        return 0, 0
+    col = (
+        pl.scan_parquet(str(dev_parquet))
+          .select(pl.col("cusip_id"))
+          .collect()
+          .get_column("cusip_id")
+    )
+    # cusip_id is pa.string() in OUTPUT_SCHEMA; blank = null OR whitespace-only.
+    # str.strip_chars().eq("") matches the preprocess_trace blank rule
+    # (see scripts/preprocess_trace.py:404).
+    blank_mask = col.is_null() | (col.fill_null("").str.strip_chars() == "")
+    blank = int(blank_mask.sum())
+    populated = int(col.len() - blank)
+    return populated, blank
+
+
+_SENTINEL = object()
+
+
 def update_cleaning_report(report_path: Path, dev_stats: dict, hold_stats: dict,
-                           thresholds_sha: str) -> None:
+                           thresholds_sha: str, dev_parquet=_SENTINEL) -> None:
     if not report_path.exists():
         raise FileNotFoundError(
             f"cleaning_report.json not found at {report_path}. "
@@ -426,7 +465,7 @@ def update_cleaning_report(report_path: Path, dev_stats: dict, hold_stats: dict,
     if legacy_found:
         raise AssertionError(
             f"Legacy init_price_error fields detected in {report_path}: "
-            f"{legacy_found}. These belong to a removed filter (the project "
+            f"{legacy_found}. These belong to a removed filter (an earlier "
             "cold-start patch, deleted for DRR fidelity). Delete the report "
             "and re-run preprocess_trace.py."
         )
@@ -437,6 +476,24 @@ def update_cleaning_report(report_path: Path, dev_stats: dict, hold_stats: dict,
     rows["holdout_rows"] = int(hold_stats["kept_rows"])
     rows["final_clean_total"] = int(dev_stats["kept_rows"] + hold_stats["kept_rows"])
     rows["parquet_row_count_verified"] = True
+
+    # Post-bounce CUSIP coverage on the DEV partition only — holdout firewall
+    # (ARCHITECTURE.md) forbids surfacing holdout-derived statistics until weeks
+    # 13-14. The pre-bounce counts written by preprocess_trace.py span both
+    # partitions; the gap between pre- and post-bounce-dev is informative for
+    # the Librarian/Quant audit. Holdout coverage will be added at walk-forward.
+    # dev_parquet is injectable so tests can pass a synthetic parquet OR None
+    # to skip; main() omits the kwarg so the real DEV_PARQUET is used.
+    parquet = DEV_PARQUET if dev_parquet is _SENTINEL else dev_parquet
+    if parquet is not None and parquet.exists():
+        post_pop_dev, post_blank_dev = _post_bounce_cusip_counts_dev_only(parquet)
+        rows["cusip_populated_post_bounce_dev"] = post_pop_dev
+        rows["cusip_blank_post_bounce_dev"] = post_blank_dev
+        if post_pop_dev + post_blank_dev != rows["development_rows"]:
+            raise AssertionError(
+                f"Post-bounce DEV CUSIP counts sum to {post_pop_dev + post_blank_dev:,} "
+                f"but development_rows is {rows['development_rows']:,}."
+            )
 
     report["bounce_back_filter_applied"] = True
     report["bounce_back_run_timestamp"] = datetime.now(timezone.utc).isoformat()

@@ -38,6 +38,7 @@ def _make_trace_parquet(path: Path, rows: list[dict]) -> None:
     df["trd_exctn_dt"] = pd.to_datetime(df["trd_exctn_dt"])
     schema = pa.schema([
         pa.field("bond_id",              pa.string()),
+        pa.field("cusip_id",             pa.string()),
         pa.field("trd_exctn_dt",         pa.timestamp("us")),
         pa.field("rptd_pr",              pa.float64()),
         pa.field("entrd_vol_qt",         pa.float64()),
@@ -60,9 +61,10 @@ def _make_rf_parquet(path: Path, months: list[str], rates: list[float]) -> None:
     pq.write_table(pa.Table.from_pandas(df, preserve_index=False), str(path))
 
 
-def _base_row(bond_id, date, price, vol, sub_prdct="CORP"):
+def _base_row(bond_id, date, price, vol, sub_prdct="CORP", cusip_id=None):
     return {
         "bond_id": bond_id,
+        "cusip_id": cusip_id if cusip_id is not None else f"CUS{bond_id}".ljust(9, "X")[:9],
         "trd_exctn_dt": date,
         "rptd_pr": price,
         "entrd_vol_qt": vol,
@@ -352,7 +354,7 @@ class TestOutputSchema:
 
         build_panel(_cfg)
         df = pd.read_parquet(out)
-        for col in ["bond_id", "year_month", "price_eom", "ret", "xret",
+        for col in ["bond_id", "cusip_id", "year_month", "price_eom", "ret", "xret",
                     "n_trades", "total_vol", "rf_monthly"]:
             assert col in df.columns, f"Missing column: {col}"
 

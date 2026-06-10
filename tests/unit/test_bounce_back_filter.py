@@ -221,6 +221,7 @@ def _make_synthetic_trace(path: Path, *, inject_nan: bool = False) -> int:
 def _row(bond: str, dt: str, price: float) -> dict:
     return {
         "bond_id": bond,
+        "cusip_id": "0000" + bond[:5].ljust(5, "X"),
         "company_symbol": "SYN",
         "trd_exctn_dt": dt,
         "trd_exctn_tm": "10:00:00",
@@ -246,7 +247,7 @@ def test_process_partition_preserves_schema_and_writes_atomically(tmp_path):
     assert stats["dropped_bounce_back"] == 1  # bond BBB's spike
     assert stats["kept_rows"] == n_in - 1
 
-    # Schema preservation (12 fields, same order, same types)
+    # Schema preservation (13 fields, same order, same types)
     written = pq.read_schema(str(input_path))
     assert written.equals(OUTPUT_SCHEMA), (
         f"Schema drift detected:\n  expected: {OUTPUT_SCHEMA}\n  got: {written}"
@@ -326,7 +327,7 @@ def test_update_cleaning_report_preserves_fields_and_asserts_additivity(tmp_path
     dev_stats = {"kept_rows": 47, "dropped_bounce_back": 3}
     hold_stats = {"kept_rows": 28, "dropped_bounce_back": 2}
 
-    update_cleaning_report(report_path, dev_stats, hold_stats, "sha-test")
+    update_cleaning_report(report_path, dev_stats, hold_stats, "sha-test", dev_parquet=None)
 
     with open(report_path) as f:
         new = json.load(f)
@@ -361,7 +362,7 @@ def test_update_cleaning_report_raises_on_broken_additivity(tmp_path):
     bad_hold = {"kept_rows": 30, "dropped_bounce_back": 0}
 
     with pytest.raises(AssertionError, match="additivity broken"):
-        update_cleaning_report(report_path, bad_dev, bad_hold, "sha-test")
+        update_cleaning_report(report_path, bad_dev, bad_hold, "sha-test", dev_parquet=None)
 
 
 def test_update_cleaning_report_hard_fails_on_legacy_init_price_keys(tmp_path):
@@ -386,7 +387,7 @@ def test_update_cleaning_report_hard_fails_on_legacy_init_price_keys(tmp_path):
     hold_stats = {"kept_rows": 30, "dropped_bounce_back": 0}
 
     with pytest.raises(AssertionError, match="Legacy init_price_error fields"):
-        update_cleaning_report(report_path, dev_stats, hold_stats, "sha-test")
+        update_cleaning_report(report_path, dev_stats, hold_stats, "sha-test", dev_parquet=None)
 
 
 def test_assert_additivity_pure_function():

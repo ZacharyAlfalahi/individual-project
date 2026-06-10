@@ -16,10 +16,19 @@ venv/
 dist/
 build/
 
+# Coverage artefacts (test-time only)
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
 # Jupyter
 .ipynb_checkpoints/
 
 # macOS
 .DS_Store
 
+
+# Local workflow notes — not synced to remote
+tasks/
 
