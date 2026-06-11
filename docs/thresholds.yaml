@@ -44,6 +44,31 @@ monthly_panel:
   rf_rate_series: "TB3MS"
   rf_rate_url: "https://fred.stlouisfed.org/graph/fredgraph.csv?id=TB3MS"
 
+# Uncorrected-panel correction toggles. Both default false so the
+# baseline emitted by scripts/build_monthly_panel.py is the as-published
+# panel. Each toggle takes effect only once its correction is implemented.
+monthly_panel_corrections:
+  # FISD-free; will be implemented in a sibling commit after the uncorrected
+  # baseline is verified. Toggling true while unimplemented raises.
+  apply_stale_price_filter: false
+  # FISD-gated (needs amount_outstanding and rating to define the at-risk
+  # universe). Stub only; toggling true while unimplemented raises.
+  apply_survivorship_correction: false
+
+# Signal-prep constants. Each signal is computed from the monthly panel by
+# a dedicated scripts/build_<signal>.py and emitted to
+# data/development/signals/<signal>.parquet keyed on (cusip, date) for
+# merge-at-feed-time consumption by the engine.
+signals:
+  # BBW (2019) 5% VaR proxy: per-bond rolling-window n-th lowest monthly
+  # return × multiplier. With window=36 and rank=2: 5% × 36 = 1.8 → rank 2,
+  # which is the convention BBW use.
+  var_5pct:
+    window: 36          # trailing-36-month window (BBW 2019)
+    min_obs: 24         # minimum non-NaN observations to compute (BBW 2019)
+    rank: 2             # 2nd-lowest sorted return (BBW 2019)
+    multiplier: -1.0    # higher var_5pct = more downside risk
+
 # PyBondLab post-aggregation filters.
 # These apply to the monthly return PANEL, not raw TRACE transactions.
 # Applied by the Quant agent's return-aggregation step, not by preprocess_trace.py.
@@ -86,3 +111,42 @@ bounce_back_filter:
   par_level: 100.0           # Par price
   par_band: 15.0             # |price - par_level| <= par_band triggers the heuristic
   par_min_run: 3             # Consecutive trades near par required to activate
+
+# DRR (Dickerson, Robotti, Rossetti 2026) distressed daily filters 1-4.
+# Source: DRR-2026 Appendix A.3 Table A.3, transcribed via the published
+# description per A7.3 of the registry amendments (independent coding from
+# the appendix; do NOT port `trace-data-pipeline` code — firewall).
+# Applied by scripts/apply_distressed_filters.py on the corrected daily
+# layer only (raw family bypasses entirely per A1.1).
+meas_err_distressed_filters:
+  # Filter 1 — anomaly (isolated ultra-low prints sitting ≥ ρ_anomaly price
+  # points below the surrounding ±L-day median). Catches single-day price
+  # collapses that don't reflect a market move.
+  rho_anomaly: 3.0           # Threshold below ±L-day median (price points)
+  L: 5                       # Half-window (days) for the median computation
+
+  # Filter 2 — spike (prints ≥ ρ_spike price points above the pre-spike
+  # median that recover to within ρ_recovery of median within L days).
+  rho_spike: 3.0             # Threshold above pre-spike median (price points)
+  rho_recovery: 2.0          # Recovery tolerance (price points to median)
+
+  # Filter 3 — plateau (runs of ≥ ℓ_min identical ultra-low or round-number
+  # prices with ≥ ρ_plateau pre/post displacement on either side).
+  rho_plateau: 3.0           # Pre/post displacement threshold (price points)
+  ell_min: 2                 # Minimum run length (days)
+  tau_plateau: 0.15          # "Round-number" tolerance (price points) for
+                             # plateau identification — a price within
+                             # tau_plateau of a round multiple (e.g. 100,
+                             # 50, 25) counts as round-numbered
+
+  # Filter 4 — intraday inconsistency (days where the day's mean is below
+  # tau_intraday AND the intraday range (max - min) > gamma_range × mean).
+  # Combines low-price-bond context with abnormal range to catch erratic
+  # daily prints.
+  tau_intraday: 20.0         # Low-price threshold (price points)
+  gamma_range: 0.75          # Range/mean ratio threshold
+
+  # Shared low/high gates referenced by multiple filters. tau_low and
+  # tau_high define the "ultra-low" and "ultra-high" price contexts.
+  tau_low: 0.10              # Ultra-low price gate (price points)
+  tau_high: 5.0              # Ultra-high price gate (price points)

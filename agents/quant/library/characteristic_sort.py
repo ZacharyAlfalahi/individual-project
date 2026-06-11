@@ -12,7 +12,7 @@ Design conventions, deliberately fixed:
 
 - NW automatic-lag rule: floor(4 * (T/100)^(2/9)), Newey-West (1987),
   clamped to [0, T-1].
-- Tie-breaking: stable sort by (score asc, bond_id asc), rank(method='first'),
+- Tie-breaking: stable sort by (score asc, cusip asc), rank(method='first'),
   then group = ((rank-1) * n_groups) // n. Truly fixed and repeatable.
 - Gap policy: calendar-strict. next-month return uses the row at exactly
   t + MonthEnd(1). signal_lag uses the row at exactly t - MonthEnd(signal_lag).
@@ -133,7 +133,7 @@ _RESERVED_COLUMNS = (
 def _validate_panel(panel: pd.DataFrame, settings: dict) -> None:
     """
     Raise on malformed inputs. Checks required columns, dtypes, that date is
-    month-end-normalized, tz-naive, that (bond_id, date) is unique, and that
+    month-end-normalized, tz-naive, that (cusip, date) is unique, and that
     the panel does not collide with any of the engine's internal column names.
 
     Does not mutate the input.
@@ -141,7 +141,7 @@ def _validate_panel(panel: pd.DataFrame, settings: dict) -> None:
     if not isinstance(panel, pd.DataFrame):
         raise TypeError("panel must be a pandas DataFrame")
 
-    required = ["bond_id", "date", "ret", "size", settings["score"]]
+    required = ["cusip", "date", "ret", "size", settings["score"]]
     if settings["control"] is not None:
         required.append(settings["control"])
     missing = [c for c in required if c not in panel.columns]
@@ -163,8 +163,8 @@ def _validate_panel(panel: pd.DataFrame, settings: dict) -> None:
     if not (panel["date"] == month_end).all():
         raise ValueError("panel['date'] must be month-end-normalized")
 
-    if panel.duplicated(subset=["bond_id", "date"]).any():
-        raise ValueError("panel has duplicate (bond_id, date) rows")
+    if panel.duplicated(subset=["cusip", "date"]).any():
+        raise ValueError("panel has duplicate (cusip, date) rows")
 
 
 # ---------------------------------------------------------------------------
@@ -189,19 +189,19 @@ def _build_lagged_panel(
     base = panel.copy()
 
     # Next-month return: row at t + MonthEnd(1).
-    right_next = panel[["bond_id", "date", "ret"]].copy()
+    right_next = panel[["cusip", "date", "ret"]].copy()
     right_next = right_next.rename(columns={"date": "_realisation_date", "ret": "next_ret"})
     base["_realisation_date"] = base["date"] + pd.offsets.MonthEnd(1)
-    base = base.merge(right_next, on=["bond_id", "_realisation_date"], how="left")
+    base = base.merge(right_next, on=["cusip", "_realisation_date"], how="left")
     base = base.drop(columns=["_realisation_date"])
 
     # Ranking score: row at t - MonthEnd(signal_lag).
-    right_score = panel[["bond_id", "date", score]].copy()
+    right_score = panel[["cusip", "date", score]].copy()
     right_score = right_score.rename(
         columns={"date": "_score_obs_date", score: "ranking_score"}
     )
     base["_score_obs_date"] = base["date"] - pd.offsets.MonthEnd(signal_lag)
-    base = base.merge(right_score, on=["bond_id", "_score_obs_date"], how="left")
+    base = base.merge(right_score, on=["cusip", "_score_obs_date"], how="left")
     base = base.drop(columns=["_score_obs_date"])
 
     return base
@@ -320,12 +320,12 @@ def _month_step(
         return None
 
     eligible["_score_group"] = _assign_groups(
-        eligible, "ranking_score", "bond_id", settings["groups"]
+        eligible, "ranking_score", "cusip", settings["groups"]
     )
 
     if settings["control"] is not None:
         eligible["_control_group"] = _assign_groups(
-            eligible, settings["control"], "bond_id", settings["control_groups"]
+            eligible, settings["control"], "cusip", settings["control_groups"]
         )
         stripe_keys = list(range(settings["control_groups"]))
     else:
@@ -367,6 +367,77 @@ def _month_step(
         "short_ret": float(np.mean(stripe_shorts)),
         "n_bonds": int(sum(stripe_nbonds)),
     }
+
+
+# ---------------------------------------------------------------------------
+# Public: per-formation cohort selections (for overlap.run_with_holding_period)
+# ---------------------------------------------------------------------------
+
+def extract_monthly_selections(
+    panel: pd.DataFrame, rulebook: dict
+) -> dict[pd.Timestamp, dict[str, pd.DataFrame]]:
+    """
+    Return per-formation-date long/short cohort selections with formation
+    sizes.
+
+    Used by `overlap.run_with_holding_period` to extend the engine to
+    multi-month holding periods. Applies the SAME eligibility filter as
+    `_month_step` (has_score & has_size & has_next), so a wrapper that
+    calls this and holds for H=1 reproduces `run_characteristic_sort`'s
+    output exactly.
+
+    v1 limitation: single-sort only. Passing `control` in the rulebook
+    raises NotImplementedError — control would require a stripe-keyed
+    return structure that the wrapper does not yet model.
+
+    Returns
+    -------
+    dict keyed by formation Timestamp, with values
+        {"long":  DataFrame[cusip, size],
+         "short": DataFrame[cusip, size]}.
+    Formation dates with no eligible bonds, fewer than min_bonds, or an
+    empty long/short leg are omitted (matching `_month_step`'s skip rules).
+    """
+    settings = _apply_defaults(rulebook)
+    if settings["control"] is not None:
+        raise NotImplementedError(
+            "extract_monthly_selections does not support control "
+            "(double-sort) in this build. Use run_characteristic_sort "
+            "directly or omit 'control' from the rulebook."
+        )
+    _validate_panel(panel, settings)
+
+    panel = panel.copy()
+    panel["date"] = panel["date"].astype("datetime64[ns]")
+
+    work = _build_lagged_panel(panel, settings["score"], settings["signal_lag"])
+
+    selections: dict[pd.Timestamp, dict[str, pd.DataFrame]] = {}
+    for formation_date, month_df in work.groupby("date", sort=True):
+        has_score = month_df["ranking_score"].notna()
+        has_size = month_df["size"].notna()
+        has_next = month_df["next_ret"].notna()
+        eligibility = has_score & has_size & has_next
+
+        eligible = month_df[eligibility].copy()
+        if len(eligible) < settings["min_bonds"]:
+            continue
+
+        eligible["_score_group"] = _assign_groups(
+            eligible, "ranking_score", "cusip", settings["groups"]
+        )
+
+        long_df = eligible[eligible["_score_group"] == settings["long_group"]]
+        short_df = eligible[eligible["_score_group"] == settings["short_group"]]
+        if len(long_df) == 0 or len(short_df) == 0:
+            continue
+
+        selections[formation_date] = {
+            "long":  long_df[["cusip", "size"]].reset_index(drop=True),
+            "short": short_df[["cusip", "size"]].reset_index(drop=True),
+        }
+
+    return selections
 
 
 # ---------------------------------------------------------------------------
@@ -633,7 +704,7 @@ def run_characteristic_sort(
     Characteristic-sort engine.
 
     Inputs:
-      panel    : DataFrame with bond_id, date (month-end, tz-naive), ret, size,
+      panel    : DataFrame with cusip, date (month-end, tz-naive), ret, size,
                  the score column named in rulebook['score'], and -- if the
                  rulebook specifies one -- a control column.
       rulebook : settings dict. See `_apply_defaults` for the supported keys

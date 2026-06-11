@@ -55,7 +55,7 @@ def naive_run_characteristic_sort(panel: pd.DataFrame, rulebook: dict) -> dict:
     min_bonds = rulebook.get("min_bonds", groups)
     signal_lag = rulebook.get("signal_lag", 0)
 
-    # Pre-group rows by formation date and build a (bond_id, date) lookup
+    # Pre-group rows by formation date and build a (cusip, date) lookup
     # for next_ret / signal_lag score lookups.
     records = panel.to_dict("records")
     by_date: dict = defaultdict(list)
@@ -63,18 +63,18 @@ def naive_run_characteristic_sort(panel: pd.DataFrame, rulebook: dict) -> dict:
     for r in records:
         d = pd.Timestamp(r["date"])
         by_date[d].append(r)
-        by_key[(r["bond_id"], d)] = r
+        by_key[(r["cusip"], d)] = r
 
     monthly_rows = []
     for t in sorted(by_date.keys()):
         # Eligible bonds at formation date t.
         eligible = []
         for row_t in by_date[t]:
-            bond_id = row_t["bond_id"]
+            cusip = row_t["cusip"]
 
             # Ranking score: from the row signal_lag months earlier.
             score_obs_date = t - pd.offsets.MonthEnd(signal_lag)
-            score_row = by_key.get((bond_id, score_obs_date))
+            score_row = by_key.get((cusip, score_obs_date))
             if score_row is None:
                 continue
             ranking_score = score_row[score]
@@ -88,7 +88,7 @@ def naive_run_characteristic_sort(panel: pd.DataFrame, rulebook: dict) -> dict:
 
             # Next-month return: from the row at t + 1 month.
             realisation_date = t + pd.offsets.MonthEnd(1)
-            next_row = by_key.get((bond_id, realisation_date))
+            next_row = by_key.get((cusip, realisation_date))
             if next_row is None:
                 continue
             next_ret = next_row["ret"]
@@ -105,7 +105,7 @@ def naive_run_characteristic_sort(panel: pd.DataFrame, rulebook: dict) -> dict:
 
             eligible.append(
                 {
-                    "bond_id": bond_id,
+                    "cusip": cusip,
                     "ranking_score": float(ranking_score),
                     "size": float(size),
                     "next_ret": float(next_ret),
@@ -118,18 +118,18 @@ def naive_run_characteristic_sort(panel: pd.DataFrame, rulebook: dict) -> dict:
 
         n = len(eligible)
 
-        # Score groups: stable sort by (score asc, bond_id asc), then
+        # Score groups: stable sort by (score asc, cusip asc), then
         # group = ((rank-1) * G) // n. Rank is 1-indexed; here we use the
         # 0-indexed position i directly, which is equivalent.
         for i, b in enumerate(
-            sorted(eligible, key=lambda x: (x["ranking_score"], x["bond_id"]))
+            sorted(eligible, key=lambda x: (x["ranking_score"], x["cusip"]))
         ):
             b["_score_group"] = (i * groups) // n
 
         # Control groups: independent over the same eligible set.
         if control is not None:
             for i, b in enumerate(
-                sorted(eligible, key=lambda x: (x["ctrl"], x["bond_id"]))
+                sorted(eligible, key=lambda x: (x["ctrl"], x["cusip"]))
             ):
                 b["_control_group"] = (i * control_groups) // n
             stripe_keys = list(range(control_groups))

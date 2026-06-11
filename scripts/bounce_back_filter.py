@@ -1,11 +1,15 @@
 """
-DRR (Dickerson, Robotti, Rossetti 2026) bounce-back filter for TRACE.
+DRR (Dickerson, Robotti, Rossetti 2026) bounce-back filter — corrected
+branch, stage 2 of the meas_err pipeline.
 
-Runs after preprocess_trace.py and before build_monthly_panel.py. Reads each
-of data/development/trace_clean.parquet and data/holdout/trace_clean.parquet,
-removes transaction-level price spikes that revert within a short lookahead
-window, and overwrites the input atomically (write to .tmp, verify row count,
-then os.replace).
+Reads `trace_clean_decimal_shifted.parquet` (output of apply_decimal_shift.py),
+applies the per-bond bounce-back filter from DRR Table A.2, and writes
+`trace_clean_corr.parquet`. Dropped trades are persisted to a companion
+artifact `bounceback_dropped_<partition>.parquet` for the audit trail
+(spot-checkable via the verification step 4 in the Phase 1 plan).
+
+Stage order (normative per A7.2 of the registry amendments):
+  decimal-shift → bounce-back → VWAP→daily → distressed filters 1-4
 
 Per-bond filter (DRR Table A.2): rolling trailing median of the last `window`
 unique prices serves as the anchor; a trade more than `threshold_abs` from the
@@ -20,8 +24,7 @@ This script never hard-codes thresholds.
 
 Holdout processing is a mechanical transformation with parameters fixed in
 thresholds.yaml. No statistic computed on holdout is read, surfaced, or used
-to inform any decision — consistent with how preprocess_trace.py already
-writes data/holdout/trace_clean.parquet.
+to inform any decision.
 
 Usage:
   python scripts/bounce_back_filter.py
@@ -51,29 +54,33 @@ except ImportError:
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEV_PARQUET = REPO_ROOT / "data" / "development" / "trace_clean.parquet"
-HOLD_PARQUET = REPO_ROOT / "data" / "holdout" / "trace_clean.parquet"
-REPORT_PATH = REPO_ROOT / "data" / "development" / "cleaning_report.json"
+DEV_IN = REPO_ROOT / "data" / "development" / "trace_clean_decimal_shifted.parquet"
+HOLD_IN = REPO_ROOT / "data" / "holdout" / "trace_clean_decimal_shifted.parquet"
+DEV_OUT = REPO_ROOT / "data" / "development" / "trace_clean_corr.parquet"
+HOLD_OUT = REPO_ROOT / "data" / "holdout" / "trace_clean_corr.parquet"
+DEV_DROPPED = REPO_ROOT / "data" / "development" / "bounceback_dropped_dev.parquet"
+HOLD_DROPPED = REPO_ROOT / "data" / "holdout" / "bounceback_dropped_hold.parquet"
+REPORT_OUT = REPO_ROOT / "data" / "development" / "bounce_back_report.json"
 THRESHOLDS_FILE = REPO_ROOT / "docs" / "thresholds.yaml"
 
-# Identical to preprocess_trace.OUTPUT_SCHEMA — copied verbatim because the
-# downstream build_monthly_panel.py reads back from this exact schema and any
-# drift would break it. Keep in lockstep with the OUTPUT_SCHEMA defined inside
-# preprocess_trace.run_pandas (search for "OUTPUT_SCHEMA = pa.schema").
+# Carries the input schema (incl. decimal_shift_applied) through unchanged.
+# trace_clean_corr.parquet has the SAME schema as the decimal-shifted input;
+# bounceback_dropped artefacts have the same schema for the dropped trades.
 OUTPUT_SCHEMA = pa.schema([
-    pa.field("bond_id",              pa.string()),
-    pa.field("cusip_id",             pa.string()),
-    pa.field("company_symbol",       pa.string()),
-    pa.field("trd_exctn_dt",         pa.timestamp("us")),
-    pa.field("trd_exctn_tm",         pa.string()),
-    pa.field("rptd_pr",              pa.float64()),
-    pa.field("entrd_vol_qt",         pa.float64()),
-    pa.field("sub_prdct",            pa.string()),
-    pa.field("rpt_side_cd",          pa.string()),
-    pa.field("trdg_mkt_cd",          pa.string()),
-    pa.field("trd_mod_3",            pa.string()),
-    pa.field("bloomberg_identifier", pa.string()),
-    pa.field("scrty_type_cd",        pa.string()),
+    pa.field("bond_id",                pa.string()),
+    pa.field("cusip_id",               pa.string()),
+    pa.field("company_symbol",         pa.string()),
+    pa.field("trd_exctn_dt",           pa.timestamp("us")),
+    pa.field("trd_exctn_tm",           pa.string()),
+    pa.field("rptd_pr",                pa.float64()),
+    pa.field("entrd_vol_qt",           pa.float64()),
+    pa.field("sub_prdct",              pa.string()),
+    pa.field("rpt_side_cd",            pa.string()),
+    pa.field("trdg_mkt_cd",            pa.string()),
+    pa.field("trd_mod_3",              pa.string()),
+    pa.field("bloomberg_identifier",   pa.string()),
+    pa.field("scrty_type_cd",          pa.string()),
+    pa.field("decimal_shift_applied",  pa.bool_()),
 ])
 
 REQUIRED_PARAM_KEYS = (
@@ -81,14 +88,6 @@ REQUIRED_PARAM_KEYS = (
     "back_to_anchor_tol", "candidate_slack_abs",
     "par_cooldown_after_flag",
     "par_spike_heuristic", "par_level", "par_band", "par_min_run",
-)
-
-# Legacy keys from the removed initial-price-error filter (an earlier cold-
-# start patch with no DRR provenance). Their presence in a prior run's report
-# is a hard error — re-run preprocess_trace.py to regenerate a clean report.
-LEGACY_INIT_PRICE_KEYS = (
-    "dropped_init_price_error_dev",
-    "dropped_init_price_error_hold",
 )
 
 
@@ -133,20 +132,7 @@ def _near_par_run(dq: deque, par_level: float, par_band: float, par_min_run: int
 def _apply_bounce_back_loop(prices, params: dict):
     """Sequential per-bond bounce-back filter (DRR Table A.2).
 
-    Returns (keep_mask, n_dropped). See spec Section 3.
-
-    Anchor decoupling (extension beyond DRR): par-snap, when active, applies
-    only to the *flagging* decision — it prevents false positives for at-par
-    bonds whose trailing median has drifted slightly off par. The *recovery*
-    check always uses the raw trailing median, because recovery asks "did the
-    bond return to its actual trading level", which is the median by
-    construction. A single par-snapped anchor for both checks creates a dead
-    zone for any bond whose median is in [par - par_band, par + par_band] but
-    not exactly at par.
-
-    Cooldown scope (DRR Table A.2 clause iii): the cooldown is described as
-    "rows skipped after flagging par blocks". It fires only when the dropped
-    trade was flagged via the par-snap path, not after every drop.
+    Returns (keep_mask, n_dropped). See bounce_back_filter_spec.md Section 3.
     """
     threshold_abs = float(params["threshold_abs"])
     lookahead = int(params["lookahead"])
@@ -185,8 +171,6 @@ def _apply_bounce_back_loop(prices, params: dict):
             _push_unique(trailing, p)
             continue
 
-        # Read-only lookahead — does not consume future trades. Recovery is
-        # judged against the median (the bond's actual level), never par.
         hi = min(i + 1 + lookahead, n)
         recovered = any(abs(prices[j] - median_anchor) <= recovery_tol for j in range(i + 1, hi))
 
@@ -205,9 +189,10 @@ def _apply_bounce_back_loop(prices, params: dict):
 # Partition orchestration
 # ---------------------------------------------------------------------------
 
-def process_partition(input_path: Path, output_path: Path, params: dict,
-                      output_schema: pa.Schema = OUTPUT_SCHEMA) -> dict:
-    """Read input parquet, apply per-bond filter, atomically overwrite output.
+def process_partition(input_path: Path, output_path: Path, dropped_path: Path,
+                      params: dict, output_schema: pa.Schema = OUTPUT_SCHEMA) -> dict:
+    """Read input parquet, apply per-bond bounce-back filter, write kept rows
+    to output_path and dropped rows to dropped_path (companion artifact).
 
     Returns dict with: input_rows, kept_rows, dropped_bounce_back.
     """
@@ -215,25 +200,17 @@ def process_partition(input_path: Path, output_path: Path, params: dict,
         raise FileNotFoundError(f"Input parquet not found: {input_path}")
 
     sorted_tmp = input_path.with_name(input_path.name + ".sorted.tmp")
-    tmp_path = output_path.with_suffix(".parquet.tmp")
-    # Ensure no stale .tmp from a prior crashed run is around.
-    for stale in (sorted_tmp, tmp_path):
+    out_tmp = output_path.with_suffix(".parquet.tmp")
+    dropped_tmp = dropped_path.with_suffix(".parquet.tmp")
+    for stale in (sorted_tmp, out_tmp, dropped_tmp):
         if stale.exists():
             stale.unlink()
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    dropped_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Stage 1: stream-sort to intermediate parquet via DuckDB. DuckDB's
-    # external merge sort spills to disk transparently and bounds peak RAM
-    # to its buffer-pool target — well within the workstation's memory.
-    # polars sink_parquet does NOT externalize sort at this scale (verified
-    # by repeated OOM kills); DuckDB is the right tool for this step.
-    # The intermediate schema may differ slightly from OUTPUT_SCHEMA (e.g.
-    # large_utf8 vs utf8) — the cast at flush time normalises it.
+    # Stage 1: stream-sort to intermediate parquet via DuckDB (bounded RAM via
+    # disk spill). Polars sink_parquet does not externalise sort at this scale.
     print(f"  Stream-sorting {input_path.name} → {sorted_tmp.name} via DuckDB ...")
-    # DuckDB's `COPY ... TO` clause does not reliably accept parameter binding
-    # for the target path, so paths are interpolated directly. Both sides are
-    # internal (built from REPO_ROOT) — not user input — and we escape any
-    # single quote that could appear in unusual filesystem layouts.
     in_lit = "'" + str(input_path).replace("'", "''") + "'"
     out_lit = "'" + str(sorted_tmp).replace("'", "''") + "'"
     with duckdb.connect() as con:
@@ -249,29 +226,40 @@ def process_partition(input_path: Path, output_path: Path, params: dict,
     input_rows = pq.read_metadata(str(sorted_tmp)).num_rows
     print(f"  Sorted {input_rows:,} rows; iterating bond-by-bond...")
 
-    writer = None
+    kept_writer = None
+    dropped_writer = None
     kept_rows = 0
-    n_bb_total = 0
-    bond_segments: list = []  # list[pa.RecordBatch] for the bond currently being accumulated
+    dropped_rows = 0
+    bond_segments: list = []
     current_bond_id = None
 
     def _flush_current_bond():
-        nonlocal kept_rows, n_bb_total, writer
+        nonlocal kept_rows, dropped_rows, kept_writer, dropped_writer
         if not bond_segments:
             return
         sub_table = pa.Table.from_batches(bond_segments)
         sub_df = pl.from_arrow(sub_table)
         prices = sub_df.get_column("rptd_pr").to_list()
         mask, n_bb = _apply_bounce_back_loop(prices, params)
-        n_bb_total += n_bb
-        if not any(mask):
-            return
-        kept_sub = sub_df if all(mask) else sub_df.filter(pl.Series(mask))
-        table = kept_sub.to_arrow().cast(output_schema)
-        if writer is None:
-            writer = pq.ParquetWriter(str(tmp_path), output_schema)
-        writer.write_table(table)
-        kept_rows += kept_sub.height
+
+        # Write KEPT rows
+        if any(mask):
+            kept_sub = sub_df if all(mask) else sub_df.filter(pl.Series(mask))
+            kept_table = kept_sub.to_arrow().cast(output_schema)
+            if kept_writer is None:
+                kept_writer = pq.ParquetWriter(str(out_tmp), output_schema)
+            kept_writer.write_table(kept_table)
+            kept_rows += kept_sub.height
+
+        # Write DROPPED rows to companion artifact for audit trail
+        if n_bb > 0:
+            dropped_mask = [not k for k in mask]
+            dropped_sub = sub_df.filter(pl.Series(dropped_mask))
+            dropped_table = dropped_sub.to_arrow().cast(output_schema)
+            if dropped_writer is None:
+                dropped_writer = pq.ParquetWriter(str(dropped_tmp), output_schema)
+            dropped_writer.write_table(dropped_table)
+            dropped_rows += dropped_sub.height
 
     try:
         pf = pq.ParquetFile(str(sorted_tmp))
@@ -282,23 +270,16 @@ def process_partition(input_path: Path, output_path: Path, params: dict,
                           unit="batch"):
             if batch.num_rows == 0:
                 continue
-            # Partition-boundary invariant: Stage 1 (preprocess_trace.py)
-            # guarantees positive, finite, non-null prices. Assert here because
-            # both NaN (IEEE-754: every comparison evaluates False) and null
-            # (None propagating into Python arithmetic) would silently break
-            # the filter for any bond containing such a price. pc.is_finite
-            # returns NULL for nulls and pc.all skips nulls, so the two cases
-            # must be checked separately.
+            # Partition-boundary invariant: prices must be positive, finite,
+            # non-null at this stage (decimal-shift already screened).
             price_col = batch.column("rptd_pr")
             if (price_col.null_count > 0
                     or not pc.all(pc.is_finite(price_col)).as_py()):
                 raise AssertionError(
                     f"Non-finite price found in {input_path.name} batch — "
-                    "Stage 1 contract violated. Re-run preprocess_trace.py."
+                    "decimal-shift stage contract violated."
                 )
             bond_col = batch.column("bond_id").to_pylist()
-            # Bonds are sorted, so contiguous runs share a bond_id. Detect
-            # transitions in a single pass.
             run_starts = [0]
             for i in range(1, len(bond_col)):
                 if bond_col[i] != bond_col[i - 1]:
@@ -319,192 +300,105 @@ def process_partition(input_path: Path, output_path: Path, params: dict,
 
         _flush_current_bond()
     finally:
-        if writer is not None:
-            writer.close()
-        # Always remove the intermediate sorted parquet — it can be ~25 GB
-        # for the dev partition.
+        if kept_writer is not None:
+            kept_writer.close()
+        if dropped_writer is not None:
+            dropped_writer.close()
         if sorted_tmp.exists():
             try:
                 sorted_tmp.unlink()
             except OSError:
                 pass
 
-    # Verify the .tmp parquet matches the expected row count AND schema before
-    # atomic replace — never destroy the input unless the new file is fully
-    # written and structurally identical to the input contract.
-    if tmp_path.exists():
-        actual = pq.read_metadata(str(tmp_path)).num_rows
+    # Verify and rename kept output
+    if out_tmp.exists():
+        actual = pq.read_metadata(str(out_tmp)).num_rows
         if actual != kept_rows:
-            tmp_path.unlink()
+            out_tmp.unlink()
             raise AssertionError(
-                f"Tmp parquet row count {actual:,} != counter {kept_rows:,} "
-                f"for {output_path}"
+                f"Kept tmp parquet row count {actual:,} != counter {kept_rows:,}"
             )
-        written_schema = pq.read_schema(str(tmp_path))
+        written_schema = pq.read_schema(str(out_tmp))
         if not written_schema.equals(output_schema):
-            tmp_path.unlink()
+            out_tmp.unlink()
             raise AssertionError(
-                f"Schema drift in tmp parquet for {output_path.name}:\n"
-                f"  expected: {output_schema}\n  written:  {written_schema}"
+                f"Schema drift in kept tmp parquet for {output_path.name}"
             )
-        os.replace(tmp_path, output_path)
-    else:
-        # No tmp written → no writer was opened → every bond's mask was empty.
-        # Original file is untouched; safe to re-run after investigating.
-        if kept_rows != 0:
-            raise AssertionError(
-                f"No tmp parquet written but kept_rows={kept_rows} for {output_path}"
-            )
+        os.replace(out_tmp, output_path)
+    elif kept_rows != 0:
         raise AssertionError(
-            f"Bounce-back removed every row in {input_path}; no tmp parquet "
-            f"was written. Original file is unchanged. Investigate before re-running."
+            f"No kept tmp parquet written but kept_rows={kept_rows}"
+        )
+    else:
+        raise AssertionError(
+            f"Bounce-back removed every row in {input_path}; investigate before re-running."
         )
 
-    if input_rows - kept_rows != n_bb_total:
+    # Verify and rename dropped companion artifact (if any)
+    if dropped_tmp.exists():
+        actual = pq.read_metadata(str(dropped_tmp)).num_rows
+        if actual != dropped_rows:
+            dropped_tmp.unlink()
+            raise AssertionError(
+                f"Dropped tmp parquet row count {actual:,} != counter {dropped_rows:,}"
+            )
+        os.replace(dropped_tmp, dropped_path)
+    elif dropped_rows != 0:
+        raise AssertionError(
+            f"No dropped tmp parquet written but dropped_rows={dropped_rows}"
+        )
+
+    if input_rows - kept_rows != dropped_rows:
         raise AssertionError(
             f"Row arithmetic broken for {output_path.name}: "
-            f"input={input_rows:,} kept={kept_rows:,} bb_drop={n_bb_total:,} "
-            f"(input-kept={input_rows - kept_rows:,} != bb_drop={n_bb_total:,})"
+            f"input={input_rows:,} kept={kept_rows:,} dropped={dropped_rows:,}"
         )
 
     return {
         "input_rows": input_rows,
         "kept_rows": kept_rows,
-        "dropped_bounce_back": n_bb_total,
+        "dropped_bounce_back": dropped_rows,
     }
 
 
 # ---------------------------------------------------------------------------
-# cleaning_report.json update
+# Report
 # ---------------------------------------------------------------------------
 
-def _assert_additivity(rows: dict) -> None:
-    expected = rows["raw_total"]
-    actual = (
-        rows["dropped_trc_st"]
-        + rows["dropped_cancelled_original"]
-        + rows["dropped_asof_cd"]
-        + rows["dropped_wis_fl"]
-        + rows["dropped_price_plausibility"]
-        + rows["decimal_shift_unresolvable_dropped"]
-        + rows["dropped_interdealer_duplicate"]
-        + rows["dropped_invalid_date"]
-        + rows["dropped_bounce_back_dev"]
-        + rows["dropped_bounce_back_hold"]
-        + rows["development_rows"]
-        + rows["holdout_rows"]
-    )
-    if actual != expected:
-        raise AssertionError(
-            f"Counter additivity broken: components sum to {actual:,} "
-            f"but raw_total is {expected:,} (gap {expected - actual:,})."
-        )
-    final = rows["final_clean_total"]
-    expected_final = rows["development_rows"] + rows["holdout_rows"]
-    if final != expected_final:
-        raise AssertionError(
-            f"final_clean_total {final:,} != development_rows + holdout_rows "
-            f"{expected_final:,} — report has drifted from its own counters."
-        )
-
-
-def _post_bounce_cusip_counts_dev_only(dev_parquet: Path) -> tuple[int, int]:
-    """Stream the cusip_id column from the DEV parquet and tally populated/blank.
-
-    Surfaced so the cleaning_report has accurate post-bounce CUSIP coverage
-    against the dev partition that Librarian/Quant actually read — distinct
-    from the pre-bounce counts that preprocess_trace.py emits.
-
-    Scope is DEV-ONLY by design: per ARCHITECTURE.md and conftest.py guard, holdout
-    parquet content cannot be read or surfaced until walk-forward evaluation
-    (weeks 13-14). A CUSIP count is a statistic, and surfacing it now would
-    contaminate the firewall — even if the act is mechanical, the value lands
-    in cleaning_report.json which is repo-visible. Holdout post-bounce CUSIP
-    coverage will be measured at walk-forward time and added then.
-
-    Polars lazy scan reads only the cusip_id column from each row group; cost
-    is small relative to the bounce-back filter run itself.
-    """
-    if not dev_parquet.exists():
-        return 0, 0
-    col = (
-        pl.scan_parquet(str(dev_parquet))
-          .select(pl.col("cusip_id"))
-          .collect()
-          .get_column("cusip_id")
-    )
-    # cusip_id is pa.string() in OUTPUT_SCHEMA; blank = null OR whitespace-only.
-    # str.strip_chars().eq("") matches the preprocess_trace blank rule
-    # (see scripts/preprocess_trace.py:404).
-    blank_mask = col.is_null() | (col.fill_null("").str.strip_chars() == "")
-    blank = int(blank_mask.sum())
-    populated = int(col.len() - blank)
-    return populated, blank
-
-
-_SENTINEL = object()
-
-
-def update_cleaning_report(report_path: Path, dev_stats: dict, hold_stats: dict,
-                           thresholds_sha: str, dev_parquet=_SENTINEL) -> None:
-    if not report_path.exists():
-        raise FileNotFoundError(
-            f"cleaning_report.json not found at {report_path}. "
-            "Run preprocess_trace.py first."
-        )
-    with open(report_path) as f:
-        report = json.load(f)
-
-    rows = report["rows"]
-
-    # Legacy fields from a removed cold-start filter — their presence means
-    # this report is from a prior run that used the pre-strict-fidelity
-    # implementation. Re-running preprocess_trace.py is required to regenerate
-    # a clean report; we refuse to silently migrate.
-    legacy_found = sorted(k for k in LEGACY_INIT_PRICE_KEYS if k in rows)
-    if legacy_found:
-        raise AssertionError(
-            f"Legacy init_price_error fields detected in {report_path}: "
-            f"{legacy_found}. These belong to a removed filter (an earlier "
-            "cold-start patch, deleted for DRR fidelity). Delete the report "
-            "and re-run preprocess_trace.py."
-        )
-
-    rows["dropped_bounce_back_dev"] = int(dev_stats["dropped_bounce_back"])
-    rows["dropped_bounce_back_hold"] = int(hold_stats["dropped_bounce_back"])
-    rows["development_rows"] = int(dev_stats["kept_rows"])
-    rows["holdout_rows"] = int(hold_stats["kept_rows"])
-    rows["final_clean_total"] = int(dev_stats["kept_rows"] + hold_stats["kept_rows"])
-    rows["parquet_row_count_verified"] = True
-
-    # Post-bounce CUSIP coverage on the DEV partition only — holdout firewall
-    # (ARCHITECTURE.md) forbids surfacing holdout-derived statistics until weeks
-    # 13-14. The pre-bounce counts written by preprocess_trace.py span both
-    # partitions; the gap between pre- and post-bounce-dev is informative for
-    # the Librarian/Quant audit. Holdout coverage will be added at walk-forward.
-    # dev_parquet is injectable so tests can pass a synthetic parquet OR None
-    # to skip; main() omits the kwarg so the real DEV_PARQUET is used.
-    parquet = DEV_PARQUET if dev_parquet is _SENTINEL else dev_parquet
-    if parquet is not None and parquet.exists():
-        post_pop_dev, post_blank_dev = _post_bounce_cusip_counts_dev_only(parquet)
-        rows["cusip_populated_post_bounce_dev"] = post_pop_dev
-        rows["cusip_blank_post_bounce_dev"] = post_blank_dev
-        if post_pop_dev + post_blank_dev != rows["development_rows"]:
-            raise AssertionError(
-                f"Post-bounce DEV CUSIP counts sum to {post_pop_dev + post_blank_dev:,} "
-                f"but development_rows is {rows['development_rows']:,}."
-            )
-
-    report["bounce_back_filter_applied"] = True
-    report["bounce_back_run_timestamp"] = datetime.now(timezone.utc).isoformat()
-    report["bounce_back_params_sha256"] = thresholds_sha
-
-    _assert_additivity(rows)
-
-    tmp = report_path.with_suffix(".tmp")
+def write_report(dev_stats: dict, hold_stats: dict, thresholds_sha: str) -> None:
+    report = {
+        "run_timestamp": datetime.now(timezone.utc).isoformat(),
+        "thresholds_sha256": thresholds_sha,
+        "stage": "bounce_back_corrected_branch",
+        "registry_role": (
+            "meas_err = ON, stage 2: DRR Table A.2 per-bond bounce-back filter. "
+            "Stage 3 (distressed daily filters 1-4) runs on the daily layer "
+            "after VWAP aggregation. Raw family bypasses this script per A1."
+        ),
+        "rows_dev": dev_stats,
+        "rows_holdout": hold_stats,
+        "inputs": {
+            "dev": str(DEV_IN.relative_to(REPO_ROOT)),
+            "holdout": str(HOLD_IN.relative_to(REPO_ROOT)),
+        },
+        "outputs": {
+            "dev_kept": str(DEV_OUT.relative_to(REPO_ROOT)),
+            "dev_dropped": str(DEV_DROPPED.relative_to(REPO_ROOT)),
+            "holdout_kept": str(HOLD_OUT.relative_to(REPO_ROOT)),
+            "holdout_dropped": str(HOLD_DROPPED.relative_to(REPO_ROOT)),
+        },
+        "audit_trail_note": (
+            "Companion 'dropped' parquets persist the trades the bounce-back "
+            "filter removed. These satisfy the Phase 1 verification step 4 "
+            "(spot-check a known bounce-back trade present in trace_clean_raw "
+            "and dropped from trace_clean_corr)."
+        ),
+    }
+    REPORT_OUT.parent.mkdir(parents=True, exist_ok=True)
+    tmp = REPORT_OUT.with_suffix(".tmp")
     with open(tmp, "w") as f:
         json.dump(report, f, indent=2)
-    os.replace(tmp, report_path)
+    os.replace(tmp, REPORT_OUT)
 
 
 # ---------------------------------------------------------------------------
@@ -515,23 +409,24 @@ def main():
     params = load_bounce_back_config()
     sha = thresholds_sha256()
     print(f"Loaded bounce_back_filter config (thresholds sha256: {sha[:12]}...)")
+    print("Stage: meas_err = ON — DRR Table A.2 per-bond bounce-back filter")
 
     print("Processing development partition...")
-    dev_stats = process_partition(DEV_PARQUET, DEV_PARQUET, params)
+    dev_stats = process_partition(DEV_IN, DEV_OUT, DEV_DROPPED, params)
     print(
         f"  dev: input={dev_stats['input_rows']:,} kept={dev_stats['kept_rows']:,} "
-        f"bb_drop={dev_stats['dropped_bounce_back']:,}"
+        f"dropped={dev_stats['dropped_bounce_back']:,}"
     )
 
     print("Processing holdout partition (mechanical; no statistics surfaced)...")
-    hold_stats = process_partition(HOLD_PARQUET, HOLD_PARQUET, params)
+    hold_stats = process_partition(HOLD_IN, HOLD_OUT, HOLD_DROPPED, params)
     print(
         f"  holdout: input={hold_stats['input_rows']:,} kept={hold_stats['kept_rows']:,} "
-        f"bb_drop={hold_stats['dropped_bounce_back']:,}"
+        f"dropped={hold_stats['dropped_bounce_back']:,}"
     )
 
-    update_cleaning_report(REPORT_PATH, dev_stats, hold_stats, sha)
-    print(f"Updated {REPORT_PATH}")
+    write_report(dev_stats, hold_stats, sha)
+    print(f"Updated {REPORT_OUT}")
     print("Done.")
 
 

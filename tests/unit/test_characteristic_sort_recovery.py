@@ -79,7 +79,7 @@ def _build_quality_dgp(
         for i, bid in enumerate(bonds):
             rows.append(
                 {
-                    "bond_id": bid,
+                    "cusip": bid,
                     "date": d,
                     "ret": float(month_rets[i]),
                     "size": 100.0,
@@ -179,7 +179,7 @@ def test_recovery_under_null_no_signal() -> None:
         for i, bid in enumerate(bonds):
             rows.append(
                 {
-                    "bond_id": bid,
+                    "cusip": bid,
                     "date": d,
                     "ret": float(month_rets[i]),
                     "size": 100.0,

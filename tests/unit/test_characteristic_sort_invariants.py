@@ -66,7 +66,7 @@ def _build_panel(
             ret_noise = rng.normal(scale=0.02)
             rows.append(
                 {
-                    "bond_id": bid,
+                    "cusip": bid,
                     "date": d,
                     "ret": 0.005 * quality[i] + ret_noise,
                     "size": sizes[i] * (1.0 + 0.05 * rng.normal()),
@@ -260,7 +260,7 @@ def test_invariant_extra_bond_with_no_next_ret_is_invisible() -> None:
     extra = pd.DataFrame(
         [
             {
-                "bond_id": "EXTRA",
+                "cusip": "EXTRA",
                 "date": pd.Timestamp("2010-06-30"),
                 "ret": 999.0,
                 "size": 999.0,
@@ -275,19 +275,19 @@ def test_invariant_extra_bond_with_no_next_ret_is_invisible() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Invariant 10 — Permutation invariance under bond_id rename (no ties)
+# Invariant 10 — Permutation invariance under cusip rename (no ties)
 # ---------------------------------------------------------------------------
 
-def test_invariant_permutation_invariance_under_bond_id_rename() -> None:
-    """A bijective rename of bond_ids must not change strategy_ret -- as
-    long as no inter-bond ties in score exist for which the bond_id order
+def test_invariant_permutation_invariance_under_cusip_rename() -> None:
+    """A bijective rename of cusips must not change strategy_ret -- as
+    long as no inter-bond ties in score exist for which the cusip order
     matters. Numerically generated scores from a continuous distribution
     have measure-zero probability of ties, so this holds in practice."""
     panel = _build_panel(40, 18, seed=101)
     base = _run(panel)
-    # Reverse every bond_id string: "B007" -> "700B".
+    # Reverse every cusip string: "B007" -> "700B".
     renamed = panel.copy()
-    renamed["bond_id"] = renamed["bond_id"].str[::-1]
+    renamed["cusip"] = renamed["cusip"].str[::-1]
     out = _run(renamed)
     np.testing.assert_allclose(
         base["monthly_returns"]["strategy_ret"].values,
@@ -329,7 +329,7 @@ def test_invariant_single_eligible_bond_skips_month() -> None:
     for d_str in ["2010-01", "2010-02", "2010-03"]:
         rows.append(
             {
-                "bond_id": "A",
+                "cusip": "A",
                 "date": pd.Timestamp(d_str) + pd.offsets.MonthEnd(0),
                 "ret": 0.01,
                 "size": 100.0,

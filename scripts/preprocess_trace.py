@@ -1,42 +1,47 @@
 """
-One-time TRACE data cleaning and dev/holdout split.
+One-time TRACE Dick-Nielsen cleaning and dev/holdout split.
 
-Two-pass architecture:
-  Pass 1 (_collect_sets): scan the raw file once to gather two cross-chunk sets
-    - cancelled_originals: msg_seq_nb of T records later cancelled/corrected
-      (Dick-Nielsen 2009 two-pass matching)
-    - sell_key_hashes: 64-bit hashes of (bond_id, dt, price, vol) for sell-side
-      records, used for interdealer-pair dedup (Dick-Nielsen 2009 Algorithm B2)
-  Pass 2 (run_pandas main loop): apply all filters and write output.
+Phase 1 of the bias-toggle registry pipeline. This script performs ONLY the
+basic-cleaning filters that are common to both column families (raw and
+corrected) per Section 2 of the registry spec and A1 of the amendments:
 
-Filters applied in Pass 2:
   1a. trc_st == "T"                 — drop cancelled/reversed/withdrawn records
   1b. msg_seq_nb not in cancelled   — drop T records cancelled by a later C/W/X/Y/R
   2.  asof_cd == "" (blank)         — keep only on-time original reports; drops A/R/D/X
   3.  wis_fl != "Y"                 — drop when-issued trades
-  4.  price in (price_floor, 30000] — drop implausible prices (pre-correction ceiling)
-  5.  decimal-shift correction      — see below
-  6.  interdealer dedup             — drop B-side row when matched S-side row exists
+  6.  interdealer dedup             — Dick-Nielsen Algorithm B2, on raw prices
 
-WRDS-MMN decimal-shift correction (Dickerson, Robotti, Rossetti 2025):
-  prices in (300, 3000]   → divide by 10
-  prices in (3000, 30000] → divide by 100
-  prices in (0, 300]      → keep as-is
+What this script DOES NOT do (these are meas_err-gated and live downstream):
 
-NOTE on cusip_id: populated on ~99.97% of rows in the 2026-06-09 WRDS re-pull
-(`trace_enhanced_repull.csv.gz`). Retained alongside `bond_sym_id` (renamed to `bond_id`)
-to enable downstream FISD merging. The primary within-TRACE key remains `bond_id` — switching
-to CUSIP as the primary key is a separate decision gated on a `bond_id ↔ cusip_id` mapping
-audit (count of multi-CUSIP bond_ids is surfaced by build_monthly_panel.py).
+  4.  price plausibility            — relocated to apply_decimal_shift.py
+  5.  decimal-shift correction      — relocated to apply_decimal_shift.py
+  7.  bounce-back filter            — bounce_back_filter.py (corrected branch only)
+  8.  distressed daily filters      — apply_distressed_filters.py (corrected daily branch)
 
-NOTE on PyBondLab: PyBondLab has no clean_trace() function — it is a portfolio formation
-library. PyBondLab Filter (price, bounce, trim, winsorise) is applied to the monthly return
-panel in the Quant agent's return-aggregation step, not here.
+The dedup runs on RAW prices for both families. Within-pair matches (S and B
+of the same trade reporting the same raw price + volume + date) work
+identically pre- or post-decimal-shift. The rare degenerate case where one
+side has a decimal-slip and the other doesn't (raw 1500 vs raw 15) is
+accepted as a known residual — pre-shift dedup leaves both in raw, and the
+corrected family's `apply_decimal_shift` will drop the unresolvable side
+while keeping the resolvable one. Both families inherit the same dedup
+decisions on the same trades.
+
+Output:
+  data/development/trace_clean_raw.parquet  (RAW family final + meas_err=ON input)
+  data/holdout/trace_clean_raw.parquet      (mechanical; not surfaced)
+  data/development/cleaning_report.json     (DN counts; meas_err layers append later)
+
+WRDS-MMN decimal-shift and DRR bounce-back live in their own scripts now.
+Price plausibility is now meas_err-gated (raw family preserves junk bit-exact
+per A1.7 — including wildly implausible prices like 1e-6 or 1e9).
+
+NOTE on cusip_id: populated on ~99.97% of rows in the 2026-06-09 WRDS re-pull.
+Retained for downstream FISD merging. Primary CUSIP-month keying happens in
+build_monthly_panel.py.
 
 Usage:
   python scripts/preprocess_trace.py
-
-Requires: Python >=3.10, <3.13 (Numba/PyBondLab constraint when building Quant agent)
 """
 
 import hashlib
@@ -58,14 +63,14 @@ except ImportError:
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW_FILE = REPO_ROOT / "data" / "trace_enhanced_repull.csv.gz"
-DEV_OUT = REPO_ROOT / "data" / "development" / "trace_clean.parquet"
-HOLD_OUT = REPO_ROOT / "data" / "holdout" / "trace_clean.parquet"
+DEV_OUT = REPO_ROOT / "data" / "development" / "trace_clean_raw.parquet"
+HOLD_OUT = REPO_ROOT / "data" / "holdout" / "trace_clean_raw.parquet"
 REPORT_OUT = REPO_ROOT / "data" / "development" / "cleaning_report.json"
 THRESHOLDS_FILE = REPO_ROOT / "docs" / "thresholds.yaml"
 
 KEEP_COLUMNS = [
     "bond_sym_id",       # renamed → bond_id
-    "cusip_id",          # populated on the 2026-06-09 re-pull; retained for FISD merge
+    "cusip_id",
     "company_symbol",
     "trd_exctn_dt",
     "trd_exctn_tm",
@@ -90,24 +95,6 @@ def thresholds_sha256() -> str:
     return hashlib.sha256(THRESHOLDS_FILE.read_bytes()).hexdigest()
 
 
-def decimal_shift(price: float, floor: float, ceiling: float):
-    """
-    WRDS-MMN decimal-shift correction (Dickerson, Robotti, Rossetti 2025).
-
-    Assumes no legitimate corporate bond trades above `ceiling` (300 by default).
-    Any price exceeding the ceiling is treated as a decimal-point reporting error.
-    Applies the minimal divisor (10 or 100) that brings the price into (floor, ceiling].
-    Returns None if no shift restores a valid price — caller should drop that row.
-    """
-    if floor < price <= ceiling:
-        return price
-    if floor < price / 10 <= ceiling:
-        return price / 10
-    if floor < price / 100 <= ceiling:
-        return price / 100
-    return None
-
-
 def _csv_reader(chunk_size: int = 500_000):
     """Chunked CSV reader with the dtype spec required for both passes."""
     import pandas as pd
@@ -123,15 +110,10 @@ def _csv_reader(chunk_size: int = 500_000):
             "asof_cd": str,
             "wis_fl": str,
             "rpt_side_cd": str,
-            # Force cusip_id as string — all-digit CUSIPs (e.g. "000115139") would
-            # otherwise be coerced to int and lose their leading zeros.
             "cusip_id": str,
             "bond_sym_id": str,
         },
         on_bad_lines="skip",
-        # NOTE: malformed rows (123 observed) are skipped silently by pandas;
-        # there is no hook to count them without a custom reader. Known gap —
-        # see docs/trace_preprocessing.md.
     )
 
 
@@ -140,31 +122,8 @@ def _composite_hash(*parts) -> int:
 
     SHA-256 → first 8 bytes → big-endian unsigned int. Python's built-in hash()
     is session-randomized (PYTHONHASHSEED), so it cannot be used here.
-    Collision probability at ~50M entries is ~10⁻⁷ — safe for this use.
-
-    The tuple is serialised via repr() so each part is quoted/escaped; this
-    avoids ambiguity when a delimiter character would otherwise appear inside
-    a string field.
     """
     return int.from_bytes(hashlib.sha256(repr(parts).encode()).digest()[:8], "big")
-
-
-def _apply_decimal_shift(chunk, floor: float, ceiling: float):
-    """Vectorized decimal-shift correction; drops unresolvable rows."""
-    chunk = chunk.copy()
-    p = chunk["rptd_pr"].to_numpy(dtype=float)
-    corrected = np.where(
-        (p > floor) & (p <= ceiling), p,
-        np.where(
-            (p / 10 > floor) & (p / 10 <= ceiling), p / 10,
-            np.where(
-                (p / 100 > floor) & (p / 100 <= ceiling), p / 100,
-                np.nan,
-            ),
-        ),
-    )
-    chunk["rptd_pr"] = corrected
-    return chunk.dropna(subset=["rptd_pr"])
 
 
 def _collect_sets(cfg: dict, chunk_size: int = 500_000):
@@ -173,23 +132,12 @@ def _collect_sets(cfg: dict, chunk_size: int = 500_000):
     Returns (cancelled_keys, sell_counts):
       - cancelled_keys: frozenset[int] of 64-bit hashes of
         (bond_sym_id, trd_exctn_dt, orig_msg_seq_nb) for every non-T record
-        with a non-null orig_msg_seq_nb. The composite key is required because
-        TRACE's msg_seq_nb is a per-dealer-per-day counter, not globally
-        unique — matching on msg_seq_nb alone would drop unrelated T rows
-        across the 20-year file (Dick-Nielsen 2009 B1).
-      - sell_counts: collections.Counter[int] mapping
-        hash(bond_sym_id, trd_exctn_dt, corrected_price, entrd_vol_qt) → count
-        of sell-side ('S') records sharing that key. Counter (not set) is
-        required because Dick-Nielsen B2 is a 1-to-1 pairing: N sells should
-        consume at most N buys. Pass 2 decrements this Counter as it walks
-        B records so over-matching can never drop legitimate client trades.
-
-    Memory: cancelled keys ≲500 MB; sell_counts Counter ~4–7 GB at full scale
-    (50M Python ints × ~28 B + dict overhead). Measure on a sample first.
+        with a non-null orig_msg_seq_nb (Dick-Nielsen B1).
+      - sell_counts: Counter[int] of (bond_sym_id, trd_exctn_dt, RAW price,
+        entrd_vol_qt) for sell-side records surviving filters 1a/1b/2/3.
+        Note: RAW prices (no decimal-shift) — this is the dedup price basis
+        for both column families.
     """
-    floor = cfg["price_floor"]
-    ceiling = cfg["price_ceiling"]
-    pre_ceiling = cfg["pre_correction_ceiling"]
     asof_keep = cfg["asof_cd_keep"]
 
     cancelled_keys: set = set()
@@ -212,7 +160,9 @@ def _collect_sets(cfg: dict, chunk_size: int = 500_000):
                 ):
                     cancelled_keys.add(_composite_hash(b, d, m))
 
-        # Replicate Pass 2 filters 1-4 + decimal-shift to identify sell-side survivors
+        # Replicate Pass 2 Dick-Nielsen filters (NO price plausibility, NO
+        # decimal-shift — those are meas_err-gated downstream) to identify
+        # sell-side survivors that will be the dedup pool in Pass 2.
         chunk = chunk[chunk["trc_st"] == "T"]
         if chunk.empty:
             continue
@@ -220,12 +170,6 @@ def _collect_sets(cfg: dict, chunk_size: int = 500_000):
         if chunk.empty:
             continue
         chunk = chunk[chunk["wis_fl"] != "Y"]
-        if chunk.empty:
-            continue
-        chunk = chunk[(chunk["rptd_pr"] > floor) & (chunk["rptd_pr"] <= pre_ceiling)]
-        if chunk.empty:
-            continue
-        chunk = _apply_decimal_shift(chunk, floor, ceiling)
         if chunk.empty:
             continue
 
@@ -252,17 +196,14 @@ def run_pandas(cfg: dict) -> dict:
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    floor = cfg["price_floor"]
-    ceiling = cfg["price_ceiling"]
-    pre_ceiling = cfg["pre_correction_ceiling"]
     asof_keep = cfg["asof_cd_keep"]
     holdout_year = cfg["holdout_start_year"]
     chunk_size = 500_000
 
     cancelled_keys, sell_counts = _collect_sets(cfg, chunk_size)
 
-    # Explicit output schema: prevents schema drift when pandas infers mixed-type columns
-    # differently across chunks (e.g. scrty_type_cd is numeric in some chunks, string in others).
+    # Explicit output schema: prevents schema drift when pandas infers mixed-type
+    # columns differently across chunks.
     OUTPUT_SCHEMA = pa.schema([
         pa.field("bond_id",              pa.string()),
         pa.field("cusip_id",             pa.string()),
@@ -289,19 +230,19 @@ def run_pandas(cfg: dict) -> dict:
         "dropped_cancelled_original": 0,
         "after_asof_cd_blank": 0,
         "after_wis_fl": 0,
-        "after_price_plausibility": 0,
-        "after_decimal_shift_correction": 0,
         "dropped_interdealer_duplicate": 0,
         "after_interdealer_dedup": 0,
         "dropped_invalid_date": 0,
         "development_rows": 0,
         "holdout_rows": 0,
-        # Counted on rows that survive Pass-2 filters but *before* the bounce-back
-        # filter runs (bounce_back_filter.py adds *_post_bounce companions on its
-        # own report update). Naming makes scope explicit so downstream readers
-        # don't conflate these with final_clean_total.
-        "cusip_populated_pre_bounce": 0,
-        "cusip_blank_pre_bounce": 0,
+        # Counted on rows that survive Pass-2 filters across dev+holdout.
+        # NAMING: this is post-Dick-Nielsen, pre-bounce-back (bounce-back is
+        # meas_err-gated and runs only in the corrected branch). The bounce-
+        # back filter no longer overwrites this file; it reads from
+        # apply_decimal_shift's output, so "pre-bounce" describes the
+        # logical pipeline position not the literal file.
+        "cusip_populated_post_dn": 0,
+        "cusip_blank_post_dn": 0,
     }
 
     try:
@@ -312,9 +253,6 @@ def run_pandas(cfg: dict) -> dict:
             chunk = chunk[chunk["trc_st"] == "T"]
 
             # Filter 1b: drop T records cancelled by a later C/W/X/Y/R record.
-            # Match on composite key (bond_sym_id, trd_exctn_dt, msg_seq_nb)
-            # per Dick-Nielsen 2009 B1 — msg_seq_nb alone is not globally
-            # unique (per-dealer-per-day counter).
             if cancelled_keys and not chunk.empty:
                 before = len(chunk)
                 is_cancelled = np.fromiter(
@@ -336,7 +274,6 @@ def run_pandas(cfg: dict) -> dict:
                 continue
 
             # Filter 2: keep only blank asof_cd — Dick-Nielsen (2009) Table 1 Panel B
-            # isna() is required: pandas reads blank CSV cells as NaN, not "".
             chunk = chunk[chunk["asof_cd"].isna() | (chunk["asof_cd"] == asof_keep)]
             counts["after_asof_cd_blank"] += len(chunk)
             if chunk.empty:
@@ -348,25 +285,11 @@ def run_pandas(cfg: dict) -> dict:
             if chunk.empty:
                 continue
 
-            # Filter 4: price plausibility (pre-correction ceiling preserves decimal-shift candidates)
-            chunk = chunk[(chunk["rptd_pr"] > floor) & (chunk["rptd_pr"] <= pre_ceiling)]
-            counts["after_price_plausibility"] += len(chunk)
-            if chunk.empty:
-                continue
-
-            # WRDS-MMN decimal-shift correction — vectorized via np.where for performance
-            chunk = _apply_decimal_shift(chunk, floor, ceiling)
-            counts["after_decimal_shift_correction"] += len(chunk)
-            if chunk.empty:
-                continue
-
-            # Interdealer dedup (Dick-Nielsen 2009 Algorithm B2): drop B-side rows
-            # whose (bond_id, dt, price, vol) matches a sell-side record AS A PAIR.
-            # sell_counts is a Counter: each B match decrements the count for that
-            # key, so N sells can pair with at most N buys. A market-maker that
-            # legitimately buys from one client and sells to another at the same
-            # price/vol/day produces 1 S + 2 B; only 1 B is dropped here, the
-            # second B (no remaining S to pair with) is kept.
+            # Filter 6: interdealer dedup on RAW prices (Dick-Nielsen B2).
+            # The dedup price basis is raw — within-pair matches (same trade
+            # reported by both sides) hold pre-shift and post-shift. Per the
+            # registry spec Section 2, dedup is basic cleaning shared by both
+            # families.
             if sell_counts:
                 buys_mask = (chunk["rpt_side_cd"] == "B").to_numpy()
                 if buys_mask.any():
@@ -406,8 +329,8 @@ def run_pandas(cfg: dict) -> dict:
             # CUSIP populated-rate audit (counted on rows that survived all filters)
             cusip_col = chunk["cusip_id"]
             blank_mask = cusip_col.isna() | (cusip_col.astype(str).str.strip() == "")
-            counts["cusip_blank_pre_bounce"] += int(blank_mask.sum())
-            counts["cusip_populated_pre_bounce"] += int(len(chunk) - blank_mask.sum())
+            counts["cusip_blank_post_dn"] += int(blank_mask.sum())
+            counts["cusip_populated_post_dn"] += int(len(chunk) - blank_mask.sum())
 
             dev_chunk = chunk[chunk["trd_exctn_dt"].dt.year < holdout_year]
             hold_chunk = chunk[chunk["trd_exctn_dt"].dt.year >= holdout_year]
@@ -435,19 +358,15 @@ def run_pandas(cfg: dict) -> dict:
             hold_writer.close()
 
     counts["final_clean_total"] = counts["development_rows"] + counts["holdout_rows"]
-    # raw → after_trc_st_T includes both filter 1a (trc_st != "T") and 1b
-    # (cancelled originals). Separate them so the audit trail stays readable.
+    # raw → after_trc_st_T includes both filter 1a and 1b. Split for the
+    # audit trail.
     counts["dropped_trc_st"] = (
         counts["raw_total"] - counts["after_trc_st_T"] - counts["dropped_cancelled_original"]
     )
     counts["dropped_asof_cd"] = counts["after_trc_st_T"] - counts["after_asof_cd_blank"]
     counts["dropped_wis_fl"] = counts["after_asof_cd_blank"] - counts["after_wis_fl"]
-    counts["dropped_price_plausibility"] = counts["after_wis_fl"] - counts["after_price_plausibility"]
-    counts["decimal_shift_unresolvable_dropped"] = (
-        counts["after_price_plausibility"] - counts["after_decimal_shift_correction"]
-    )
 
-    # Verify written parquet row counts match accumulators — loud failure beats silent corruption
+    # Verify written parquet row counts match accumulators
     if DEV_OUT.exists():
         actual = pq.read_metadata(str(DEV_OUT)).num_rows
         assert actual == counts["development_rows"], (
@@ -473,15 +392,17 @@ def write_report(row_counts: dict, cfg: dict, git_commit: str) -> None:
         "thresholds_sha256": thresholds_sha256(),
         "thresholds_used": cfg,
         "rows": row_counts,
-        "identifier_decision": (
-            "bond_sym_id (renamed bond_id) remains the primary within-TRACE key. "
-            "cusip_id is now populated on the 2026-06-09 WRDS re-pull and retained "
-            "as a column for downstream FISD merging. Populated rate is recorded "
-            "under counts.cusip_populated_pre_bounce / counts.cusip_blank_pre_bounce "
-            "(rows that survived Pass-2 filters across dev+holdout, BEFORE the "
-            "bounce-back filter removed its drops). bounce_back_filter.py adds "
-            "counts.cusip_populated_post_bounce_dev / cusip_blank_post_bounce_dev "
-            "on the dev partition only (holdout firewall — ARCHITECTURE.md)."
+        "stage": "dick_nielsen_only",
+        "outputs": {
+            "dev": str(DEV_OUT.relative_to(REPO_ROOT)),
+            "holdout": str(HOLD_OUT.relative_to(REPO_ROOT)),
+        },
+        "downstream_pipeline": (
+            "trace_clean_raw.parquet feeds (a) the raw column family directly "
+            "and (b) apply_decimal_shift.py → bounce_back_filter.py → "
+            "trace_clean_corr.parquet for the corrected column family. "
+            "Bias-toggle registry meas_err = OFF reads trace_clean_raw.parquet; "
+            "meas_err = ON reads trace_clean_corr.parquet."
         ),
         "output_columns": [c if c != "bond_sym_id" else "bond_id" for c in KEEP_COLUMNS],
         "git_commit": git_commit,
@@ -490,7 +411,7 @@ def write_report(row_counts: dict, cfg: dict, git_commit: str) -> None:
     tmp = REPORT_OUT.with_suffix(".tmp")
     with open(tmp, "w") as f:
         json.dump(report, f, indent=2)
-    os.replace(tmp, REPORT_OUT)  # atomic on POSIX and Windows (Python 3.3+)
+    os.replace(tmp, REPORT_OUT)
     print(f"  Report written: {REPORT_OUT}")
 
 
@@ -515,8 +436,10 @@ def main():
 
     cfg = load_thresholds()
     print(f"Thresholds loaded from {THRESHOLDS_FILE}")
-    print(f"  price_floor={cfg['price_floor']}, price_ceiling={cfg['price_ceiling']}, "
+    print(f"  asof_cd_keep={cfg['asof_cd_keep']!r}, "
           f"holdout_start_year={cfg['holdout_start_year']}")
+    print("Stage: Dick-Nielsen filters only (no price plausibility, no decimal-shift).")
+    print("       Those are meas_err-gated and live in apply_decimal_shift.py downstream.")
 
     git_commit = get_git_commit()
     row_counts = run_pandas(cfg)

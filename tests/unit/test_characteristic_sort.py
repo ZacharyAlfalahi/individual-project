@@ -68,17 +68,17 @@ def test_uses_next_month_return_not_current() -> None:
     """
     rows = [
         # Month 1 (formation t)
-        {"bond_id": "A", "date": "2010-01", "ret": 0.05, "size": 100.0, "score": 3.0},
-        {"bond_id": "B", "date": "2010-01", "ret": -0.05, "size": 100.0, "score": 1.0},
-        {"bond_id": "C", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 2.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.05, "size": 100.0, "score": 3.0},
+        {"cusip": "B", "date": "2010-01", "ret": -0.05, "size": 100.0, "score": 1.0},
+        {"cusip": "C", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 2.0},
         # Month 2 (realisation of t, formation of t+1)
-        {"bond_id": "A", "date": "2010-02", "ret": 0.01, "size": 100.0, "score": 3.0},
-        {"bond_id": "B", "date": "2010-02", "ret": -0.02, "size": 100.0, "score": 1.0},
-        {"bond_id": "C", "date": "2010-02", "ret": 0.0, "size": 100.0, "score": 2.0},
+        {"cusip": "A", "date": "2010-02", "ret": 0.01, "size": 100.0, "score": 3.0},
+        {"cusip": "B", "date": "2010-02", "ret": -0.02, "size": 100.0, "score": 1.0},
+        {"cusip": "C", "date": "2010-02", "ret": 0.0, "size": 100.0, "score": 2.0},
         # Month 3 (realisation of t+1)
-        {"bond_id": "A", "date": "2010-03", "ret": 0.0, "size": 100.0, "score": 3.0},
-        {"bond_id": "B", "date": "2010-03", "ret": 0.0, "size": 100.0, "score": 1.0},
-        {"bond_id": "C", "date": "2010-03", "ret": 0.0, "size": 100.0, "score": 2.0},
+        {"cusip": "A", "date": "2010-03", "ret": 0.0, "size": 100.0, "score": 3.0},
+        {"cusip": "B", "date": "2010-03", "ret": 0.0, "size": 100.0, "score": 1.0},
+        {"cusip": "C", "date": "2010-03", "ret": 0.0, "size": 100.0, "score": 2.0},
     ]
     result = run_characteristic_sort(
         _panel(rows),
@@ -121,7 +121,7 @@ def test_plain_spread_equal_weights() -> None:
         ]:
             rows.append(
                 {
-                    "bond_id": bid,
+                    "cusip": bid,
                     "date": date,
                     "ret": ret,
                     "size": 100.0,
@@ -169,15 +169,15 @@ def test_size_weight_uses_formation_month_size() -> None:
     """
     rows = [
         # Formation: Jan 2010
-        {"bond_id": "L1", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 4.0},
-        {"bond_id": "L2", "date": "2010-01", "ret": 0.0, "size": 300.0, "score": 3.0},
-        {"bond_id": "S1", "date": "2010-01", "ret": 0.0, "size": 50.0,  "score": 2.0},
-        {"bond_id": "S2", "date": "2010-01", "ret": 0.0, "size": 50.0,  "score": 1.0},
+        {"cusip": "L1", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 4.0},
+        {"cusip": "L2", "date": "2010-01", "ret": 0.0, "size": 300.0, "score": 3.0},
+        {"cusip": "S1", "date": "2010-01", "ret": 0.0, "size": 50.0,  "score": 2.0},
+        {"cusip": "S2", "date": "2010-01", "ret": 0.0, "size": 50.0,  "score": 1.0},
         # Realisation: Feb 2010 -- sizes deliberately flipped, returns chosen
-        {"bond_id": "L1", "date": "2010-02", "ret": 0.04, "size": 500.0, "score": 4.0},
-        {"bond_id": "L2", "date": "2010-02", "ret": 0.01, "size": 100.0, "score": 3.0},
-        {"bond_id": "S1", "date": "2010-02", "ret": 0.0,  "size": 200.0, "score": 2.0},
-        {"bond_id": "S2", "date": "2010-02", "ret": 0.0,  "size": 200.0, "score": 1.0},
+        {"cusip": "L1", "date": "2010-02", "ret": 0.04, "size": 500.0, "score": 4.0},
+        {"cusip": "L2", "date": "2010-02", "ret": 0.01, "size": 100.0, "score": 3.0},
+        {"cusip": "S1", "date": "2010-02", "ret": 0.0,  "size": 200.0, "score": 2.0},
+        {"cusip": "S2", "date": "2010-02", "ret": 0.0,  "size": 200.0, "score": 1.0},
     ]
     result = run_characteristic_sort(
         _panel(rows),
@@ -203,12 +203,12 @@ def test_grouping_assignment_ten_bonds_five_groups() -> None:
     """
     df = pd.DataFrame(
         {
-            "bond_id": [f"B{i}" for i in range(1, 11)],
+            "cusip": [f"B{i}" for i in range(1, 11)],
             "score": [float(i) for i in range(1, 11)],
         }
     )
-    groups = _assign_groups(df, "score", "bond_id", 5)
-    assignment = dict(zip(df["bond_id"], groups))
+    groups = _assign_groups(df, "score", "cusip", 5)
+    assignment = dict(zip(df["cusip"], groups))
     expected = {
         "B1": 0, "B2": 0,
         "B3": 1, "B4": 1,
@@ -230,7 +230,7 @@ def test_thin_month_is_skipped_and_recorded() -> None:
     for i in range(1, 11):
         rows.append(
             {
-                "bond_id": f"B{i}",
+                "cusip": f"B{i}",
                 "date": "2010-01",
                 "ret": 0.0,
                 "size": 100.0,
@@ -242,7 +242,7 @@ def test_thin_month_is_skipped_and_recorded() -> None:
     for i in range(1, 11):
         rows.append(
             {
-                "bond_id": f"B{i}",
+                "cusip": f"B{i}",
                 "date": "2010-02",
                 "ret": 0.01 if i >= 9 else (-0.01 if i <= 2 else 0.0),
                 "size": 100.0,
@@ -255,7 +255,7 @@ def test_thin_month_is_skipped_and_recorded() -> None:
     for i in [1, 2, 3]:
         rows.append(
             {
-                "bond_id": f"B{i}",
+                "cusip": f"B{i}",
                 "date": "2010-03",
                 "ret": 0.01,
                 "size": 100.0,
@@ -265,7 +265,7 @@ def test_thin_month_is_skipped_and_recorded() -> None:
     for i in [1, 2, 3]:
         rows.append(
             {
-                "bond_id": f"B{i}",
+                "cusip": f"B{i}",
                 "date": "2010-04",
                 "ret": 0.0,
                 "size": 100.0,
@@ -322,7 +322,7 @@ def _double_sort_panel() -> pd.DataFrame:
     for bid in score_map:
         rows.append(
             {
-                "bond_id": bid,
+                "cusip": bid,
                 "date": "2010-01",
                 "ret": 0.0,
                 "size": 100.0,
@@ -334,7 +334,7 @@ def _double_sort_panel() -> pd.DataFrame:
     for bid in score_map:
         rows.append(
             {
-                "bond_id": bid,
+                "cusip": bid,
                 "date": "2010-02",
                 "ret": next_ret_map[bid],
                 "size": 100.0,
@@ -425,37 +425,37 @@ def test_assign_groups_row_order_invariance() -> None:
     """Shuffling input rows produces identical group assignments."""
     df = pd.DataFrame(
         {
-            "bond_id": [f"B{i}" for i in range(1, 11)],
+            "cusip": [f"B{i}" for i in range(1, 11)],
             "score": [float(i) for i in range(1, 11)],
         }
     )
-    g1 = _assign_groups(df, "score", "bond_id", 5)
+    g1 = _assign_groups(df, "score", "cusip", 5)
     df2 = df.sample(frac=1.0, random_state=42).reset_index(drop=True)
-    g2 = _assign_groups(df2, "score", "bond_id", 5)
-    # Align by bond_id and compare
-    map1 = dict(zip(df["bond_id"], g1.values))
-    map2 = dict(zip(df2["bond_id"], g2.values))
+    g2 = _assign_groups(df2, "score", "cusip", 5)
+    # Align by cusip and compare
+    map1 = dict(zip(df["cusip"], g1.values))
+    map2 = dict(zip(df2["cusip"], g2.values))
     assert map1 == map2
 
 
-def test_assign_groups_with_ties_uses_bond_id_as_tiebreaker() -> None:
+def test_assign_groups_with_ties_uses_cusip_as_tiebreaker() -> None:
     """
-    All scores equal -> rank by bond_id ascending. With 4 bonds in 2 groups,
+    All scores equal -> rank by cusip ascending. With 4 bonds in 2 groups,
     {B1,B2} -> 0, {B3,B4} -> 1.
     """
     df = pd.DataFrame(
         {
-            "bond_id": ["B1", "B2", "B3", "B4"],
+            "cusip": ["B1", "B2", "B3", "B4"],
             "score": [5.0, 5.0, 5.0, 5.0],
         }
     )
-    g = _assign_groups(df, "score", "bond_id", 2)
-    assert dict(zip(df["bond_id"], g.values)) == {"B1": 0, "B2": 0, "B3": 1, "B4": 1}
+    g = _assign_groups(df, "score", "cusip", 2)
+    assert dict(zip(df["cusip"], g.values)) == {"B1": 0, "B2": 0, "B3": 1, "B4": 1}
 
 
 def test_assign_groups_empty_returns_empty() -> None:
-    df = pd.DataFrame({"bond_id": [], "score": []})
-    g = _assign_groups(df, "score", "bond_id", 5)
+    df = pd.DataFrame({"cusip": [], "score": []})
+    g = _assign_groups(df, "score", "cusip", 5)
     assert len(g) == 0
 
 
@@ -466,8 +466,8 @@ def test_assign_groups_empty_returns_empty() -> None:
 def test_calendar_strict_gap_produces_nan_next_ret() -> None:
     """A bond with rows in Jan and Mar (Feb missing) -> Jan's next_ret is NaN."""
     rows = [
-        {"bond_id": "A", "date": "2010-01", "ret": 0.01, "size": 100.0, "score": 1.0},
-        {"bond_id": "A", "date": "2010-03", "ret": 0.02, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.01, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-03", "ret": 0.02, "size": 100.0, "score": 1.0},
     ]
     panel = _panel(rows)
     work = _build_lagged_panel(panel, "score", 0)
@@ -480,9 +480,9 @@ def test_signal_lag_at_panel_start_drops_month() -> None:
     (no Dec). The Jan formation month falls below min_bonds and is skipped."""
     rows = []
     for bid, score in [("A", 3.0), ("B", 2.0), ("C", 1.0)]:
-        rows.append({"bond_id": bid, "date": "2010-01", "ret": 0.0, "size": 100.0, "score": score})
-        rows.append({"bond_id": bid, "date": "2010-02", "ret": 0.01, "size": 100.0, "score": score})
-        rows.append({"bond_id": bid, "date": "2010-03", "ret": 0.0,  "size": 100.0, "score": score})
+        rows.append({"cusip": bid, "date": "2010-01", "ret": 0.0, "size": 100.0, "score": score})
+        rows.append({"cusip": bid, "date": "2010-02", "ret": 0.01, "size": 100.0, "score": score})
+        rows.append({"cusip": bid, "date": "2010-03", "ret": 0.0,  "size": 100.0, "score": score})
     panel = _panel(rows)
     result = run_characteristic_sort(
         panel,
@@ -498,12 +498,12 @@ def test_signal_lag_at_panel_start_drops_month() -> None:
 def test_nan_score_drops_bond_from_eligibility() -> None:
     """A bond with a NaN score is silently dropped from its month."""
     rows = [
-        {"bond_id": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": float("nan")},
-        {"bond_id": "B", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 2.0},
-        {"bond_id": "C", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
-        {"bond_id": "A", "date": "2010-02", "ret": 0.05, "size": 100.0, "score": 3.0},
-        {"bond_id": "B", "date": "2010-02", "ret": 0.02, "size": 100.0, "score": 2.0},
-        {"bond_id": "C", "date": "2010-02", "ret": -0.01, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": float("nan")},
+        {"cusip": "B", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 2.0},
+        {"cusip": "C", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-02", "ret": 0.05, "size": 100.0, "score": 3.0},
+        {"cusip": "B", "date": "2010-02", "ret": 0.02, "size": 100.0, "score": 2.0},
+        {"cusip": "C", "date": "2010-02", "ret": -0.01, "size": 100.0, "score": 1.0},
     ]
     result = run_characteristic_sort(
         _panel(rows),
@@ -521,7 +521,7 @@ def test_nan_score_drops_bond_from_eligibility() -> None:
 # ===========================================================================
 
 def test_validate_panel_missing_column_raises() -> None:
-    df = pd.DataFrame({"bond_id": [], "date": pd.to_datetime([]), "ret": [], "size": []})
+    df = pd.DataFrame({"cusip": [], "date": pd.to_datetime([]), "ret": [], "size": []})
     with pytest.raises(ValueError, match="missing required columns"):
         _validate_panel(df, _apply_defaults({"score": "score"}))
 
@@ -529,7 +529,7 @@ def test_validate_panel_missing_column_raises() -> None:
 def test_validate_panel_non_month_end_date_raises() -> None:
     df = pd.DataFrame(
         {
-            "bond_id": ["A"],
+            "cusip": ["A"],
             "date": [pd.Timestamp("2010-01-15")],
             "ret": [0.0],
             "size": [100.0],
@@ -543,7 +543,7 @@ def test_validate_panel_non_month_end_date_raises() -> None:
 def test_validate_panel_tz_aware_date_raises() -> None:
     df = pd.DataFrame(
         {
-            "bond_id": ["A"],
+            "cusip": ["A"],
             "date": pd.to_datetime(["2010-01-31"]).tz_localize("UTC"),
             "ret": [0.0],
             "size": [100.0],
@@ -556,8 +556,8 @@ def test_validate_panel_tz_aware_date_raises() -> None:
 
 def test_validate_panel_duplicate_bond_date_raises() -> None:
     rows = [
-        {"bond_id": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
-        {"bond_id": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
     ]
     with pytest.raises(ValueError, match="duplicate"):
         _validate_panel(_panel(rows), _apply_defaults({"score": "score"}))
@@ -581,7 +581,7 @@ def test_empty_panel_returns_empty_result() -> None:
     """An empty panel produces an empty result without raising."""
     df = pd.DataFrame(
         {
-            "bond_id": pd.Series([], dtype=object),
+            "cusip": pd.Series([], dtype=object),
             "date": pd.Series([], dtype="datetime64[ns]"),
             "ret": pd.Series([], dtype=float),
             "size": pd.Series([], dtype=float),
@@ -704,8 +704,8 @@ def test_regress_small_T_betas_computable_ses_nan() -> None:
 def test_safe_rate_missing_rf_column_raises() -> None:
     """When safe_rate is provided, its shape must include date + rf."""
     rows = [
-        {"bond_id": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
-        {"bond_id": "A", "date": "2010-02", "ret": 0.01, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-02", "ret": 0.01, "size": 100.0, "score": 1.0},
     ]
     bad = pd.DataFrame({"date": pd.to_datetime(["2010-01-31"])})  # no 'rf'
     with pytest.raises(ValueError, match="rf"):
@@ -716,10 +716,10 @@ def test_safe_rate_valid_shape_does_not_change_spread() -> None:
     """A well-formed safe_rate is accepted and -- by design -- does not
     affect the long-short spread (the safe rate cancels)."""
     rows = [
-        {"bond_id": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 2.0},
-        {"bond_id": "B", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
-        {"bond_id": "A", "date": "2010-02", "ret": 0.05, "size": 100.0, "score": 2.0},
-        {"bond_id": "B", "date": "2010-02", "ret": -0.01, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 2.0},
+        {"cusip": "B", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-02", "ret": 0.05, "size": 100.0, "score": 2.0},
+        {"cusip": "B", "date": "2010-02", "ret": -0.01, "size": 100.0, "score": 1.0},
     ]
     panel = _panel(rows)
     rf = pd.DataFrame(
@@ -745,7 +745,7 @@ def test_reserved_column_collision_raises() -> None:
     """A panel that pre-defines any of the engine's reserved internal columns
     must be rejected before any silent overwrite can corrupt the math."""
     rows = [
-        {"bond_id": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
     ]
     df = _panel(rows)
     df["next_ret"] = 0.0  # collides with engine-internal name
@@ -766,9 +766,9 @@ def test_nan_control_drops_bond() -> None:
     # the double-sort answer would visibly change.
     extra = pd.DataFrame(
         [
-            {"bond_id": "B9", "date": _me("2010-01"), "ret": 0.0, "size": 100.0,
+            {"cusip": "B9", "date": _me("2010-01"), "ret": 0.0, "size": 100.0,
              "score": 4.5, "control_value": float("nan")},
-            {"bond_id": "B9", "date": _me("2010-02"), "ret": 0.50, "size": 100.0,
+            {"cusip": "B9", "date": _me("2010-02"), "ret": 0.50, "size": 100.0,
              "score": 4.5, "control_value": float("nan")},
         ]
     )
@@ -795,10 +795,10 @@ def test_datetime_us_resolution_normalized_before_merge() -> None:
     """A panel with datetime64[us] dates must still produce correct calendar-
     strict joins."""
     rows = [
-        {"bond_id": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 3.0},
-        {"bond_id": "B", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
-        {"bond_id": "A", "date": "2010-02", "ret": 0.05, "size": 100.0, "score": 3.0},
-        {"bond_id": "B", "date": "2010-02", "ret": -0.02, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 3.0},
+        {"cusip": "B", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-02", "ret": 0.05, "size": 100.0, "score": 3.0},
+        {"cusip": "B", "date": "2010-02", "ret": -0.02, "size": 100.0, "score": 1.0},
     ]
     df = _panel(rows)
     df["date"] = df["date"].astype("datetime64[us]")
@@ -847,7 +847,7 @@ def test_empty_result_monthly_returns_has_datetime_dtype() -> None:
     `date` so downstream consumers can rely on the dtype invariant."""
     df = pd.DataFrame(
         {
-            "bond_id": pd.Series([], dtype=object),
+            "cusip": pd.Series([], dtype=object),
             "date": pd.Series([], dtype="datetime64[ns]"),
             "ret": pd.Series([], dtype=float),
             "size": pd.Series([], dtype=float),
@@ -895,7 +895,7 @@ def test_validate_panel_rejects_non_dataframe() -> None:
 def test_validate_panel_rejects_non_datetime_date_column() -> None:
     df = pd.DataFrame(
         {
-            "bond_id": ["A"],
+            "cusip": ["A"],
             "date": ["2010-01-31"],  # string, not datetime
             "ret": [0.0],
             "size": [100.0],
@@ -908,7 +908,7 @@ def test_validate_panel_rejects_non_datetime_date_column() -> None:
 
 def test_safe_rate_rejects_non_dataframe() -> None:
     rows = [
-        {"bond_id": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.0, "size": 100.0, "score": 1.0},
     ]
     with pytest.raises(TypeError, match="safe_rate must be a pandas DataFrame"):
         run_characteristic_sort(
@@ -978,11 +978,11 @@ def test_form_legs_zero_total_size_skips_stripe() -> None:
     skipped (NaN spread). Verified end-to-end via the engine."""
     rows = [
         # Formation: Jan 2010 -- one bond in long, one in short, with 0 sizes
-        {"bond_id": "A", "date": "2010-01", "ret": 0.0, "size": 0.0, "score": 2.0},
-        {"bond_id": "B", "date": "2010-01", "ret": 0.0, "size": 0.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-01", "ret": 0.0, "size": 0.0, "score": 2.0},
+        {"cusip": "B", "date": "2010-01", "ret": 0.0, "size": 0.0, "score": 1.0},
         # Realisation: Feb 2010
-        {"bond_id": "A", "date": "2010-02", "ret": 0.05, "size": 100.0, "score": 2.0},
-        {"bond_id": "B", "date": "2010-02", "ret": -0.02, "size": 100.0, "score": 1.0},
+        {"cusip": "A", "date": "2010-02", "ret": 0.05, "size": 100.0, "score": 2.0},
+        {"cusip": "B", "date": "2010-02", "ret": -0.02, "size": 100.0, "score": 1.0},
     ]
     result = run_characteristic_sort(
         _panel(rows),
@@ -1004,7 +1004,7 @@ def test_end_to_end_with_defaults_runs_and_returns_expected_shape() -> None:
         for d in months:
             rows.append(
                 {
-                    "bond_id": bid,
+                    "cusip": bid,
                     "date": d,
                     "ret": rng.normal(scale=0.02),
                     "size": rng.uniform(50, 200),
@@ -1054,7 +1054,7 @@ def test_end_to_end_with_benchmark_populates_relationship() -> None:
         for d in months:
             rows.append(
                 {
-                    "bond_id": bid,
+                    "cusip": bid,
                     "date": d,
                     "ret": rng.normal(scale=0.02),
                     "size": 100.0,
