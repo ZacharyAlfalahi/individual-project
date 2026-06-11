@@ -69,6 +69,17 @@ signals:
     rank: 2             # 2nd-lowest sorted return (BBW 2019)
     multiplier: -1.0    # higher var_5pct = more downside risk
 
+  # A3 (registry amendments v1.1) — stale-price mask threshold.
+  # mask price_eom_corr(i,t) iff month_end(t) − last_trade_date_corr(i,t) > θ
+  # calendar days (strict >). Propagation: a masked p(t) invalidates both
+  # ret(t) and ret(t+1) under the masked view (A3.2).
+  # θ default 30; final value will come from the 01_trace_explore gap
+  # distribution per A3.3 (closes O2). θ is chosen from coverage statistics
+  # only — never from factor performance.
+  stale_price:
+    theta_days: 30
+    source: "registry amendments v1.1 A3.3 (default); final value from 01_trace_explore"
+
 # PyBondLab post-aggregation filters.
 # These apply to the monthly return PANEL, not raw TRACE transactions.
 # Applied by the Quant agent's return-aggregation step, not by preprocess_trace.py.

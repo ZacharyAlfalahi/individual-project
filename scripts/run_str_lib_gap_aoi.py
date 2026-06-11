@@ -46,6 +46,13 @@ from characteristic_sort import (  # noqa: E402
     run_characteristic_sort,
     summarize_returns,
 )
+from run_config import (  # noqa: E402
+    RunConfig,
+    PanelViewConfig,
+    ConstructionConfig,
+    EvaluationConfig,
+)
+from views import view  # noqa: E402
 
 
 PANEL_FILE = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
@@ -53,25 +60,37 @@ OUT_DIR = REPO_ROOT / "data" / "development" / "headlines"
 OUT_FILE = OUT_DIR / "str_lib_gap_aoi.json"
 
 
-def _build_family_panel(maximal: pd.DataFrame, family: str) -> pd.DataFrame:
-    """Materialise the engine-shape panel (`cusip`, `date`, `ret`, `size`,
-    `score`) from the maximal panel by selecting the named family. The
-    `score` column for STR is `ret` itself — sorting on prior-month return.
+def _str_view_config(family: str) -> RunConfig:
+    """Build a RunConfig that selects the named family with no view-layer
+    transformations beyond family selection. signal_lag and expost_trim
+    are construction-layer choices the engine handles directly, so we
+    keep the view layer minimal here and let the rulebook drive the
+    construction-side toggles."""
+    return RunConfig(
+        panel_view=PanelViewConfig(
+            price_family=family,
+            stale_mask=False,
+            include_terminal_rows=False,
+        ),
+        # Construction toggles are exercised by varying signal_lag in the
+        # rulebook itself (see _str_rulebook). The view layer only owns
+        # the panel-level selection here.
+        construction=ConstructionConfig(signal_lag=0, expost_trim="none"),
+        evaluation=EvaluationConfig(),
+    )
 
-    Per A9 the family selection propagates to every derived column; for STR
-    the only derived column is the score (also `ret`), so picking a family
-    here is the full propagation.
+
+def _build_family_panel(maximal: pd.DataFrame, family: str) -> pd.DataFrame:
+    """Materialise the engine-shape panel for the STR run via the canonical
+    view() interface. STR's score column is `ret` itself (sort on
+    prior-month return), so after view() selects the family's `ret_<family>`
+    and renames it to `ret`, we add `score = ret` as the final adapter step.
     """
-    ret_col = f"ret_{family}"
-    if ret_col not in maximal.columns:
-        raise KeyError(f"maximal panel missing {ret_col}")
-    return pd.DataFrame({
-        "cusip": maximal["cusip"].astype("string").astype(object),
-        "date":  pd.to_datetime(maximal["date"]).astype("datetime64[ns]"),
-        "ret":   maximal[ret_col].astype(float),
-        "size":  maximal["size"].astype(float),
-        "score": maximal[ret_col].astype(float),
-    }).drop_duplicates(subset=["cusip", "date"]).reset_index(drop=True)
+    cfg = _str_view_config(family)
+    panel = view(maximal, cfg)  # adds engine-contract columns
+    panel = panel.drop_duplicates(subset=["cusip", "date"]).reset_index(drop=True)
+    panel["score"] = panel["ret"]
+    return panel[["cusip", "date", "ret", "size", "score"]]
 
 
 def _str_rulebook(signal_lag: int) -> dict:
@@ -133,10 +152,10 @@ def main():
         sys.exit(1)
 
     print(f"Loading: {PANEL_FILE}")
-    maximal = pd.read_parquet(
-        PANEL_FILE,
-        columns=["cusip", "date", "size", "ret_raw", "ret_corr"],
-    )
+    # view() now drives the family selection — load the full maximal-panel
+    # column set it expects (price_eom_*, xret_*, n_trades_*, total_vol_*,
+    # last_trade_date_*, exit_reason, rf_monthly) in addition to ret_*.
+    maximal = pd.read_parquet(PANEL_FILE)
     print(f"  {len(maximal):,} rows, {maximal['cusip'].nunique():,} cusips")
 
     # ------------------------------------------------------------------

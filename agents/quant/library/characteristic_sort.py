@@ -117,6 +117,43 @@ def _apply_defaults(rulebook: dict) -> dict:
     if settings["long_group"] == settings["short_group"]:
         raise ValueError("'long_group' and 'short_group' must differ")
 
+    # lab_trim per A2 — post-realisation trim on next_ret. Default is the
+    # registry's "ON" polarity: no trim. Per-paper "as_published" trim_rules
+    # live in the corpus gold-spec YAMLs (lab_trim toggle OFF on the
+    # registry's polarity convention).
+    settings.setdefault("trim_rule", {"method": "none"})
+    tr = settings["trim_rule"]
+    if not isinstance(tr, dict):
+        raise TypeError("'trim_rule' must be a dict")
+    tr_method = tr.get("method", "none")
+    if tr_method not in ("none", "truncate", "winsorise"):
+        raise ValueError(
+            f"trim_rule.method must be 'none', 'truncate', or 'winsorise'; "
+            f"got {tr_method!r}"
+        )
+    if tr_method != "none":
+        if tr.get("target", "return") != "return":
+            raise NotImplementedError(
+                f"trim_rule.target={tr.get('target')!r} not implemented; "
+                "only 'return' is supported in this build."
+            )
+        bounds = tr.get("bounds", {})
+        if not isinstance(bounds, dict):
+            raise TypeError("trim_rule.bounds must be a dict")
+        if bounds.get("type", "absolute") != "absolute":
+            raise NotImplementedError(
+                "trim_rule.bounds.type='percentile' not implemented in this "
+                "build; only 'absolute' bounds are supported. Percentile "
+                "trims need per-paper encoding in the gold-spec YAML."
+            )
+        if bounds.get("lo") is None and bounds.get("hi") is None:
+            raise ValueError("trim_rule.bounds must set at least one of lo/hi")
+        if tr.get("sample", "full_sample") != "full_sample":
+            raise NotImplementedError(
+                "trim_rule.sample='by_month_cross_section' not implemented "
+                "in this build; only 'full_sample' is supported."
+            )
+
     return settings
 
 
@@ -283,6 +320,48 @@ def _form_legs(
 
 
 # ---------------------------------------------------------------------------
+# lab_trim — post-realisation trim on next_ret (A2)
+# ---------------------------------------------------------------------------
+
+def _apply_trim_rule(eligible: pd.DataFrame, trim_rule: dict) -> pd.DataFrame:
+    """
+    Apply the lab_trim post-realisation trim per A2 of the registry
+    amendments.
+
+    method='truncate': drop rows whose next_ret falls outside [lo, hi].
+    method='winsorise': clip next_ret values to [lo, hi] in-place on the
+                       returned frame.
+    method='none': no-op (caller should short-circuit).
+
+    Only `target='return'`, `bounds.type='absolute'`, `sample='full_sample'`
+    are supported in this build; the other variations raise at
+    _apply_defaults validation time.
+    """
+    method = trim_rule["method"]
+    bounds = trim_rule.get("bounds", {})
+    lo = bounds.get("lo")
+    hi = bounds.get("hi")
+    col = "next_ret"
+
+    if method == "truncate":
+        mask = pd.Series(True, index=eligible.index)
+        if lo is not None:
+            mask &= eligible[col] >= lo
+        if hi is not None:
+            mask &= eligible[col] <= hi
+        return eligible.loc[mask].copy()
+    if method == "winsorise":
+        eligible = eligible.copy()
+        if lo is not None:
+            eligible[col] = eligible[col].clip(lower=lo)
+        if hi is not None:
+            eligible[col] = eligible[col].clip(upper=hi)
+        return eligible
+    # method='none' shouldn't reach here (caller short-circuits) but be safe
+    return eligible
+
+
+# ---------------------------------------------------------------------------
 # Per-month step
 # ---------------------------------------------------------------------------
 
@@ -318,6 +397,15 @@ def _month_step(
     eligible = month_df[eligibility].copy()
     if len(eligible) < settings["min_bonds"]:
         return None
+
+    # lab_trim per A2 — applied post-realisation (next_ret is observed at
+    # this stage), before group assignment so the trim affects which bonds
+    # contribute to each group's leg return. Default trim_rule.method='none'
+    # is a no-op so existing tests retain bit-exact behaviour.
+    if settings["trim_rule"]["method"] != "none":
+        eligible = _apply_trim_rule(eligible, settings["trim_rule"])
+        if len(eligible) < settings["min_bonds"]:
+            return None
 
     eligible["_score_group"] = _assign_groups(
         eligible, "ranking_score", "cusip", settings["groups"]
@@ -422,6 +510,14 @@ def extract_monthly_selections(
         eligible = month_df[eligibility].copy()
         if len(eligible) < settings["min_bonds"]:
             continue
+
+        # lab_trim per A2 — same post-realisation trim as _month_step so the
+        # overlap wrapper's H=1 reduction to run_characteristic_sort holds
+        # even when trim_rule.method != 'none'.
+        if settings["trim_rule"]["method"] != "none":
+            eligible = _apply_trim_rule(eligible, settings["trim_rule"])
+            if len(eligible) < settings["min_bonds"]:
+                continue
 
         eligible["_score_group"] = _assign_groups(
             eligible, "ranking_score", "cusip", settings["groups"]
