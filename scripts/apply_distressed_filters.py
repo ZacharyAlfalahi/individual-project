@@ -103,9 +103,9 @@ DROPPED_SCHEMA = pa.schema([
 REQUIRED_KEYS = (
     "rho_anomaly", "L",
     "rho_spike", "rho_recovery",
-    "rho_plateau", "ell_min", "tau_plateau",
+    "rho_plateau", "ell_min", "tau_plateau", "round_step",
     "tau_intraday", "gamma_range",
-    "tau_low", "tau_high",
+    "tau_low",
 )
 
 
@@ -131,10 +131,10 @@ def thresholds_sha256() -> str:
 # Filter primitives (pure functions on a single cusip's daily series)
 # ---------------------------------------------------------------------------
 
-def _is_near_round(price: float, tau: float, step: float = 25.0) -> bool:
+def _is_near_round(price: float, tau: float, step: float) -> bool:
     """A price is "near round" if within tau of an integer multiple of step.
-    Default step=25 covers 25/50/75/100/125/... which are conventional bond
-    round-number plateaus."""
+    step comes from thresholds.yaml round_step (25 covers 25/50/75/100/...,
+    the conventional bond round-number plateaus)."""
     nearest = round(price / step) * step
     return abs(price - nearest) <= tau
 
@@ -196,6 +196,7 @@ def filter_plateau(prices: np.ndarray, params: dict) -> np.ndarray:
     rho = float(params["rho_plateau"])
     tau = float(params["tau_plateau"])
     tau_low = float(params["tau_low"])
+    round_step = float(params["round_step"])
     flag = np.zeros(n, dtype=bool)
 
     i = 0
@@ -209,7 +210,7 @@ def filter_plateau(prices: np.ndarray, params: dict) -> np.ndarray:
         if run_len >= ell_min:
             p_run = float(prices[i])
             # Plateau prices must be ultra-low or near round.
-            is_qualifying = (p_run <= tau_low) or _is_near_round(p_run, tau)
+            is_qualifying = (p_run <= tau_low) or _is_near_round(p_run, tau, round_step)
             pre = float(prices[i - 1]) if i > 0 else None
             post = float(prices[j + 1]) if j + 1 < n else None
             pre_disp = (pre is not None) and (abs(pre - p_run) >= rho)
@@ -365,7 +366,10 @@ def process_partition(input_path: Path, output_path: Path, dropped_path: Path,
 # Report + entry point
 # ---------------------------------------------------------------------------
 
-def write_report(dev_counts: dict, hold_counts: dict, params: dict) -> None:
+def write_report(dev_counts: dict, hold_counts: "dict | None",
+                 params: dict) -> None:
+    """hold_counts is None during development — no holdout statistic is
+    computed or surfaced into this (development-side) report."""
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
         "thresholds_sha256": thresholds_sha256(),
@@ -378,17 +382,14 @@ def write_report(dev_counts: dict, hold_counts: dict, params: dict) -> None:
             "Filters are independent codings from the published appendix per "
             "A7.3 (no DRR distribution code ported)."
         ),
+        "holdout_processed": hold_counts is not None,
         "rows_dev": dev_counts,
-        "rows_holdout": hold_counts,
         "inputs": {
             "dev": str(DEV_IN.relative_to(REPO_ROOT)),
-            "holdout": str(HOLD_IN.relative_to(REPO_ROOT)),
         },
         "outputs": {
             "dev_kept": str(DEV_OUT.relative_to(REPO_ROOT)),
             "dev_dropped": str(DEV_DROPPED.relative_to(REPO_ROOT)),
-            "holdout_kept": str(HOLD_OUT.relative_to(REPO_ROOT)),
-            "holdout_dropped": str(HOLD_DROPPED.relative_to(REPO_ROOT)),
         },
         "audit_trail_note": (
             "Companion 'distressed_dropped' parquets persist the cusip-day "
@@ -397,6 +398,11 @@ def write_report(dev_counts: dict, hold_counts: dict, params: dict) -> None:
             "step 4 (spot-check a known distressed-flagged day)."
         ),
     }
+    if hold_counts is not None:
+        report["rows_holdout"] = hold_counts
+        report["inputs"]["holdout"] = str(HOLD_IN.relative_to(REPO_ROOT))
+        report["outputs"]["holdout_kept"] = str(HOLD_OUT.relative_to(REPO_ROOT))
+        report["outputs"]["holdout_dropped"] = str(HOLD_DROPPED.relative_to(REPO_ROOT))
     REPORT_OUT.parent.mkdir(parents=True, exist_ok=True)
     tmp = REPORT_OUT.with_suffix(".tmp")
     with open(tmp, "w") as f:
@@ -406,6 +412,15 @@ def write_report(dev_counts: dict, hold_counts: dict, params: dict) -> None:
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--holdout", action="store_true",
+        help="Also process the holdout partition. NEVER pass during "
+             "development; reserved for the single post-freeze pipeline "
+             "run in weeks 13-14 (inviolable data rule).",
+    )
+    args = parser.parse_args()
+
     if not DEV_IN.exists():
         print(f"ERROR: Required input not found: {DEV_IN}", file=sys.stderr)
         print("Run scripts/build_daily_panel.py --family corr first.", file=sys.stderr)
@@ -428,14 +443,20 @@ def main():
         f"intr={dev_counts['dropped_intraday']:,})"
     )
 
-    print("Processing holdout partition (mechanical; no statistics surfaced)...")
-    hold_counts = process_partition(HOLD_IN, HOLD_OUT, HOLD_DROPPED, params)
+    hold_counts = None
+    if args.holdout:
+        print("Processing holdout partition (post-freeze run)...")
+        hold_counts = process_partition(HOLD_IN, HOLD_OUT, HOLD_DROPPED, params)
+    else:
+        print("Holdout partition NOT processed (development mode; "
+              "pass --holdout for the post-freeze run).")
 
     write_report(dev_counts, hold_counts, params)
 
     print("\nDone.")
     print(f"  Dev: {dev_counts['kept_rows']:,} rows → {DEV_OUT}")
-    print(f"  Hold: {hold_counts['kept_rows']:,} rows → {HOLD_OUT}")
+    if hold_counts is not None:
+        print(f"  Hold: {hold_counts['kept_rows']:,} rows → {HOLD_OUT}")
 
 
 if __name__ == "__main__":

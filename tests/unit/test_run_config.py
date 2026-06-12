@@ -10,17 +10,11 @@ Covers:
   - Endpoint convenience constructors (uncorrected, corrected)
 """
 
-import sys
 from dataclasses import FrozenInstanceError
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(
-    0,
-    str(Path(__file__).resolve().parent.parent.parent / "agents" / "quant" / "library"),
-)
-from run_config import (  # noqa: E402
+from agents.quant.library.run_config import (
     ConstructionConfig,
     EvaluationConfig,
     PanelViewConfig,
@@ -180,3 +174,43 @@ class TestHashStability:
         h = corrected().hash()
         assert len(h) == 64
         assert all(c in "0123456789abcdef" for c in h)
+
+
+# ---------------------------------------------------------------------------
+# panel_view_hash — the identity for view() artefacts
+# ---------------------------------------------------------------------------
+
+class TestPanelViewHash:
+    def test_construction_only_diff_same_panel_view_hash(self):
+        """view() consumes only panel_view, so two configs differing only
+        in construction must share a panel_view_hash (but not a hash())."""
+        base = uncorrected()
+        lagged = RunConfig(
+            panel_view=base.panel_view,
+            construction=ConstructionConfig(signal_lag=1, expost_trim="none"),
+            evaluation=base.evaluation,
+        )
+        assert base.panel_view_hash() == lagged.panel_view_hash()
+        assert base.hash() != lagged.hash()
+
+    def test_panel_view_diff_changes_panel_view_hash(self):
+        base = uncorrected()
+        masked = RunConfig(
+            panel_view=PanelViewConfig(
+                price_family="raw", stale_mask=True,
+                include_terminal_rows=False,
+            ),
+            construction=base.construction,
+            evaluation=base.evaluation,
+        )
+        assert base.panel_view_hash() != masked.panel_view_hash()
+
+    def test_endpoints_have_distinct_panel_view_hashes(self):
+        assert uncorrected().panel_view_hash() != corrected().panel_view_hash()
+
+    def test_panel_view_hash_is_stable_sha256_hex(self):
+        h1 = corrected().panel_view_hash()
+        h2 = corrected().panel_view_hash()
+        assert h1 == h2
+        assert len(h1) == 64
+        assert all(c in "0123456789abcdef" for c in h1)

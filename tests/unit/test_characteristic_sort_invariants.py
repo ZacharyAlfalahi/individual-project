@@ -22,16 +22,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(
-    0,
-    str(
-        Path(__file__).resolve().parent.parent.parent
-        / "agents"
-        / "quant"
-        / "library"
-    ),
-)
-from characteristic_sort import (  # noqa: E402
+from agents.quant.library.characteristic_sort import (
     run_characteristic_sort,
     summarize_returns,
 )

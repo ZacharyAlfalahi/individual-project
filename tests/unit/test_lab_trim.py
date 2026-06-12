@@ -9,17 +9,13 @@ Covers:
   - Engine + overlap wrapper see consistent trim behaviour
 """
 
-import sys
-from pathlib import Path
-
 import pandas as pd
 import pytest
 
-sys.path.insert(
-    0,
-    str(Path(__file__).resolve().parent.parent.parent / "agents" / "quant" / "library"),
+from agents.quant.library.characteristic_sort import (
+    _apply_defaults,
+    run_characteristic_sort,
 )
-from characteristic_sort import _apply_defaults, run_characteristic_sort  # noqa: E402
 
 
 def _me(s: str) -> pd.Timestamp:

@@ -21,49 +21,30 @@ Cases:
 A1.7 of the amendments.)
 """
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
-from apply_decimal_shift import apply_decimal_shift_vec  # noqa: E402
-from bounce_back_filter import _apply_bounce_back_loop  # noqa: E402
-from apply_distressed_filters import (  # noqa: E402
+from apply_decimal_shift import apply_decimal_shift_vec, load_thresholds
+from bounce_back_filter import _apply_bounce_back_loop, load_bounce_back_config
+from apply_distressed_filters import (
     filter_anomaly,
     filter_spike,
     filter_plateau,
     filter_intraday,
+    load_config,
 )
 
 
-FLOOR = 1.0
-CEILING = 300.0
-PRE_CEILING = 30000.0
+# All parameters come from docs/thresholds.yaml via the production loaders —
+# never duplicated as literals here, so the suite breaks (rather than silently
+# testing stale values) if the yaml drifts.
+_TRACE_CLEANING = load_thresholds()
+FLOOR = float(_TRACE_CLEANING["price_floor"])
+CEILING = float(_TRACE_CLEANING["price_ceiling"])
+PRE_CEILING = float(_TRACE_CLEANING["pre_correction_ceiling"])
 
-# Distressed-filter params matching docs/thresholds.yaml.
-DISTRESSED_PARAMS = {
-    "rho_anomaly": 3.0, "L": 5,
-    "rho_spike": 3.0, "rho_recovery": 2.0,
-    "rho_plateau": 3.0, "ell_min": 2, "tau_plateau": 0.15,
-    "tau_intraday": 20.0, "gamma_range": 0.75,
-    "tau_low": 0.10, "tau_high": 5.0,
-}
-
-# Bounce-back params matching docs/thresholds.yaml.
-BOUNCEBACK_PARAMS = {
-    "threshold_abs": 35.0,
-    "lookahead": 5,
-    "window": 5,
-    "back_to_anchor_tol": 0.25,
-    "candidate_slack_abs": 1.0,
-    "par_cooldown_after_flag": 2,
-    "par_spike_heuristic": True,
-    "par_level": 100.0,
-    "par_band": 15.0,
-    "par_min_run": 3,
-}
+DISTRESSED_PARAMS = load_config()
+BOUNCEBACK_PARAMS = load_bounce_back_config()
 
 
 # ---------------------------------------------------------------------------
@@ -85,34 +66,32 @@ class TestDecimalShiftInjection:
         assert clean[3] == 1000.0, "raw preserves bit-exact"
 
         # corr family: rescale.
-        corrected, shift_applied, in_range = apply_decimal_shift_vec(
-            clean, FLOOR, CEILING
-        )
-        assert in_range.all(), "all five trades resolvable"
-        assert shift_applied[3] is np.True_ or shift_applied[3] == True  # noqa: E712
-        assert corrected[3] == pytest.approx(100.0)
+        res = apply_decimal_shift_vec(clean, FLOOR, CEILING)
+        assert res.in_range_mask.all(), "all five trades resolvable"
+        assert res.shift_applied[3]
+        assert res.div10_mask[3] and not res.div100_mask[3]
+        assert res.corrected[3] == pytest.approx(100.0)
         # Non-corrupted trades unchanged
-        assert not shift_applied[0] and corrected[0] == pytest.approx(95.0)
-        assert not shift_applied[1] and corrected[1] == pytest.approx(100.0)
+        assert not res.shift_applied[0] and res.corrected[0] == pytest.approx(95.0)
+        assert not res.shift_applied[1] and res.corrected[1] == pytest.approx(100.0)
 
     def test_x100_slip_raw_preserves_corr_corrects(self):
         # Truth = 95.0; corrupt to 9500.0 (×100 slip).
         clean = np.array([100.0, 95.0, 9500.0, 100.0, 105.0])
         assert clean[2] == 9500.0  # raw preserves
 
-        corrected, shift_applied, in_range = apply_decimal_shift_vec(
-            clean, FLOOR, CEILING
-        )
-        assert in_range.all()
-        assert shift_applied[2]
-        assert corrected[2] == pytest.approx(95.0)
+        res = apply_decimal_shift_vec(clean, FLOOR, CEILING)
+        assert res.in_range_mask.all()
+        assert res.shift_applied[2]
+        assert res.div100_mask[2] and not res.div10_mask[2]
+        assert res.corrected[2] == pytest.approx(95.0)
 
     def test_check2_recall_decimal_slip(self):
         """Raw-vs-corr divergence MUST fire on every injected decimal slip."""
         injected_idx = [1, 4, 7]
         raw = np.array([100., 1000., 100., 100., 9500., 100., 100., 1000., 100., 100.])
-        corrected, _, _ = apply_decimal_shift_vec(raw, FLOOR, CEILING)
-        diff_mask = raw != corrected
+        res = apply_decimal_shift_vec(raw, FLOOR, CEILING)
+        diff_mask = raw != res.corrected
         # Every injected slip is on the diff mask (recall = 100%).
         for i in injected_idx:
             assert diff_mask[i], f"injection at {i} not detected by check-2 proxy"
@@ -239,9 +218,9 @@ class TestWildlyImplausiblePrice:
         # raw: bit-exact
         assert raw_prices[0] == 1e-6
         # corr: drop
-        corrected, _, in_range = apply_decimal_shift_vec(raw_prices, FLOOR, CEILING)
-        assert not in_range[0]   # below floor; no shift restores it
-        assert np.isnan(corrected[0])
+        res = apply_decimal_shift_vec(raw_prices, FLOOR, CEILING)
+        assert not res.in_range_mask[0]   # below floor; no shift restores it
+        assert np.isnan(res.corrected[0])
 
     def test_giga_price_dropped_by_corr_preserved_by_raw(self):
         # 1e9 — way above pre_correction_ceiling (30000)
@@ -251,9 +230,9 @@ class TestWildlyImplausiblePrice:
         assert raw_prices[0] == 1e9  # raw preserves
         # 1e9/10 = 1e8 — still above ceiling; 1e9/100 = 1e7 — still above
         # ceiling. → unresolvable, NaN, in_range False.
-        corrected, _, in_range = apply_decimal_shift_vec(raw_prices, FLOOR, CEILING)
-        assert not in_range[0]
-        assert np.isnan(corrected[0])
+        res = apply_decimal_shift_vec(raw_prices, FLOOR, CEILING)
+        assert not res.in_range_mask[0]
+        assert np.isnan(res.corrected[0])
 
 
 # ---------------------------------------------------------------------------
@@ -267,18 +246,63 @@ class TestCheck2Recall:
 
     def test_recall_on_all_decimal_slips(self):
         raw = np.array([100., 1000., 100., 9500., 100., 100., 1000.])
-        corrected, shift_applied, in_range = apply_decimal_shift_vec(
-            raw, FLOOR, CEILING
-        )
+        res = apply_decimal_shift_vec(raw, FLOOR, CEILING)
         # Every shifted row has raw != corrected
-        for i, shifted in enumerate(shift_applied):
+        for i, shifted in enumerate(res.shift_applied):
             if shifted:
-                assert raw[i] != corrected[i], f"recall miss at {i}"
+                assert raw[i] != res.corrected[i], f"recall miss at {i}"
 
     def test_recall_on_implausible_prices(self):
         raw = np.array([1e-6, 1e9, 100.0])
-        corrected, _, in_range = apply_decimal_shift_vec(raw, FLOOR, CEILING)
+        res = apply_decimal_shift_vec(raw, FLOOR, CEILING)
         # Implausibles fall out of in_range; corrected is NaN; the
         # raw-vs-corr divergence is `corrected_is_nan_and_raw_is_finite`.
-        assert not in_range[0] and not in_range[1]
-        assert in_range[2]
+        assert not res.in_range_mask[0] and not res.in_range_mask[1]
+        assert res.in_range_mask[2]
+
+
+# ---------------------------------------------------------------------------
+# Audit-count decomposition — pins the float-equality counting bug
+# ---------------------------------------------------------------------------
+
+class TestShiftMaskDecomposition:
+    """The audit counts must come from the returned category masks, which are
+    mutually exclusive and decompose in_range exactly. The old implementation
+    reconstructed div10/div100 membership via float equality
+    (corrected*10 == raw), which silently undercounts whenever (p/10)*10 is
+    not bit-identical to p — e.g. 333.3."""
+
+    def test_masks_mutually_exclusive_and_decompose(self):
+        raw = np.array([0.0, 50.0, 333.3, 999.9, 3503.7, 12345.6, 1e9])
+        res = apply_decimal_shift_vec(raw, FLOOR, CEILING)
+        assert not (res.div10_mask & res.div100_mask).any()
+        no_shift = res.in_range_mask & ~res.shift_applied
+        assert (
+            (no_shift | res.div10_mask | res.div100_mask) == res.in_range_mask
+        ).all()
+        assert (
+            int(no_shift.sum()) + int(res.div10_mask.sum())
+            + int(res.div100_mask.sum())
+        ) == int(res.in_range_mask.sum())
+
+    def test_div10_mask_catches_float_equality_miss(self):
+        """333.3 is a genuine ÷10 row, but (333.3/10)*10 != 333.3 in float64 —
+        the old float-equality reconstruction missed it. The mask must not."""
+        raw = np.array([333.3])
+        res = apply_decimal_shift_vec(raw, FLOOR, CEILING)
+        assert res.div10_mask[0]
+        assert res.corrected[0] == pytest.approx(33.33)
+        # Demonstrate the old method's failure mode explicitly:
+        assert (res.corrected[0] * 10) != raw[0], (
+            "if this ever becomes bit-equal the regression test is vacuous"
+        )
+
+    def test_band_membership_matches_masks(self):
+        """div10 marks exactly the (300, 3000] band, div100 (3000, 30000]."""
+        raw = np.array([300.0, 300.1, 3000.0, 3000.1, 30000.0])
+        res = apply_decimal_shift_vec(raw, FLOOR, CEILING)
+        assert not res.shift_applied[0]            # 300.0 in range unshifted
+        assert res.div10_mask[1]                   # 300.1 → ÷10
+        assert res.div10_mask[2]                   # 3000.0 → ÷10 (band edge)
+        assert res.div100_mask[3]                  # 3000.1 → ÷100
+        assert res.div100_mask[4]                  # 30000.0 → ÷100 (band edge)

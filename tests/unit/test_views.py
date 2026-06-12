@@ -12,24 +12,17 @@ Covers:
   - Signals without family suffix pass through
 """
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(
-    0,
-    str(Path(__file__).resolve().parent.parent.parent / "agents" / "quant" / "library"),
-)
-from run_config import (  # noqa: E402
+from agents.quant.library.run_config import (
     ConstructionConfig,
     EvaluationConfig,
     PanelViewConfig,
     RunConfig,
 )
-from views import view  # noqa: E402
+from agents.quant.library.views import view
 
 
 # ---------------------------------------------------------------------------
@@ -317,3 +310,36 @@ class TestA9SignalResolution:
         out = view(self._panel(), _cfg("raw"), signals=sig)
         assert "rating" in out.columns
         assert out.iloc[0]["rating"] == "BBB"
+
+    def test_duplicate_signal_keys_raise(self):
+        """A signals frame with duplicate (cusip, date) rows would silently
+        fan out panel rows through the left-merge — must raise instead."""
+        sig = pd.DataFrame({
+            "cusip": ["A", "A"], "date": [_me("2010-01"), _me("2010-01")],
+            "var_5pct_raw": [0.1, 0.2],
+        })
+        with pytest.raises(ValueError, match="duplicate"):
+            view(self._panel(), _cfg("raw"), signals=sig)
+
+
+# ---------------------------------------------------------------------------
+# Dtype hygiene
+# ---------------------------------------------------------------------------
+
+class TestNoFutureWarnings:
+    def test_stale_mask_emits_no_future_warning(self):
+        """Pins the shift(1, fill_value=False) fix: the bool stale-mask
+        propagation must not rely on deprecated object-dtype downcasting."""
+        import warnings
+
+        panel = _make_maximal([
+            _maximal_row("A", "2010-01", p_raw=100.0, p_corr=99.0,
+                         r_raw=0.05, r_corr=0.04,
+                         ltd_corr="2009-11-01"),
+            _maximal_row("A", "2010-02", p_raw=102.0, p_corr=101.0,
+                         r_raw=0.02, r_corr=0.02,
+                         ltd_corr="2010-02-25"),
+        ])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            view(panel, _cfg("corr", stale_mask=True), stale_threshold_days=30)

@@ -1,39 +1,21 @@
 """
 Real-data smoke test for the characteristic-sort engine.
 
-DEFERRED: Phase 1 of the bias-toggle registry refactor replaces
-monthly_panel_uncorrected.parquet with monthly_panel_maximal.parquet (dual
-families). This smoke test references the old path and assumes the single-
-family schema; it's skipped at module level pending adaptation to read
-either ret_raw or ret_corr per A9's family-indexing rule. The new real-data
-smoke is scripts/run_str_lib_gap_aoi.py which exercises both families.
+Reads monthly_panel_uncorrected.parquet — now the all-OFF endpoint EXPORT
+produced by scripts/export_endpoint_views.py (views.view() with the
+uncorrected() RunConfig), which emits engine-contract unsuffixed columns
+(cusip, date, ret, size, ...). The in-test skip below still fires when the
+export has not been materialised locally.
 """
 
-import pytest
-
-pytest.skip(
-    "Phase 1 registry refactor pending — see module docstring",
-    allow_module_level=True,
-)
-
 import math
-import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(
-    0,
-    str(
-        Path(__file__).resolve().parent.parent.parent
-        / "agents"
-        / "quant"
-        / "library"
-    ),
-)
-from characteristic_sort import run_characteristic_sort  # noqa: E402
+from agents.quant.library.characteristic_sort import run_characteristic_sort
 
 
 PANEL_PATH = (

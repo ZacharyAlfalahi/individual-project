@@ -12,24 +12,12 @@ Covers:
     a future enable is intentional.
 """
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(
-    0,
-    str(
-        Path(__file__).resolve().parent.parent.parent
-        / "agents"
-        / "quant"
-        / "library"
-    ),
-)
-from characteristic_sort import run_characteristic_sort  # noqa: E402
-from overlap import run_with_holding_period  # noqa: E402
+from agents.quant.library.characteristic_sort import run_characteristic_sort
+from agents.quant.library.overlap import run_with_holding_period
 
 
 # ---------------------------------------------------------------------------

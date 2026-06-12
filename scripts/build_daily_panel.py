@@ -158,8 +158,10 @@ def aggregate_daily(input_path: Path, output_path: Path, cfg: dict) -> dict:
     }
 
 
-def write_report(family: str, dev_counts: dict, hold_counts: dict, cfg: dict,
-                 paths: dict) -> None:
+def write_report(family: str, dev_counts: dict, hold_counts: "dict | None",
+                 cfg: dict, paths: dict) -> None:
+    """hold_counts is None during development — no holdout statistic is
+    computed or surfaced into this (development-side) report."""
     report_path = paths["report"]
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
@@ -177,17 +179,19 @@ def write_report(family: str, dev_counts: dict, hold_counts: dict, cfg: dict,
             "intraday range. Bounce-back has already been applied for the "
             "corr family; the raw family is post-Dick-Nielsen only."
         ),
+        "holdout_processed": hold_counts is not None,
         "rows_dev": dev_counts,
-        "rows_holdout": hold_counts,
         "inputs": {
             "dev": str(paths["input"].relative_to(REPO_ROOT)),
-            "holdout": str(paths["holdout_input"].relative_to(REPO_ROOT)),
         },
         "outputs": {
             "dev": str(paths["output"].relative_to(REPO_ROOT)),
-            "holdout": str(paths["holdout_output"].relative_to(REPO_ROOT)),
         },
     }
+    if hold_counts is not None:
+        report["rows_holdout"] = hold_counts
+        report["inputs"]["holdout"] = str(paths["holdout_input"].relative_to(REPO_ROOT))
+        report["outputs"]["holdout"] = str(paths["holdout_output"].relative_to(REPO_ROOT))
     report_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = report_path.with_suffix(".tmp")
     with open(tmp, "w") as f:
@@ -201,6 +205,12 @@ def main():
     parser.add_argument(
         "--family", choices=["raw", "corr"], required=True,
         help="Column family to build daily layer for.",
+    )
+    parser.add_argument(
+        "--holdout", action="store_true",
+        help="Also process the holdout partition. NEVER pass during "
+             "development; reserved for the single post-freeze pipeline "
+             "run in weeks 13-14 (inviolable data rule).",
     )
     args = parser.parse_args()
 
@@ -221,14 +231,20 @@ def main():
     print("Processing development partition...")
     dev_counts = aggregate_daily(paths["input"], paths["output"], cfg)
 
-    print("Processing holdout partition (mechanical; no statistics surfaced)...")
-    hold_counts = aggregate_daily(paths["holdout_input"], paths["holdout_output"], cfg)
+    hold_counts = None
+    if args.holdout:
+        print("Processing holdout partition (post-freeze run)...")
+        hold_counts = aggregate_daily(paths["holdout_input"], paths["holdout_output"], cfg)
+    else:
+        print("Holdout partition NOT processed (development mode; "
+              "pass --holdout for the post-freeze run).")
 
     write_report(args.family, dev_counts, hold_counts, cfg, paths)
 
     print("\nDone.")
     print(f"  Dev: {dev_counts['rows']:,} rows → {paths['output']}")
-    print(f"  Hold: {hold_counts['rows']:,} rows → {paths['holdout_output']}")
+    if hold_counts is not None:
+        print(f"  Hold: {hold_counts['rows']:,} rows → {paths['holdout_output']}")
 
 
 if __name__ == "__main__":

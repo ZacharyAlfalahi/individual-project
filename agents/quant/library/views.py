@@ -34,7 +34,7 @@ from typing import Iterable, Optional
 import pandas as pd
 import yaml
 
-from run_config import RunConfig
+from .run_config import RunConfig
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -143,7 +143,7 @@ def _apply_stale_mask(panel: pd.DataFrame, theta_days: int) -> pd.DataFrame:
     # the NEXT row for the same cusip must also have its ret + xret masked.
     panel["_stale_t"] = self_stale.values
     panel["_stale_prev"] = (
-        panel.groupby("cusip")["_stale_t"].shift(1).fillna(False).astype(bool)
+        panel.groupby("cusip")["_stale_t"].shift(1, fill_value=False)
     )
     propagate_mask = panel["_stale_prev"]
     panel.loc[propagate_mask, "ret"] = float("nan")
@@ -226,8 +226,11 @@ def view(
         `<base>_raw` / `<base>_corr` for each family-indexed column
         (price_eom, ret, xret, n_trades, total_vol, last_trade_date).
     config : RunConfig
-        The run configuration. Drives family selection, stale mask, terminal
-        rows.
+        The run configuration. view() consumes ONLY `config.panel_view`
+        (family selection, stale mask, terminal rows); the construction and
+        evaluation blocks apply downstream at the engine/rulebook level.
+        Cache keys or provenance stamps for view() output must therefore
+        use `RunConfig.panel_view_hash()`, not the full `hash()`.
     signals : pd.DataFrame, optional
         Family-indexed signals to attach. Resolved per A9: the matching
         family's columns are renamed to their unsuffixed names; cross-family
@@ -275,6 +278,12 @@ def view(
         if not isinstance(signals, pd.DataFrame):
             raise TypeError("signals must be a pandas DataFrame when provided")
         resolved = _resolve_signals_family(signals, family)
+        dup = resolved.duplicated(subset=["cusip", "date"])
+        if dup.any():
+            raise ValueError(
+                f"signals contain {int(dup.sum())} duplicate (cusip, date) "
+                f"rows; a left-merge would silently multiply panel rows"
+            )
         panel = panel.merge(resolved, on=["cusip", "date"], how="left")
 
     # 5. Deterministic ordering — by (cusip, date) and a canonical column order.

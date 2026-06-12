@@ -149,6 +149,11 @@ meas_err_distressed_filters:
                              # plateau identification — a price within
                              # tau_plateau of a round multiple (e.g. 100,
                              # 50, 25) counts as round-numbered
+  round_step: 25.0           # Grid of round-number plateau levels:
+                             # multiples of 25 cover 25/50/75/100/125/...,
+                             # the conventional bond plateaus. Moved here
+                             # from a hard-coded _is_near_round default per
+                             # the thresholds-in-yaml rule.
 
   # Filter 4 — intraday inconsistency (days where the day's mean is below
   # tau_intraday AND the intraday range (max - min) > gamma_range × mean).
@@ -157,7 +162,10 @@ meas_err_distressed_filters:
   tau_intraday: 20.0         # Low-price threshold (price points)
   gamma_range: 0.75          # Range/mean ratio threshold
 
-  # Shared low/high gates referenced by multiple filters. tau_low and
-  # tau_high define the "ultra-low" and "ultra-high" price contexts.
+  # Shared ultra-low price gate referenced by filters 1 and 3.
   tau_low: 0.10              # Ultra-low price gate (price points)
-  tau_high: 5.0              # Ultra-high price gate (price points)
+  tau_high: 5.0              # RESERVED — not consumed by any current filter
+                             # (kept for DRR Table A.3 completeness; not in
+                             # apply_distressed_filters REQUIRED_KEYS).
+                             # Wiring an ultra-high gate would be a
+                             # methodology change requiring its own review.

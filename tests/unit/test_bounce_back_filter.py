@@ -1,38 +1,40 @@
 """
-Unit tests for the bounce-back filter.
+Unit tests for scripts/bounce_back_filter.py (DRR Table A.2 bounce-back filter,
+stage 2 of the meas_err corrected branch).
 
-DEFERRED: Phase 1 of the bias-toggle registry refactor reshapes
-bounce_back_filter.py to (a) read from trace_clean_decimal_shifted.parquet,
-(b) write to trace_clean_corr.parquet (not in-place), (c) persist
-bounceback_dropped_<partition>.parquet companion artefact, and (d) remove
-update_cleaning_report (the stage writes its own report now). Tests are
-skipped at module level pending adaptation. The per-bond filter logic is
-covered by tests/unit/test_meas_err_injection.py::TestBounceBackInjection.
+Coverage:
+  1. The pure per-bond loop `_apply_bounce_back_loop` (spec Section 3):
+     spike removal at par / above par-band / premium / discount, sustained
+     distressed blocks kept whole, warm-up inactivity, par-snap flagging vs
+     median recovery decoupling, par-only cooldown scope, and lookahead edge
+     cases.
+  2. `process_partition` orchestration on synthetic parquet inputs:
+     end-to-end stats and row arithmetic, kept-output schema preservation
+     (14-field OUTPUT_SCHEMA incl. decimal_shift_applied), dropped-companion
+     artifact correctness (created only when drops occur), atomic .tmp +
+     os.replace hygiene, missing-input and non-finite-price hard failures,
+     and CROSS-BATCH invariance: results must be identical whether a bond's
+     trades arrive in one read batch or are split across batch boundaries
+     (including a boundary that coincides exactly with a bond_id change),
+     and must agree with `_apply_bounce_back_loop` called directly on the
+     time-sorted price list.
+
+All parameters come from load_bounce_back_config() (docs/thresholds.yaml) so
+tests break when production threshold values change. No literal param dicts.
 """
-import pytest
-
-pytest.skip(
-    "Phase 1 registry refactor pending — see module docstring",
-    allow_module_level=True,
-)
-
-import json
-import math
-import os
-import sys
+from datetime import datetime
 from pathlib import Path
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
+import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 from bounce_back_filter import (
     OUTPUT_SCHEMA,
     _apply_bounce_back_loop,
-    _assert_additivity,
     load_bounce_back_config,
     process_partition,
-    update_cleaning_report,
 )
 
 
@@ -197,39 +199,28 @@ def test_no_recovery_within_lookahead_keeps_trade():
 
 
 # ---------------------------------------------------------------------------
-# process_partition end-to-end on synthetic parquet
+# Synthetic parquet builders (14-field OUTPUT_SCHEMA)
 # ---------------------------------------------------------------------------
 
-def _make_synthetic_trace(path: Path, *, inject_nan: bool = False) -> int:
-    """Build a small parquet matching OUTPUT_SCHEMA. Returns row count written."""
-    import pandas as pd
+# Spike sequence used across the process_partition tests: warm-up at par,
+# recoverable spike at index 5 (200.0), recovery to par. Under the production
+# params the par-snap anchor flags |200-100|=100 > 35 and the lookahead
+# recovery to 100 within recovery_tol drops exactly index 5.
+_SPIKE_PRICES = [99.0, 101.0, 98.0, 102.0, 100.0, 200.0, 100.0, 100.0]
+_SPIKE_INDEX = 5
 
-    rows = []
-    # Bond A — clean, 6 trades, no drops expected
-    for i in range(6):
-        rows.append(_row("AAA", f"2020-06-{i+1:02d}", 100.0 + i * 0.1))
-    # Bond B — warm-up then a recoverable spike (should drop the spike)
-    bbb_prices = [100.0, 100.5, 101.0, 100.0, 100.0, 1.87, 100.0, 100.0]
-    if inject_nan:
-        bbb_prices[3] = float("nan")
-    for i, p in enumerate(bbb_prices):
-        rows.append(_row("BBB", f"2020-07-{i+1:02d}", p))
-
-    df = pd.DataFrame(rows)
-    df["trd_exctn_dt"] = pd.to_datetime(df["trd_exctn_dt"])
-    table = pa.Table.from_pandas(df, schema=OUTPUT_SCHEMA, preserve_index=False)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(table, str(path))
-    return len(rows)
+# Clean bond: tiny oscillation around par, nothing flaggable.
+_CLEAN_PRICES = [100.0, 100.1, 100.2, 100.1, 100.0, 100.1]
 
 
-def _row(bond: str, dt: str, price: float) -> dict:
+def _row(bond: str, dt: datetime, tm: str, price: float) -> dict:
+    """One synthetic trade matching OUTPUT_SCHEMA exactly (14 fields)."""
     return {
         "bond_id": bond,
         "cusip_id": "0000" + bond[:5].ljust(5, "X"),
         "company_symbol": "SYN",
         "trd_exctn_dt": dt,
-        "trd_exctn_tm": "10:00:00",
+        "trd_exctn_tm": tm,
         "rptd_pr": float(price),
         "entrd_vol_qt": 10000.0,
         "sub_prdct": "CORP",
@@ -238,188 +229,217 @@ def _row(bond: str, dt: str, price: float) -> dict:
         "trd_mod_3": "",
         "bloomberg_identifier": "",
         "scrty_type_cd": "",
+        "decimal_shift_applied": False,
     }
 
 
-def test_process_partition_preserves_schema_and_writes_atomically(tmp_path):
-    input_path = tmp_path / "trace_clean.parquet"
-    n_in = _make_synthetic_trace(input_path)
+def _bond_rows(bond: str, prices, *, base_day: int = 1, month: int = 6) -> list:
+    """Rows for one bond, one trade per day so DuckDB date sort preserves
+    the intended price order. Days are zero-padded by datetime itself."""
+    return [
+        _row(bond, datetime(2020, month, base_day + i), "10:00:00", p)
+        for i, p in enumerate(prices)
+    ]
 
-    stats = process_partition(input_path, input_path, _PARAMS, OUTPUT_SCHEMA)
 
-    # Row arithmetic
+def _bond_rows_intraday(bond: str, prices) -> list:
+    """Rows for one bond all on the SAME date, ordered by zero-padded
+    'HH:MM:SS' execution times so the lexical string sort on trd_exctn_tm
+    reproduces the intended sequence."""
+    return [
+        _row(bond, datetime(2020, 6, 1), f"09:{i:02d}:00", p)
+        for i, p in enumerate(prices)
+    ]
+
+
+def _write_trace(path: Path, rows: list) -> int:
+    """Write synthetic rows as a parquet matching OUTPUT_SCHEMA. Returns n."""
+    table = pa.Table.from_pylist(rows, schema=OUTPUT_SCHEMA)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(table, str(path))
+    return len(rows)
+
+
+def _run(tmp_path: Path, input_path: Path, tag: str, **kwargs) -> tuple:
+    """process_partition with distinct output/dropped paths; returns
+    (stats, output_path, dropped_path)."""
+    output_path = tmp_path / f"trace_clean_corr_{tag}.parquet"
+    dropped_path = tmp_path / f"bounceback_dropped_{tag}.parquet"
+    stats = process_partition(input_path, output_path, dropped_path,
+                              _PARAMS, output_schema=OUTPUT_SCHEMA, **kwargs)
+    return stats, output_path, dropped_path
+
+
+# ---------------------------------------------------------------------------
+# process_partition end-to-end on synthetic parquet
+# ---------------------------------------------------------------------------
+
+def test_process_partition_end_to_end_stats_and_schema(tmp_path):
+    input_path = tmp_path / "trace_clean_decimal_shifted.parquet"
+    rows = _bond_rows("AAA", _CLEAN_PRICES, month=6) + _bond_rows("BBB", _SPIKE_PRICES, month=7)
+    n_in = _write_trace(input_path, rows)
+
+    stats, output_path, dropped_path = _run(tmp_path, input_path, "e2e")
+
+    # Row arithmetic: input = kept + dropped, exactly one drop (BBB's spike)
     assert stats["input_rows"] == n_in
-    assert stats["dropped_bounce_back"] == 1  # bond BBB's spike
+    assert stats["dropped_bounce_back"] == 1
     assert stats["kept_rows"] == n_in - 1
+    assert stats["input_rows"] == stats["kept_rows"] + stats["dropped_bounce_back"]
 
-    # Schema preservation (13 fields, same order, same types)
-    written = pq.read_schema(str(input_path))
+    # Kept output: schema preserved (14 fields, same order, same types)
+    written = pq.read_schema(str(output_path))
     assert written.equals(OUTPUT_SCHEMA), (
         f"Schema drift detected:\n  expected: {OUTPUT_SCHEMA}\n  got: {written}"
     )
+    assert pq.read_metadata(str(output_path)).num_rows == stats["kept_rows"]
 
-    # Atomic write left no .tmp behind
-    assert not input_path.with_suffix(".parquet.tmp").exists()
+    # The spike row is absent from the kept output
+    kept = pq.read_table(str(output_path))
+    kept_bbb_prices = kept.filter(
+        pc.equal(kept.column("bond_id"), "BBB")
+    ).column("rptd_pr").to_pylist()
+    assert 200.0 not in kept_bbb_prices
 
-    # Parquet row count matches stats
-    assert pq.read_metadata(str(input_path)).num_rows == stats["kept_rows"]
+
+def test_process_partition_dropped_companion_contains_exactly_the_spike(tmp_path):
+    input_path = tmp_path / "trace_clean_decimal_shifted.parquet"
+    rows = _bond_rows("AAA", _CLEAN_PRICES, month=6) + _bond_rows("BBB", _SPIKE_PRICES, month=7)
+    _write_trace(input_path, rows)
+
+    stats, _, dropped_path = _run(tmp_path, input_path, "dropped")
+
+    assert dropped_path.exists(), "drops occurred → companion artifact must exist"
+    dropped = pq.read_table(str(dropped_path))
+    assert dropped.schema.equals(OUTPUT_SCHEMA)
+    assert dropped.num_rows == stats["dropped_bounce_back"] == 1
+    assert dropped.column("bond_id").to_pylist() == ["BBB"]
+    assert dropped.column("rptd_pr").to_pylist() == [_SPIKE_PRICES[_SPIKE_INDEX]]
+
+
+def test_process_partition_no_drops_means_no_dropped_file(tmp_path):
+    input_path = tmp_path / "trace_clean_decimal_shifted.parquet"
+    n_in = _write_trace(input_path, _bond_rows("AAA", _CLEAN_PRICES))
+
+    stats, output_path, dropped_path = _run(tmp_path, input_path, "clean")
+
+    assert stats["dropped_bounce_back"] == 0
+    assert stats["kept_rows"] == stats["input_rows"] == n_in
+    assert output_path.exists()
+    assert not dropped_path.exists(), "no drops → companion artifact must NOT be created"
+
+
+def test_process_partition_leaves_no_tmp_files(tmp_path):
+    input_path = tmp_path / "trace_clean_decimal_shifted.parquet"
+    rows = _bond_rows("AAA", _CLEAN_PRICES, month=6) + _bond_rows("BBB", _SPIKE_PRICES, month=7)
+    _write_trace(input_path, rows)
+
+    _run(tmp_path, input_path, "atomic")
+
+    leftovers = [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
+    assert leftovers == [], f"atomic write left temp files behind: {leftovers}"
+
+
+def test_process_partition_raises_on_missing_input(tmp_path):
+    missing = tmp_path / "does_not_exist.parquet"
+    output_path = tmp_path / "out.parquet"
+    dropped_path = tmp_path / "dropped.parquet"
+    with pytest.raises(FileNotFoundError):
+        process_partition(missing, output_path, dropped_path, _PARAMS)
 
 
 def test_process_partition_rejects_non_finite_prices(tmp_path):
     # Stage 2 must hard-fail at the partition boundary if any rptd_pr is NaN.
     # IEEE-754 NaN comparisons would otherwise silently disable the bounce-back
     # filter for the affected bond.
-    input_path = tmp_path / "trace_clean.parquet"
-    _make_synthetic_trace(input_path, inject_nan=True)
+    input_path = tmp_path / "trace_clean_decimal_shifted.parquet"
+    prices = list(_SPIKE_PRICES)
+    prices[3] = float("nan")
+    _write_trace(input_path, _bond_rows("BBB", prices))
 
+    output_path = tmp_path / "out.parquet"
+    dropped_path = tmp_path / "dropped.parquet"
     with pytest.raises(AssertionError, match="Non-finite price"):
-        process_partition(input_path, input_path, _PARAMS, OUTPUT_SCHEMA)
-
-
-def test_process_partition_raises_on_missing_input(tmp_path):
-    missing = tmp_path / "does_not_exist.parquet"
-    with pytest.raises(FileNotFoundError):
-        process_partition(missing, missing, _PARAMS, OUTPUT_SCHEMA)
+        process_partition(input_path, output_path, dropped_path, _PARAMS)
 
 
 # ---------------------------------------------------------------------------
-# update_cleaning_report — additivity assertion, legacy-key hard fail
+# Cross-batch invariance (bond segments accumulate across batch boundaries)
 # ---------------------------------------------------------------------------
 
-_BASE_ROWS = {
-    "raw_total": 100,
-    "after_trc_st_T": 95,
-    "dropped_cancelled_original": 2,
-    "after_asof_cd_blank": 90,
-    "after_wis_fl": 89,
-    "after_price_plausibility": 88,
-    "after_decimal_shift_correction": 88,
-    "dropped_interdealer_duplicate": 8,
-    "after_interdealer_dedup": 80,
-    "dropped_invalid_date": 0,
-    "development_rows": 50,
-    "holdout_rows": 30,
-    "final_clean_total": 80,
-    "dropped_trc_st": 3,
-    "dropped_asof_cd": 5,
-    "dropped_wis_fl": 1,
-    "dropped_price_plausibility": 1,
-    "decimal_shift_unresolvable_dropped": 0,
-    "parquet_row_count_verified": True,
-}
-# Additivity of the BASE (pre-bounce-back) row equation:
-# 3+2+5+1+1+0+8+0+50+30 = 100 ✓
+def test_cross_batch_split_within_one_bond_matches_single_batch_run(tmp_path):
+    # A single bond with 11 intraday trades (zero-padded HH:MM:SS times so
+    # the lexical sort on trd_exctn_tm preserves the intended order). At
+    # batch_size=3 the read batches are [0:3], [3:6], [6:9], [9:11]: the
+    # spike (index 5) lands in the second batch while its recovery trades
+    # land in the third — the drop decision REQUIRES segment accumulation
+    # across batch boundaries.
+    prices = [100.0, 100.5, 99.5, 100.0, 100.5, 200.0,
+              100.0, 100.0, 100.0, 100.0, 100.0]
+    input_path = tmp_path / "trace_clean_decimal_shifted.parquet"
+    n_in = _write_trace(input_path, _bond_rows_intraday("CCC", prices))
+
+    stats_small, out_small, dropped_small = _run(
+        tmp_path, input_path, "small", batch_size=3)
+    stats_big, out_big, dropped_big = _run(
+        tmp_path, input_path, "big", batch_size=10_000)
+
+    # Identical stats regardless of batch size
+    assert stats_small == stats_big
+    assert stats_small["input_rows"] == n_in
+
+    # Consistent with the pure loop on the time-sorted price list
+    mask, n_dropped = _apply_bounce_back_loop(prices, _PARAMS)
+    assert stats_small["dropped_bounce_back"] == n_dropped == 1
+    assert stats_small["kept_rows"] == sum(mask)
+
+    # Kept outputs byte-identical in content
+    assert pq.read_table(str(out_small)).equals(pq.read_table(str(out_big)))
+
+    # Dropped row identity identical across batch sizes and matches the loop
+    d_small = pq.read_table(str(dropped_small))
+    d_big = pq.read_table(str(dropped_big))
+    assert d_small.equals(d_big)
+    assert d_small.column("bond_id").to_pylist() == ["CCC"]
+    assert d_small.column("rptd_pr").to_pylist() == [
+        prices[mask.index(False)]
+    ] == [200.0]
 
 
-def _write_base_report(path: Path) -> None:
-    payload = {
-        "run_timestamp": "2020-01-01T00:00:00+00:00",
-        "thresholds_sha256": "abc",
-        "rows": dict(_BASE_ROWS),
-        "output_columns": ["bond_id"],
-    }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(payload, f)
+def test_cross_batch_boundary_coinciding_with_bond_change(tmp_path):
+    # Two bonds whose row counts are exact multiples of batch_size=3, so a
+    # batch boundary falls precisely on the bond_id change (row 6): bond AAA
+    # has 6 clean trades, bond BBB has 9 trades with a recoverable spike at
+    # index 5. The flush-on-bond-change path must fire correctly when the
+    # new bond starts exactly at a batch boundary.
+    aaa_prices = _CLEAN_PRICES                      # 6 rows, no drops
+    bbb_prices = _SPIKE_PRICES + [100.0]            # 9 rows, drop index 5
+    rows = (_bond_rows("AAA", aaa_prices, month=6)
+            + _bond_rows("BBB", bbb_prices, month=7))
+    input_path = tmp_path / "trace_clean_decimal_shifted.parquet"
+    n_in = _write_trace(input_path, rows)
+    assert n_in % 3 == 0 and len(aaa_prices) % 3 == 0  # boundary alignment
 
+    stats_small, out_small, dropped_small = _run(
+        tmp_path, input_path, "small", batch_size=3)
+    stats_big, out_big, dropped_big = _run(
+        tmp_path, input_path, "big", batch_size=10_000)
 
-def test_update_cleaning_report_preserves_fields_and_asserts_additivity(tmp_path):
-    report_path = tmp_path / "cleaning_report.json"
-    _write_base_report(report_path)
+    assert stats_small == stats_big
+    assert stats_small["input_rows"] == n_in
+    assert stats_small["dropped_bounce_back"] == 1
+    assert stats_small["kept_rows"] == n_in - 1
 
-    # Drop 3 from dev, 2 from hold. New kept: dev 50-3=47, hold 30-2=28.
-    # Additivity: 3+2+5+1+1+0+8+0 + 3+2 + 47+28 = 100 ✓
-    dev_stats = {"kept_rows": 47, "dropped_bounce_back": 3}
-    hold_stats = {"kept_rows": 28, "dropped_bounce_back": 2}
+    # Consistent with the pure loop applied per bond
+    mask_aaa, n_aaa = _apply_bounce_back_loop(aaa_prices, _PARAMS)
+    mask_bbb, n_bbb = _apply_bounce_back_loop(bbb_prices, _PARAMS)
+    assert n_aaa == 0 and all(mask_aaa)
+    assert n_bbb == 1 and mask_bbb[_SPIKE_INDEX] is False
+    assert stats_small["kept_rows"] == sum(mask_aaa) + sum(mask_bbb)
 
-    update_cleaning_report(report_path, dev_stats, hold_stats, "sha-test", dev_parquet=None)
+    assert pq.read_table(str(out_small)).equals(pq.read_table(str(out_big)))
 
-    with open(report_path) as f:
-        new = json.load(f)
-
-    # New top-level fields
-    assert new["bounce_back_filter_applied"] is True
-    assert "bounce_back_run_timestamp" in new
-    assert new["bounce_back_params_sha256"] == "sha-test"
-
-    rows = new["rows"]
-    assert rows["dropped_bounce_back_dev"] == 3
-    assert rows["dropped_bounce_back_hold"] == 2
-    assert rows["development_rows"] == 47
-    assert rows["holdout_rows"] == 28
-    assert rows["final_clean_total"] == 75
-    assert rows["parquet_row_count_verified"] is True
-
-    # Existing pre-bounce-back fields preserved unchanged
-    assert rows["dropped_wis_fl"] == _BASE_ROWS["dropped_wis_fl"]
-    assert rows["dropped_interdealer_duplicate"] == _BASE_ROWS["dropped_interdealer_duplicate"]
-
-    # Atomic write left no .tmp
-    assert not report_path.with_suffix(".tmp").exists()
-
-
-def test_update_cleaning_report_raises_on_broken_additivity(tmp_path):
-    report_path = tmp_path / "cleaning_report.json"
-    _write_base_report(report_path)
-
-    # Reduce dev kept_rows by 10 but only claim 1 drop → 9 rows unaccounted for
-    bad_dev = {"kept_rows": 40, "dropped_bounce_back": 1}
-    bad_hold = {"kept_rows": 30, "dropped_bounce_back": 0}
-
-    with pytest.raises(AssertionError, match="additivity broken"):
-        update_cleaning_report(report_path, bad_dev, bad_hold, "sha-test", dev_parquet=None)
-
-
-def test_update_cleaning_report_hard_fails_on_legacy_init_price_keys(tmp_path):
-    # A report from a prior pre-strict-fidelity run carries the removed
-    # init_price_error fields. update_cleaning_report must refuse to silently
-    # migrate; the user is required to re-run preprocess_trace.py.
-    report_path = tmp_path / "cleaning_report.json"
-    rows = dict(_BASE_ROWS)
-    rows["dropped_init_price_error_dev"] = 0
-    rows["dropped_init_price_error_hold"] = 0
-    payload = {
-        "run_timestamp": "2020-01-01T00:00:00+00:00",
-        "thresholds_sha256": "abc",
-        "rows": rows,
-        "output_columns": ["bond_id"],
-    }
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(report_path, "w") as f:
-        json.dump(payload, f)
-
-    dev_stats = {"kept_rows": 50, "dropped_bounce_back": 0}
-    hold_stats = {"kept_rows": 30, "dropped_bounce_back": 0}
-
-    with pytest.raises(AssertionError, match="Legacy init_price_error fields"):
-        update_cleaning_report(report_path, dev_stats, hold_stats, "sha-test", dev_parquet=None)
-
-
-def test_assert_additivity_pure_function():
-    rows = dict(_BASE_ROWS)
-    rows.update({
-        "dropped_bounce_back_dev": 3,
-        "dropped_bounce_back_hold": 2,
-        "development_rows": 47,
-        "holdout_rows": 28,
-        "final_clean_total": 75,
-    })
-    _assert_additivity(rows)  # should not raise
-
-    rows["dropped_bounce_back_dev"] = 99
-    with pytest.raises(AssertionError):
-        _assert_additivity(rows)
-
-
-def test_assert_additivity_catches_final_clean_total_drift():
-    # Stale final_clean_total that no longer matches dev+hold must raise.
-    rows = dict(_BASE_ROWS)
-    rows.update({
-        "dropped_bounce_back_dev": 3,
-        "dropped_bounce_back_hold": 2,
-        "development_rows": 47,
-        "holdout_rows": 28,
-        "final_clean_total": 80,  # stale: should be 75
-    })
-    with pytest.raises(AssertionError, match="final_clean_total"):
-        _assert_additivity(rows)
+    d_small = pq.read_table(str(dropped_small))
+    assert d_small.equals(pq.read_table(str(dropped_big)))
+    assert d_small.column("bond_id").to_pylist() == ["BBB"]
+    assert d_small.column("rptd_pr").to_pylist() == [bbb_prices[_SPIKE_INDEX]]

@@ -20,14 +20,10 @@ NotImplementedError so any future enable is intentional.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from characteristic_sort import (  # noqa: E402
+from .characteristic_sort import (
     _apply_defaults,
     extract_monthly_selections,
     run_characteristic_sort,

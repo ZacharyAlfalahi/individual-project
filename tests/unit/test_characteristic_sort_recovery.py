@@ -19,23 +19,12 @@ is approximately 0.27% under correct behaviour.
 """
 
 import math
-import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(
-    0,
-    str(
-        Path(__file__).resolve().parent.parent.parent
-        / "agents"
-        / "quant"
-        / "library"
-    ),
-)
-from characteristic_sort import (  # noqa: E402
+from agents.quant.library.characteristic_sort import (
     regress_on_benchmark,
     run_characteristic_sort,
 )

@@ -22,14 +22,16 @@ skipped after flagging par blocks"). See docs/bounce_back_filter_spec.md.
 All parameters live in docs/thresholds.yaml under the `bounce_back_filter` key.
 This script never hard-codes thresholds.
 
-Holdout processing is a mechanical transformation with parameters fixed in
-thresholds.yaml. No statistic computed on holdout is read, surfaced, or used
-to inform any decision.
+The holdout partition is processed only under --holdout (the single
+post-freeze pipeline run in weeks 13-14). During development no holdout
+data is read and no holdout statistic is computed or surfaced.
 
 Usage:
-  python scripts/bounce_back_filter.py
+  python scripts/bounce_back_filter.py             # development partition only
+  python scripts/bounce_back_filter.py --holdout   # post-freeze run ONLY
 """
 
+import argparse
 import hashlib
 import json
 import os
@@ -190,9 +192,14 @@ def _apply_bounce_back_loop(prices, params: dict):
 # ---------------------------------------------------------------------------
 
 def process_partition(input_path: Path, output_path: Path, dropped_path: Path,
-                      params: dict, output_schema: pa.Schema = OUTPUT_SCHEMA) -> dict:
+                      params: dict, output_schema: pa.Schema = OUTPUT_SCHEMA,
+                      batch_size: int = 200_000) -> dict:
     """Read input parquet, apply per-bond bounce-back filter, write kept rows
     to output_path and dropped rows to dropped_path (companion artifact).
+
+    batch_size controls the read-stream granularity only — results are
+    invariant to it (bond segments accumulate across batch boundaries).
+    Tests use small values to exercise the cross-batch path.
 
     Returns dict with: input_rows, kept_rows, dropped_bounce_back.
     """
@@ -263,8 +270,8 @@ def process_partition(input_path: Path, output_path: Path, dropped_path: Path,
 
     try:
         pf = pq.ParquetFile(str(sorted_tmp))
-        n_batches_est = max(1, (input_rows + 199_999) // 200_000)
-        for batch in tqdm(pf.iter_batches(batch_size=200_000),
+        n_batches_est = max(1, (input_rows + batch_size - 1) // batch_size)
+        for batch in tqdm(pf.iter_batches(batch_size=batch_size),
                           total=n_batches_est,
                           desc=output_path.parent.name,
                           unit="batch"):
@@ -365,7 +372,10 @@ def process_partition(input_path: Path, output_path: Path, dropped_path: Path,
 # Report
 # ---------------------------------------------------------------------------
 
-def write_report(dev_stats: dict, hold_stats: dict, thresholds_sha: str) -> None:
+def write_report(dev_stats: dict, hold_stats: "dict | None",
+                 thresholds_sha: str) -> None:
+    """hold_stats is None during development — no holdout statistic is
+    computed or surfaced into this (development-side) report."""
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
         "thresholds_sha256": thresholds_sha,
@@ -375,17 +385,14 @@ def write_report(dev_stats: dict, hold_stats: dict, thresholds_sha: str) -> None
             "Stage 3 (distressed daily filters 1-4) runs on the daily layer "
             "after VWAP aggregation. Raw family bypasses this script per A1."
         ),
+        "holdout_processed": hold_stats is not None,
         "rows_dev": dev_stats,
-        "rows_holdout": hold_stats,
         "inputs": {
             "dev": str(DEV_IN.relative_to(REPO_ROOT)),
-            "holdout": str(HOLD_IN.relative_to(REPO_ROOT)),
         },
         "outputs": {
             "dev_kept": str(DEV_OUT.relative_to(REPO_ROOT)),
             "dev_dropped": str(DEV_DROPPED.relative_to(REPO_ROOT)),
-            "holdout_kept": str(HOLD_OUT.relative_to(REPO_ROOT)),
-            "holdout_dropped": str(HOLD_DROPPED.relative_to(REPO_ROOT)),
         },
         "audit_trail_note": (
             "Companion 'dropped' parquets persist the trades the bounce-back "
@@ -394,6 +401,11 @@ def write_report(dev_stats: dict, hold_stats: dict, thresholds_sha: str) -> None
             "and dropped from trace_clean_corr)."
         ),
     }
+    if hold_stats is not None:
+        report["rows_holdout"] = hold_stats
+        report["inputs"]["holdout"] = str(HOLD_IN.relative_to(REPO_ROOT))
+        report["outputs"]["holdout_kept"] = str(HOLD_OUT.relative_to(REPO_ROOT))
+        report["outputs"]["holdout_dropped"] = str(HOLD_DROPPED.relative_to(REPO_ROOT))
     REPORT_OUT.parent.mkdir(parents=True, exist_ok=True)
     tmp = REPORT_OUT.with_suffix(".tmp")
     with open(tmp, "w") as f:
@@ -406,6 +418,15 @@ def write_report(dev_stats: dict, hold_stats: dict, thresholds_sha: str) -> None
 # ---------------------------------------------------------------------------
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--holdout", action="store_true",
+        help="Also process the holdout partition. NEVER pass during "
+             "development; reserved for the single post-freeze pipeline "
+             "run in weeks 13-14 (inviolable data rule).",
+    )
+    args = parser.parse_args()
+
     params = load_bounce_back_config()
     sha = thresholds_sha256()
     print(f"Loaded bounce_back_filter config (thresholds sha256: {sha[:12]}...)")
@@ -418,12 +439,17 @@ def main():
         f"dropped={dev_stats['dropped_bounce_back']:,}"
     )
 
-    print("Processing holdout partition (mechanical; no statistics surfaced)...")
-    hold_stats = process_partition(HOLD_IN, HOLD_OUT, HOLD_DROPPED, params)
-    print(
-        f"  holdout: input={hold_stats['input_rows']:,} kept={hold_stats['kept_rows']:,} "
-        f"dropped={hold_stats['dropped_bounce_back']:,}"
-    )
+    hold_stats = None
+    if args.holdout:
+        print("Processing holdout partition (post-freeze run)...")
+        hold_stats = process_partition(HOLD_IN, HOLD_OUT, HOLD_DROPPED, params)
+        print(
+            f"  holdout: input={hold_stats['input_rows']:,} kept={hold_stats['kept_rows']:,} "
+            f"dropped={hold_stats['dropped_bounce_back']:,}"
+        )
+    else:
+        print("Holdout partition NOT processed (development mode; "
+              "pass --holdout for the post-freeze run).")
 
     write_report(dev_stats, hold_stats, sha)
     print(f"Updated {REPORT_OUT}")

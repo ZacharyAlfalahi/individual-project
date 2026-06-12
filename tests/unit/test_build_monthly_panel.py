@@ -1,42 +1,35 @@
 """
-Unit tests for the monthly panel build.
+Unit tests for the dual-family maximal monthly panel build
+(scripts/build_monthly_panel.py).
 
-DEFERRED: Phase 1 of the bias-toggle registry refactor replaces the single-
-family `monthly_panel_uncorrected.parquet` build with a dual-family
-`monthly_panel_maximal.parquet` build that consumes the daily layer (raw +
-corrected, both produced by build_daily_panel.py) rather than the trade-
-level parquet directly. Output columns are family-indexed (price_eom_raw /
-price_eom_corr, ret_raw / ret_corr, etc.), the correction toggles are
-removed (they're view-time operations in Phase 2's view layer), and a new
-last_trade_date_<family> column is emitted per A5. Tests are skipped at
-module level pending adaptation to the new schema. The new pipeline's
-correctness is covered end-to-end by:
-  - tests/unit/test_meas_err_injection.py (per-stage correctness)
-  - scripts/run_str_lib_gap_aoi.py (end-to-end on real data)
+The build reads two daily-layer parquets (raw + corrected families, both
+produced by build_daily_panel.py — the corr one post-distressed-filter),
+outer-joins them on (cusip_id, year_month), computes per-family returns
+under the month-adjacency rule, merges the risk-free rate, and emits the
+maximal monthly panel with Arrow metadata panel_kind = maximal.
+
+Methodology pins:
+  - monthly price = Σ(daily_vwap × daily_vol) / Σ(daily_vol), per family
+  - adjacency rule per family: ret is NaN unless the prior panel month is
+    immediately adjacent AND that family has a price in it
+  - divergent NaN patterns across families are never "repaired"
+  - xret_<fam> = ret_<fam> − rf_monthly
+  - last_trade_date_<fam> = max(trd_exctn_dt) on that family's daily input
 """
 
-import pytest
-
-pytest.skip(
-    "Phase 1 registry refactor pending — see module docstring",
-    allow_module_level=True,
-)
-
-import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-import yaml
+import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
-from build_monthly_panel import (  # noqa: E402
-    build_panel,
-    load_config,
-    SIZE_PLACEHOLDER,
-)
+import build_monthly_panel as bmp
+from build_monthly_panel import SIZE_PLACEHOLDER, load_config
 
+# All thresholds come from docs/thresholds.yaml via the production loader —
+# never duplicated as literals here.
 _cfg = load_config()
 
 
@@ -44,81 +37,68 @@ _cfg = load_config()
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_trace_parquet(path: Path, rows: list[dict]) -> None:
+DAILY_SCHEMA = pa.schema([
+    pa.field("cusip_id",      pa.string()),
+    pa.field("trd_exctn_dt",  pa.timestamp("us")),
+    pa.field("price_vwap",    pa.float64()),
+    pa.field("total_vol",     pa.float64()),
+    pa.field("n_trades",      pa.int64()),
+    pa.field("min_price",     pa.float64()),
+    pa.field("max_price",     pa.float64()),
+])
+
+
+def _daily_row(cusip, date, vwap, vol, n_trades=1):
+    return {
+        "cusip_id": cusip,
+        "trd_exctn_dt": date,
+        "price_vwap": vwap,
+        "total_vol": vol,
+        "n_trades": n_trades,
+        "min_price": vwap,
+        "max_price": vwap,
+    }
+
+
+def _make_daily_parquet(path: Path, rows: list[dict]) -> None:
     df = pd.DataFrame(rows)
     df["trd_exctn_dt"] = pd.to_datetime(df["trd_exctn_dt"])
-    schema = pa.schema([
-        pa.field("bond_id",              pa.string()),
-        pa.field("cusip_id",             pa.string()),
-        pa.field("trd_exctn_dt",         pa.timestamp("us")),
-        pa.field("rptd_pr",              pa.float64()),
-        pa.field("entrd_vol_qt",         pa.float64()),
-        pa.field("sub_prdct",            pa.string()),
-        pa.field("company_symbol",       pa.string()),
-        pa.field("trd_exctn_tm",         pa.string()),
-        pa.field("rpt_side_cd",          pa.string()),
-        pa.field("trdg_mkt_cd",          pa.string()),
-        pa.field("trd_mod_3",            pa.string()),
-        pa.field("bloomberg_identifier", pa.string()),
-        pa.field("scrty_type_cd",        pa.string()),
-    ])
     path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pandas(df, schema=schema, preserve_index=False), str(path))
+    pq.write_table(
+        pa.Table.from_pandas(df, schema=DAILY_SCHEMA, preserve_index=False),
+        str(path),
+    )
 
 
-def _make_rf_parquet(path: Path, months: list[str], rates: list[float]) -> None:
-    df = pd.DataFrame({"year_month": months, "rf_monthly": rates})
+def _make_rf_parquet(path: Path, rf_pairs: list[tuple[str, float]]) -> None:
+    df = pd.DataFrame({
+        "year_month": [m for m, _ in rf_pairs],
+        "rf_monthly": [r for _, r in rf_pairs],
+    })
     path.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.Table.from_pandas(df, preserve_index=False), str(path))
 
 
-def _cusip_of(sym: str) -> str:
-    """Deterministic synthetic CUSIP from a sym. Matches _base_row default."""
-    return f"CUS{sym}".ljust(9, "X")[:9]
+def _run(tmp_path, monkeypatch, raw_rows, corr_rows, rf_pairs):
+    """Write synthetic daily-layer + rf inputs, patch the module path
+    constants to tmp_path, run build_panel. Returns (out_path, counts)."""
+    raw_path = tmp_path / "trace_daily_raw.parquet"
+    corr_path = tmp_path / "trace_daily_corr_filtered.parquet"
+    rf_path = tmp_path / "rf_rate.parquet"
+    out_path = tmp_path / "monthly_panel_maximal.parquet"
 
+    _make_daily_parquet(raw_path, raw_rows)
+    _make_daily_parquet(corr_path, corr_rows)
+    _make_rf_parquet(rf_path, rf_pairs)
 
-def _base_row(sym, date, price, vol, sub_prdct="CORP", cusip_id=None):
-    """
-    A synthetic TRACE trade row. `sym` is the TRACE bond_sym_id (= input
-    bond_id on the cleaned trade table); `cusip_id` is the FISD-grade CUSIP
-    that the cleaned panel keys on. By default cusip_id is derived 1:1 from
-    sym, matching the common case where one sym maps to exactly one cusip.
-    Tests that need sym->multi-cusip or multi-sym->cusip collisions pass
-    cusip_id explicitly.
-    """
-    return {
-        "bond_id": sym,
-        "cusip_id": cusip_id if cusip_id is not None else _cusip_of(sym),
-        "trd_exctn_dt": date,
-        "rptd_pr": price,
-        "entrd_vol_qt": vol,
-        "sub_prdct": sub_prdct,
-        "company_symbol": "TEST",
-        "trd_exctn_tm": "10:00:00",
-        "rpt_side_cd": "S",
-        "trdg_mkt_cd": "S1",
-        "trd_mod_3": "",
-        "bloomberg_identifier": "",
-        "scrty_type_cd": "",
-    }
-
-
-def _setup(tmp_path, monkeypatch, rows, rf_pairs):
-    """Wire fixtures and patch paths. Returns (panel_path, counts)."""
-    trace = tmp_path / "trace.parquet"
-    rf_path = tmp_path / "rf.parquet"
-    out = tmp_path / "panel.parquet"
-    _make_trace_parquet(trace, rows)
-    _make_rf_parquet(rf_path, [m for m, _ in rf_pairs], [r for _, r in rf_pairs])
-
-    import build_monthly_panel as bmp
-    monkeypatch.setattr(bmp, "TRACE_FILE", trace)
+    monkeypatch.setattr(bmp, "RAW_DAILY", raw_path)
+    monkeypatch.setattr(bmp, "CORR_DAILY", corr_path)
     monkeypatch.setattr(bmp, "RF_FILE", rf_path)
-    monkeypatch.setattr(bmp, "OUT_FILE", out)
+    monkeypatch.setattr(bmp, "OUT_FILE", out_path)
     monkeypatch.setattr(bmp, "REPORT_OUT", tmp_path / "report.json")
 
     counts = bmp.build_panel(_cfg)
-    return out, counts
+    return out_path, counts
 
 
 def _me(s: str) -> pd.Timestamp:
@@ -126,412 +106,283 @@ def _me(s: str) -> pd.Timestamp:
     return pd.Timestamp(s) + pd.offsets.MonthEnd(0)
 
 
+def _row(df: pd.DataFrame, cusip: str, ym: str) -> pd.Series:
+    cell = df[(df["cusip"] == cusip) & (df["date"] == _me(ym))]
+    assert len(cell) == 1, f"expected exactly one row for {cusip}@{ym}, got {len(cell)}"
+    return cell.iloc[0]
+
+
+C1 = "CUSIP0001"
+C2 = "CUSIP0002"
+
+
 # ---------------------------------------------------------------------------
-# TestVWAP
+# Monthly price aggregation — Σ(daily_vwap × daily_vol) / Σ(daily_vol)
 # ---------------------------------------------------------------------------
 
-class TestVWAP:
-    def test_single_trade_price_is_trade_price(self, tmp_path, monkeypatch):
-        rows = [_base_row("S1", "2015-06-15", 100.0, 200_000)]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+class TestMonthlyPriceAggregation:
+    def test_volume_weighted_monthly_price_per_family(self, tmp_path, monkeypatch):
+        raw_rows = [
+            _daily_row(C1, "2015-06-10", 100.0, 100_000, n_trades=2),
+            _daily_row(C1, "2015-06-20", 200.0, 300_000, n_trades=3),
+        ]
+        # corr drops the second day (e.g. distressed-filtered out)
+        corr_rows = [
+            _daily_row(C1, "2015-06-10", 100.0, 100_000, n_trades=2),
+        ]
+        out, _ = _run(tmp_path, monkeypatch, raw_rows, corr_rows,
+                      [("2015-06", 0.001)])
         df = pd.read_parquet(out)
-        row = df[df["cusip"] == _cusip_of("S1")]
-        assert len(row) == 1
-        assert row["price_eom"].iloc[0] == pytest.approx(100.0)
+        row = _row(df, C1, "2015-06")
+        # raw: (100×100k + 200×300k) / 400k = 175.0 — NOT the simple
+        # average (150.0) and not any single day's vwap.
+        assert row["price_eom_raw"] == pytest.approx(175.0, abs=1e-9)
+        # corr: single surviving day → 100.0
+        assert row["price_eom_corr"] == pytest.approx(100.0, abs=1e-9)
+        # Daily aggregates sum per family.
+        assert row["n_trades_raw"] == 5
+        assert row["n_trades_corr"] == 2
+        assert row["total_vol_raw"] == pytest.approx(400_000.0)
+        assert row["total_vol_corr"] == pytest.approx(100_000.0)
 
-    def test_vwap_weights_by_volume(self, tmp_path, monkeypatch):
-        rows = [
-            _base_row("S1", "2015-06-10", 100.0, 100_000),
-            _base_row("S1", "2015-06-20", 200.0, 300_000),
-        ]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+    def test_single_day_month_price_is_day_vwap(self, tmp_path, monkeypatch):
+        rows = [_daily_row(C1, "2015-06-15", 101.5, 200_000)]
+        out, _ = _run(tmp_path, monkeypatch, rows, rows, [("2015-06", 0.001)])
         df = pd.read_parquet(out)
-        row = df[df["cusip"] == _cusip_of("S1")]
-        # VWAP: (100*100k + 200*300k) / 400k = 175.0
-        assert row["price_eom"].iloc[0] == pytest.approx(175.0)
+        row = _row(df, C1, "2015-06")
+        assert row["price_eom_raw"] == pytest.approx(101.5)
+        assert row["price_eom_corr"] == pytest.approx(101.5)
 
-    def test_vwap_differs_from_simple_average(self, tmp_path, monkeypatch):
+
+# ---------------------------------------------------------------------------
+# Per-family returns under the month-adjacency rule
+# ---------------------------------------------------------------------------
+
+class TestAdjacencyReturns:
+    def test_consecutive_months_produce_exact_return(self, tmp_path, monkeypatch):
         rows = [
-            _base_row("S1", "2015-06-10", 100.0, 100_000),
-            _base_row("S1", "2015-06-20", 200.0, 300_000),
+            _daily_row(C1, "2015-05-15", 100.0, 200_000),
+            _daily_row(C1, "2015-06-15", 105.0, 200_000),
         ]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+        out, _ = _run(tmp_path, monkeypatch, rows, rows,
+                      [("2015-05", 0.001), ("2015-06", 0.001)])
         df = pd.read_parquet(out)
-        vwap = df[df["cusip"] == _cusip_of("S1")]["price_eom"].iloc[0]
-        assert vwap != pytest.approx(150.0, abs=1e-6)  # simple average
+        jun = _row(df, C1, "2015-06")
+        # (105 − 100) / 100 = 0.05, both families
+        assert jun["ret_raw"] == pytest.approx(0.05)
+        assert jun["ret_corr"] == pytest.approx(0.05)
 
-
-# ---------------------------------------------------------------------------
-# TestReturns
-# ---------------------------------------------------------------------------
-
-class TestReturns:
-    def _two_month_panel(self, tmp_path, monkeypatch, p0, p1, rf=0.001):
+    def test_first_observed_month_ret_is_nan(self, tmp_path, monkeypatch):
         rows = [
-            _base_row("S1", "2015-05-15", p0, 200_000),
-            _base_row("S1", "2015-06-15", p1, 200_000),
+            _daily_row(C1, "2015-05-15", 100.0, 200_000),
+            _daily_row(C1, "2015-06-15", 105.0, 200_000),
         ]
-        out, _ = _setup(
-            tmp_path, monkeypatch, rows,
-            [("2015-05", rf), ("2015-06", rf)],
-        )
-        return pd.read_parquet(out).sort_values("date")
-
-    def test_first_month_ret_is_nan(self, tmp_path, monkeypatch):
-        df = self._two_month_panel(tmp_path, monkeypatch, 100.0, 105.0)
-        first = df[df["date"] == _me("2015-05")]
-        assert first["ret"].isna().all()
-
-    def test_second_month_ret_correct(self, tmp_path, monkeypatch):
-        df = self._two_month_panel(tmp_path, monkeypatch, 100.0, 105.0)
-        second = df[df["date"] == _me("2015-06")]
-        assert second["ret"].iloc[0] == pytest.approx(0.05)
-
-    def test_xret_equals_ret_minus_rf(self, tmp_path, monkeypatch):
-        rf = 0.002
-        df = self._two_month_panel(tmp_path, monkeypatch, 100.0, 105.0, rf=rf)
-        second = df[df["date"] == _me("2015-06")]
-        assert second["xret"].iloc[0] == pytest.approx(0.05 - rf)
-
-    def test_gap_in_months_produces_nan_return(self, tmp_path, monkeypatch):
-        rows = [
-            _base_row("S1", "2015-03-15", 100.0, 200_000),
-            _base_row("S1", "2015-06-15", 105.0, 200_000),  # 3-month gap
-        ]
-        out, _ = _setup(
-            tmp_path, monkeypatch, rows,
-            [("2015-03", 0.001), ("2015-06", 0.001)],
-        )
-        df = pd.read_parquet(out).sort_values("date")
-        jun = df[df["date"] == _me("2015-06")]
-        assert jun["ret"].isna().all(), "Return across a gap must be NaN"
-        assert jun["xret"].isna().all(), "xret across a gap must be NaN"
-
-    def test_consecutive_months_do_not_gap(self, tmp_path, monkeypatch):
-        rows = [
-            _base_row("S1", "2015-05-15", 100.0, 200_000),
-            _base_row("S1", "2015-06-15", 105.0, 200_000),
-        ]
-        out, _ = _setup(
-            tmp_path, monkeypatch, rows,
-            [("2015-05", 0.001), ("2015-06", 0.001)],
-        )
-        df = pd.read_parquet(out).sort_values("date")
-        jun = df[df["date"] == _me("2015-06")]
-        assert jun["ret"].notna().all()
-
-
-# ---------------------------------------------------------------------------
-# TestVolumeFilter
-# ---------------------------------------------------------------------------
-
-class TestVolumeFilter:
-    def test_sub_threshold_trades_excluded_from_vwap(self, tmp_path, monkeypatch):
-        rows = [
-            _base_row("S1", "2015-06-10", 90.0, 50_000),    # below — excluded
-            _base_row("S1", "2015-06-20", 100.0, 200_000),  # above — included
-        ]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+        out, _ = _run(tmp_path, monkeypatch, rows, rows,
+                      [("2015-05", 0.001), ("2015-06", 0.001)])
         df = pd.read_parquet(out)
-        row = df[df["cusip"] == _cusip_of("S1")]
-        assert row["price_eom"].iloc[0] == pytest.approx(100.0)
+        may = _row(df, C1, "2015-05")
+        assert pd.isna(may["ret_raw"]) and pd.isna(may["ret_corr"])
 
-    def test_all_sub_threshold_cusip_month_produces_no_row(self, tmp_path, monkeypatch):
-        rows = [_base_row("S1", "2015-06-10", 100.0, 50_000)]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+    def test_gap_month_yields_nan_ret_in_month_after_gap(self, tmp_path, monkeypatch):
+        # March then June — a 3-month gap. Without the adjacency rule the
+        # June row would silently carry a one-month-style (105−100)/100.
+        rows = [
+            _daily_row(C1, "2015-03-15", 100.0, 200_000),
+            _daily_row(C1, "2015-06-15", 105.0, 200_000),
+        ]
+        out, _ = _run(tmp_path, monkeypatch, rows, rows,
+                      [("2015-03", 0.001), ("2015-06", 0.001)])
         df = pd.read_parquet(out)
-        assert len(df) == 0
+        jun = _row(df, C1, "2015-06")
+        assert pd.isna(jun["ret_raw"]), "return across a gap must be NaN (raw)"
+        assert pd.isna(jun["ret_corr"]), "return across a gap must be NaN (corr)"
+        assert pd.isna(jun["xret_raw"]) and pd.isna(jun["xret_corr"])
+
+    def test_adjacency_is_per_cusip(self, tmp_path, monkeypatch):
+        # C2's first month must not chain off C1's series.
+        rows = [
+            _daily_row(C1, "2015-05-15", 100.0, 200_000),
+            _daily_row(C2, "2015-06-15", 105.0, 200_000),
+        ]
+        out, _ = _run(tmp_path, monkeypatch, rows, rows,
+                      [("2015-05", 0.001), ("2015-06", 0.001)])
+        df = pd.read_parquet(out)
+        c2 = _row(df, C2, "2015-06")
+        assert pd.isna(c2["ret_raw"]) and pd.isna(c2["ret_corr"])
 
 
 # ---------------------------------------------------------------------------
-# TestSubPrdctFilter
+# Divergent NaN patterns across families are NOT repaired
 # ---------------------------------------------------------------------------
 
-class TestSubPrdctFilter:
-    def _run(self, tmp_path, monkeypatch, rows):
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+class TestDivergentNaNPatterns:
+    def _build(self, tmp_path, monkeypatch):
+        """raw trades May/June/July; corr is missing June entirely (e.g.
+        the distressed filters dropped every June day from corr)."""
+        raw_rows = [
+            _daily_row(C1, "2015-05-15", 100.0, 200_000),
+            _daily_row(C1, "2015-06-15", 110.0, 200_000),
+            _daily_row(C1, "2015-07-15", 121.0, 200_000),
+        ]
+        corr_rows = [
+            _daily_row(C1, "2015-05-15", 100.0, 200_000),
+            _daily_row(C1, "2015-07-15", 130.0, 200_000),
+        ]
+        out, _ = _run(tmp_path, monkeypatch, raw_rows, corr_rows,
+                      [("2015-05", 0.001), ("2015-06", 0.001), ("2015-07", 0.001)])
         return pd.read_parquet(out)
 
-    def test_corp_included(self, tmp_path, monkeypatch):
-        rows = [_base_row("S1", "2015-06-15", 100.0, 200_000, sub_prdct="CORP")]
-        df = self._run(tmp_path, monkeypatch, rows)
-        assert _cusip_of("S1") in df["cusip"].values
-
-    def test_chrc_excluded(self, tmp_path, monkeypatch):
-        rows = [_base_row("S1", "2015-06-15", 100.0, 200_000, sub_prdct="CHRC")]
-        df = self._run(tmp_path, monkeypatch, rows)
-        assert _cusip_of("S1") not in df["cusip"].values
-
-    def test_eln_excluded(self, tmp_path, monkeypatch):
-        rows = [_base_row("S1", "2015-06-15", 100.0, 200_000, sub_prdct="ELN")]
-        df = self._run(tmp_path, monkeypatch, rows)
-        assert _cusip_of("S1") not in df["cusip"].values
-
-    def test_null_subprdct_included(self, tmp_path, monkeypatch):
-        row = _base_row("S1", "2015-06-15", 100.0, 200_000)
-        row["sub_prdct"] = None  # pre-2012 record
-        df = self._run(tmp_path, monkeypatch, [row])
-        assert _cusip_of("S1") in df["cusip"].values
-
-
-# ---------------------------------------------------------------------------
-# TestOutputSchema — engine-contract shape
-# ---------------------------------------------------------------------------
-
-class TestOutputSchema:
-    def test_required_columns_present(self, tmp_path, monkeypatch):
-        rows = [
-            _base_row("S1", "2015-05-15", 100.0, 200_000),
-            _base_row("S1", "2015-06-15", 105.0, 200_000),
-        ]
-        out, _ = _setup(
-            tmp_path, monkeypatch, rows,
-            [("2015-05", 0.001), ("2015-06", 0.001)],
+    def test_month_missing_in_corr_has_real_raw_ret_and_nan_corr_ret(
+        self, tmp_path, monkeypatch
+    ):
+        df = self._build(tmp_path, monkeypatch)
+        jun = _row(df, C1, "2015-06")
+        assert jun["ret_raw"] == pytest.approx(0.10)       # 110/100 − 1
+        assert pd.isna(jun["price_eom_corr"])
+        assert pd.isna(jun["ret_corr"]), (
+            "a month missing in corr must yield NaN ret_corr — the raw "
+            "family's presence must not be used to repair it"
         )
-        df = pd.read_parquet(out)
-        # Engine contract columns + audit columns.
-        for col in [
-            "cusip", "date", "ret", "size",
-            "xret", "n_trades", "total_vol", "rf_monthly",
-            "bond_sym_ids", "sub_prdct", "price_eom",
-        ]:
-            assert col in df.columns, f"Missing column: {col}"
 
-    def test_date_is_month_end_timestamp(self, tmp_path, monkeypatch):
-        rows = [_base_row("S1", "2015-06-15", 100.0, 200_000)]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+    def test_corr_gap_not_bridged_even_when_panel_rows_are_adjacent(
+        self, tmp_path, monkeypatch
+    ):
+        """July's panel row IS calendar-adjacent to June's (the row exists
+        thanks to raw), but corr has no June price — corr's July return must
+        be NaN, NOT the gap-bridging (130−100)/100 = 0.30 a 'repairing'
+        implementation would produce by chaining over its own NaN."""
+        df = self._build(tmp_path, monkeypatch)
+        jul = _row(df, C1, "2015-07")
+        assert jul["ret_raw"] == pytest.approx(0.10)       # 121/110 − 1
+        assert pd.isna(jul["ret_corr"]), (
+            "corr return must not bridge over corr's own missing June"
+        )
+
+    def test_month_present_in_only_one_family_still_emits_row(
+        self, tmp_path, monkeypatch
+    ):
+        # The outer join keeps the raw-only June row (maximal panel).
+        df = self._build(tmp_path, monkeypatch)
+        jun = _row(df, C1, "2015-06")
+        assert jun["price_eom_raw"] == pytest.approx(110.0)
+        assert pd.isna(jun["price_eom_corr"])
+
+
+# ---------------------------------------------------------------------------
+# Excess returns
+# ---------------------------------------------------------------------------
+
+class TestExcessReturns:
+    def test_xret_equals_ret_minus_rf_per_family(self, tmp_path, monkeypatch):
+        raw_rows = [
+            _daily_row(C1, "2015-05-15", 100.0, 200_000),
+            _daily_row(C1, "2015-06-15", 105.0, 200_000),
+        ]
+        corr_rows = [
+            _daily_row(C1, "2015-05-15", 100.0, 200_000),
+            _daily_row(C1, "2015-06-15", 102.0, 200_000),
+        ]
+        rf_jun = 0.002
+        out, _ = _run(tmp_path, monkeypatch, raw_rows, corr_rows,
+                      [("2015-05", 0.001), ("2015-06", rf_jun)])
+        df = pd.read_parquet(out)
+        jun = _row(df, C1, "2015-06")
+        assert jun["rf_monthly"] == pytest.approx(rf_jun)
+        assert jun["xret_raw"] == pytest.approx(0.05 - rf_jun)
+        assert jun["xret_corr"] == pytest.approx(0.02 - rf_jun)
+
+
+# ---------------------------------------------------------------------------
+# last_trade_date per family
+# ---------------------------------------------------------------------------
+
+class TestLastTradeDate:
+    def test_last_trade_date_comes_from_each_familys_own_daily_input(
+        self, tmp_path, monkeypatch
+    ):
+        # raw trades through 06-25; corr's last surviving day is 06-18
+        # (post-distressed-filter, per A5 — must NOT inherit raw's 06-25).
+        raw_rows = [
+            _daily_row(C1, "2015-06-10", 100.0, 200_000),
+            _daily_row(C1, "2015-06-25", 101.0, 200_000),
+        ]
+        corr_rows = [
+            _daily_row(C1, "2015-06-10", 100.0, 200_000),
+            _daily_row(C1, "2015-06-18", 100.5, 200_000),
+        ]
+        out, _ = _run(tmp_path, monkeypatch, raw_rows, corr_rows,
+                      [("2015-06", 0.001)])
+        df = pd.read_parquet(out)
+        row = _row(df, C1, "2015-06")
+        assert pd.Timestamp(row["last_trade_date_raw"]) == pd.Timestamp("2015-06-25")
+        assert pd.Timestamp(row["last_trade_date_corr"]) == pd.Timestamp("2015-06-18")
+
+
+# ---------------------------------------------------------------------------
+# Engine-contract shape: date, size, exit_reason, cusip, metadata
+# ---------------------------------------------------------------------------
+
+class TestOutputContract:
+    def _build(self, tmp_path, monkeypatch):
+        rows = [
+            _daily_row(C1, "2015-06-10", 100.0, 200_000),
+            _daily_row(C2, "2015-06-15", 50.0, 300_000),
+        ]
+        return _run(tmp_path, monkeypatch, rows, rows, [("2015-06", 0.001)])
+
+    def test_required_columns_present(self, tmp_path, monkeypatch):
+        out, _ = self._build(tmp_path, monkeypatch)
+        df = pd.read_parquet(out)
+        for col in [
+            "cusip", "date", "size",
+            "price_eom_raw", "price_eom_corr",
+            "ret_raw", "ret_corr",
+            "xret_raw", "xret_corr",
+            "n_trades_raw", "n_trades_corr",
+            "total_vol_raw", "total_vol_corr",
+            "last_trade_date_raw", "last_trade_date_corr",
+            "rf_monthly", "exit_reason",
+        ]:
+            assert col in df.columns, f"missing column: {col}"
+
+    def test_date_is_normalised_month_end(self, tmp_path, monkeypatch):
+        out, _ = self._build(tmp_path, monkeypatch)
         df = pd.read_parquet(out)
         d = df["date"].iloc[0]
         assert d == _me("2015-06")
-        # Month-end normalised, tz-naive — engine's contract.
         assert d.tz is None
-        assert d == d + pd.offsets.MonthEnd(0)
+        assert d == d.normalize()                      # midnight, not 23:59:59
+        assert d == d + pd.offsets.MonthEnd(0)         # already month-end
 
     def test_size_is_placeholder_constant(self, tmp_path, monkeypatch):
-        rows = [_base_row("S1", "2015-06-15", 100.0, 200_000)]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+        out, _ = self._build(tmp_path, monkeypatch)
         df = pd.read_parquet(out)
-        # size is a placeholder until FISD's amount_outstanding lands;
-        # callers must use weighting='equal' until then.
         assert (df["size"] == SIZE_PLACEHOLDER).all()
 
-    def test_n_trades_correct(self, tmp_path, monkeypatch):
-        rows = [
-            _base_row("S1", "2015-06-10", 100.0, 200_000),
-            _base_row("S1", "2015-06-20", 105.0, 200_000),
-        ]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+    def test_exit_reason_is_all_nan_placeholder(self, tmp_path, monkeypatch):
+        out, _ = self._build(tmp_path, monkeypatch)
         df = pd.read_parquet(out)
-        assert df[df["cusip"] == _cusip_of("S1")]["n_trades"].iloc[0] == 2
+        assert df["exit_reason"].isna().all()
 
-    def test_bond_sym_ids_audit_column(self, tmp_path, monkeypatch):
-        rows = [_base_row("S1", "2015-06-15", 100.0, 200_000)]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+    def test_cusip_carried_through_from_daily_layer(self, tmp_path, monkeypatch):
+        out, counts = self._build(tmp_path, monkeypatch)
         df = pd.read_parquet(out)
-        # Single sym -> a one-element list/array containing "S1".
-        syms = list(df[df["cusip"] == _cusip_of("S1")]["bond_sym_ids"].iloc[0])
-        assert syms == ["S1"]
+        assert sorted(df["cusip"].unique().tolist()) == sorted([C1, C2])
+        assert counts["unique_cusips"] == 2
+        assert counts["cusip_month_observations"] == 2
 
-    def test_parquet_schema_metadata_records_size_policy(
-        self, tmp_path, monkeypatch
-    ):
-        """The Arrow schema metadata must carry size_policy / primary_key /
-        panel_kind so downstream Auditor / Quant code can detect the
-        placeholder-size policy and refuse weighting='by_size'."""
-        rows = [_base_row("S1", "2015-06-15", 100.0, 200_000)]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+    def test_parquet_metadata_records_maximal_panel_kind(self, tmp_path, monkeypatch):
+        out, _ = self._build(tmp_path, monkeypatch)
         meta = pq.read_schema(str(out)).metadata
         assert meta is not None
-        assert meta.get(b"size_policy") == b"placeholder_const_1.0"
+        assert meta.get(b"panel_kind") == b"maximal"
         assert meta.get(b"primary_key") == b"cusip"
-        assert meta.get(b"panel_kind") == b"uncorrected"
-
-
-# ---------------------------------------------------------------------------
-# TestBlankCusipHandling
-# ---------------------------------------------------------------------------
-
-class TestBlankCusipHandling:
-    def test_blank_cusip_trade_dropped_and_counted(self, tmp_path, monkeypatch):
-        rows = [
-            _base_row("S1", "2015-06-15", 100.0, 200_000, cusip_id=""),
-            _base_row("S2", "2015-06-15", 105.0, 200_000),
-        ]
-        out, counts = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
-        df = pd.read_parquet(out)
-        # Only S2's cusip survives.
-        assert list(df["cusip"].unique()) == [_cusip_of("S2")]
-        assert counts["dropped_blank_cusip_trades"] == 1
-
-    def test_null_cusip_trade_also_dropped(self, tmp_path, monkeypatch):
-        rows = [
-            _base_row("S1", "2015-06-15", 100.0, 200_000, cusip_id=None),
-            _base_row("S2", "2015-06-15", 105.0, 200_000),
-        ]
-        # _base_row with cusip_id=None falls back to its default _cusip_of(sym),
-        # so to hit the null branch we must override the row directly.
-        rows[0]["cusip_id"] = None
-        out, counts = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
-        df = pd.read_parquet(out)
-        assert list(df["cusip"].unique()) == [_cusip_of("S2")]
-        assert counts["dropped_blank_cusip_trades"] == 1
-
-
-# ---------------------------------------------------------------------------
-# TestCUSIPKeyingDifferential — the three plan-mandated cases that
-# distinguish CUSIP-keying from sym-keying. A buggy "groupby bond_id"
-# implementation would visibly fail every one of these.
-# ---------------------------------------------------------------------------
-
-class TestCUSIPKeyingDifferential:
-    def test_hand_computed_cusip_month_vwap(self, tmp_path, monkeypatch):
-        """Three trades on one CUSIP in one month, with deliberately
-        asymmetric prices and volumes so the answer is not the simple
-        average and not any single trade's price."""
-        rows = [
-            _base_row("S1", "2015-06-05", 100.0, 100_000),
-            _base_row("S1", "2015-06-15", 200.0, 300_000),
-            _base_row("S1", "2015-06-25", 150.0, 200_000),
-        ]
-        out, _ = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
-        df = pd.read_parquet(out)
-        # VWAP = (100*100k + 200*300k + 150*200k) / 600k = 166.666...
-        expected = (100_000 * 100 + 300_000 * 200 + 200_000 * 150) / 600_000
-        assert df[df["cusip"] == _cusip_of("S1")]["price_eom"].iloc[0] == pytest.approx(
-            expected, abs=1e-9
+        assert meta.get(b"families") == b"raw,corr"
+        assert meta.get(b"size_policy") == (
+            f"placeholder_const_{SIZE_PLACEHOLDER}".encode("utf-8")
         )
+        assert meta.get(b"survivorship_policy") == b"exit_reason_nan_pre_FISD"
 
-    def test_one_sym_two_cusips_across_two_months_yields_two_rows(
-        self, tmp_path, monkeypatch
-    ):
-        """A buggy sym-keyed build would produce ONE 'S1' panel entry with
-        TWO month-rows. The cusip-keyed build must produce TWO distinct
-        cusip-rows each with ONE month — proving the key has changed."""
-        rows = [
-            # Month 1: S1 traded under CUSIP_A
-            _base_row("S1", "2015-05-15", 100.0, 200_000, cusip_id="CUSIPAAAA"),
-            # Month 2: S1 was reassigned to CUSIP_B
-            _base_row("S1", "2015-06-15", 105.0, 200_000, cusip_id="CUSIPBBBB"),
-        ]
-        out, _ = _setup(
-            tmp_path, monkeypatch, rows,
-            [("2015-05", 0.001), ("2015-06", 0.001)],
-        )
-        df = pd.read_parquet(out).sort_values(["cusip", "date"])
-        # Two distinct cusips.
-        assert sorted(df["cusip"].unique().tolist()) == ["CUSIPAAAA", "CUSIPBBBB"]
-        # Each cusip has exactly one row.
-        for c in ["CUSIPAAAA", "CUSIPBBBB"]:
-            assert (df["cusip"] == c).sum() == 1
-        # Both rows carry the same originating sym in bond_sym_ids audit.
-        for c in ["CUSIPAAAA", "CUSIPBBBB"]:
-            syms = list(df[df["cusip"] == c]["bond_sym_ids"].iloc[0])
-            assert syms == ["S1"]
-        # Adjacency rule across the sym->cusip switch: CUSIP_B has no prior
-        # month-row under its own key, so its return is NaN — not the bogus
-        # (105-100)/100 a buggy sym-keyed build would produce.
-        b_row = df[df["cusip"] == "CUSIPBBBB"].iloc[0]
-        assert pd.isna(b_row["ret"]), (
-            "CUSIP_B is its own time-series; with no prior month under its own "
-            "key, the first observed month must yield NaN return."
-        )
-
-    def test_two_syms_same_cusip_same_month_collapse_to_one_row(
-        self, tmp_path, monkeypatch
-    ):
-        """A buggy sym-keyed build would produce TWO 'S1' and 'S2' panel rows
-        with prices 100 and 200. The cusip-keyed build collapses them into a
-        single CUSIPXYZ row with weight-merged VWAP, and the audit field
-        records the within-month sym collision."""
-        rows = [
-            _base_row("S1", "2015-06-05", 100.0, 200_000, cusip_id="CUSIPXYZA"),
-            _base_row("S2", "2015-06-20", 200.0, 200_000, cusip_id="CUSIPXYZA"),
-        ]
-        out, counts = _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
-        df = pd.read_parquet(out)
-        # Exactly one panel row.
-        cell = df[df["cusip"] == "CUSIPXYZA"]
-        assert len(cell) == 1
-        # Weight-merged VWAP = (100*200k + 200*200k) / 400k = 150.
-        assert cell["price_eom"].iloc[0] == pytest.approx(150.0, abs=1e-9)
-        # Audit columns reflect the collision.
-        syms = sorted(list(cell["bond_sym_ids"].iloc[0]))
-        assert syms == ["S1", "S2"]
-        assert counts["within_month_multi_sym_cusips"] >= 1
-
-
-# ---------------------------------------------------------------------------
-# TestCorrectionToggles — default false; flipping true raises until
-# the implementation is wired.
-# ---------------------------------------------------------------------------
-
-class TestCorrectionToggles:
-    def test_toggles_default_false_in_report(self, tmp_path, monkeypatch):
-        # Re-read the YAML directly to confirm the defaults shipped.
-        import build_monthly_panel as bmp
-        toggles = bmp.load_correction_toggles()
-        assert toggles == {
-            "apply_stale_price_filter": False,
-            "apply_survivorship_correction": False,
-        }
-
-    def test_stale_price_toggle_raises_until_implemented(
-        self, tmp_path, monkeypatch
-    ):
-        rows = [
-            _base_row("S1", "2015-05-15", 100.0, 200_000),
-            _base_row("S1", "2015-06-15", 105.0, 200_000),
-        ]
-        import build_monthly_panel as bmp
-
-        def _patched_toggles():
-            return {
-                "apply_stale_price_filter": True,
-                "apply_survivorship_correction": False,
-            }
-        monkeypatch.setattr(bmp, "load_correction_toggles", _patched_toggles)
-        with pytest.raises(NotImplementedError, match="stale_price_filter"):
-            _setup(
-                tmp_path, monkeypatch, rows,
-                [("2015-05", 0.001), ("2015-06", 0.001)],
-            )
-
-    def test_survivorship_toggle_raises_until_implemented(
-        self, tmp_path, monkeypatch
-    ):
-        rows = [
-            _base_row("S1", "2015-05-15", 100.0, 200_000),
-            _base_row("S1", "2015-06-15", 105.0, 200_000),
-        ]
-        import build_monthly_panel as bmp
-
-        def _patched_toggles():
-            return {
-                "apply_stale_price_filter": False,
-                "apply_survivorship_correction": True,
-            }
-        monkeypatch.setattr(bmp, "load_correction_toggles", _patched_toggles)
-        with pytest.raises(NotImplementedError, match="survivorship"):
-            _setup(
-                tmp_path, monkeypatch, rows,
-                [("2015-05", 0.001), ("2015-06", 0.001)],
-            )
-
-    def test_toggle_raises_even_on_empty_panel(self, tmp_path, monkeypatch):
-        """Regression guard for the hoist: an input that produces zero rows
-        after filtering (here, a single sub-threshold trade) must STILL
-        raise when a toggle is on. Before the hoist, the raise lived inside
-        the cusip_months > 0 branch and an empty TRACE input would silently
-        bypass it."""
-        # 50,000 vol < min_vol_qt (100,000) -> filtered out -> empty panel
-        rows = [_base_row("S1", "2015-06-15", 100.0, 50_000)]
-        import build_monthly_panel as bmp
-
-        def _patched_toggles():
-            return {
-                "apply_stale_price_filter": True,
-                "apply_survivorship_correction": False,
-            }
-        monkeypatch.setattr(bmp, "load_correction_toggles", _patched_toggles)
-        with pytest.raises(NotImplementedError, match="stale_price_filter"):
-            _setup(tmp_path, monkeypatch, rows, [("2015-06", 0.001)])
+    def test_no_tmp_leftover_after_success(self, tmp_path, monkeypatch):
+        self._build(tmp_path, monkeypatch)
+        assert not list(tmp_path.glob("*.tmp"))

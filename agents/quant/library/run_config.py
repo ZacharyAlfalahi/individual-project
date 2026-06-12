@@ -190,6 +190,21 @@ class RunConfig:
         """
         return hashlib.sha256(self.to_yaml().encode("utf-8")).hexdigest()
 
+    def panel_view_hash(self) -> str:
+        """Stable SHA-256 over the panel_view block only.
+
+        views.view() consumes ONLY panel_view — construction and
+        evaluation toggles apply downstream at the engine/rulebook level.
+        Artefacts produced by view() must therefore be identified by this
+        hash, not hash(): stamping the full-config hash on a panel would
+        assert construction toggles the panel does not contain.
+        """
+        block = yaml.safe_dump(
+            {"panel_view": asdict(self.panel_view)},
+            sort_keys=True, default_flow_style=False,
+        )
+        return hashlib.sha256(block.encode("utf-8")).hexdigest()
+
 
 # ---------------------------------------------------------------------------
 # Convenience constructors for the two endpoint views

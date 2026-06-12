@@ -41,18 +41,18 @@ import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "agents" / "quant" / "library"))
-from characteristic_sort import (  # noqa: E402
+sys.path.insert(0, str(REPO_ROOT))
+from agents.quant.library.characteristic_sort import (  # noqa: E402
     run_characteristic_sort,
     summarize_returns,
 )
-from run_config import (  # noqa: E402
+from agents.quant.library.run_config import (  # noqa: E402
     RunConfig,
     PanelViewConfig,
     ConstructionConfig,
     EvaluationConfig,
 )
-from views import view  # noqa: E402
+from agents.quant.library.views import view  # noqa: E402
 
 
 PANEL_FILE = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
@@ -60,33 +60,29 @@ OUT_DIR = REPO_ROOT / "data" / "development" / "headlines"
 OUT_FILE = OUT_DIR / "str_lib_gap_aoi.json"
 
 
-def _str_view_config(family: str) -> RunConfig:
-    """Build a RunConfig that selects the named family with no view-layer
-    transformations beyond family selection. signal_lag and expost_trim
-    are construction-layer choices the engine handles directly, so we
-    keep the view layer minimal here and let the rulebook drive the
-    construction-side toggles."""
+def _str_view_config(family: str, signal_lag: int) -> RunConfig:
+    """Build the full run identity for one experiment arm. The view layer
+    consumes only panel_view (family selection, no mask, no terminal rows);
+    the construction block records the arm's signal_lag, and the rulebook
+    is derived FROM it (see main) so the config never disagrees with the
+    run it identifies."""
     return RunConfig(
         panel_view=PanelViewConfig(
             price_family=family,
             stale_mask=False,
             include_terminal_rows=False,
         ),
-        # Construction toggles are exercised by varying signal_lag in the
-        # rulebook itself (see _str_rulebook). The view layer only owns
-        # the panel-level selection here.
-        construction=ConstructionConfig(signal_lag=0, expost_trim="none"),
+        construction=ConstructionConfig(signal_lag=signal_lag, expost_trim="none"),
         evaluation=EvaluationConfig(),
     )
 
 
-def _build_family_panel(maximal: pd.DataFrame, family: str) -> pd.DataFrame:
+def _build_family_panel(maximal: pd.DataFrame, cfg: RunConfig) -> pd.DataFrame:
     """Materialise the engine-shape panel for the STR run via the canonical
     view() interface. STR's score column is `ret` itself (sort on
     prior-month return), so after view() selects the family's `ret_<family>`
     and renames it to `ret`, we add `score = ret` as the final adapter step.
     """
-    cfg = _str_view_config(family)
     panel = view(maximal, cfg)  # adds engine-contract columns
     panel = panel.drop_duplicates(subset=["cusip", "date"]).reset_index(drop=True)
     panel["score"] = panel["ret"]
@@ -109,11 +105,12 @@ def _str_rulebook(signal_lag: int) -> dict:
     }
 
 
-def _summarize(result: dict, label: str) -> dict:
+def _summarize(result: dict, label: str, cfg: RunConfig) -> dict:
     mr = result["monthly_returns"]
     summary = result["summary"]
     return {
         "label": label,
+        "run_config_hash": cfg.hash(),
         "n_months": int(summary["n_months"]),
         "first_date": str(summary["first_date"].date()) if summary["first_date"] is not None else None,
         "last_date":  str(summary["last_date"].date())  if summary["last_date"]  is not None else None,
@@ -162,18 +159,27 @@ def main():
     # Primary differential: lib_gap on CORRECTED family (gap=0 vs gap=1).
     # ------------------------------------------------------------------
     print("\nPrimary — str × lib_gap on corrected family")
-    corr_panel = _build_family_panel(maximal, "corr")
+    cfg_corr_gap0 = _str_view_config("corr", signal_lag=0)
+    cfg_corr_gap1 = _str_view_config("corr", signal_lag=1)
+    # Both corr arms share the same panel_view, so one view() materialisation
+    # serves both engine runs. The assert makes that reuse explicit.
+    assert cfg_corr_gap0.panel_view_hash() == cfg_corr_gap1.panel_view_hash()
+    corr_panel = _build_family_panel(maximal, cfg_corr_gap0)
     print(f"  corr panel: {len(corr_panel):,} rows, "
           f"{int(corr_panel['ret'].notna().sum()):,} non-NaN ret")
     print("  Running engine: lib_gap=OFF (signal_lag=0) ...")
-    res_corr_gap0 = run_characteristic_sort(corr_panel, _str_rulebook(0))
+    res_corr_gap0 = run_characteristic_sort(
+        corr_panel, _str_rulebook(cfg_corr_gap0.construction.signal_lag)
+    )
     print(f"    {res_corr_gap0['summary']['n_months']} months")
     print("  Running engine: lib_gap=ON  (signal_lag=1) ...")
-    res_corr_gap1 = run_characteristic_sort(corr_panel, _str_rulebook(1))
+    res_corr_gap1 = run_characteristic_sort(
+        corr_panel, _str_rulebook(cfg_corr_gap1.construction.signal_lag)
+    )
     print(f"    {res_corr_gap1['summary']['n_months']} months")
 
-    summary_corr_gap0 = _summarize(res_corr_gap0, "corr_gap0")
-    summary_corr_gap1 = _summarize(res_corr_gap1, "corr_gap1")
+    summary_corr_gap0 = _summarize(res_corr_gap0, "corr_gap0", cfg_corr_gap0)
+    summary_corr_gap1 = _summarize(res_corr_gap1, "corr_gap1", cfg_corr_gap1)
     aoi_diff_lib_gap = _paired_difference(
         res_corr_gap0["monthly_returns"], res_corr_gap1["monthly_returns"]
     )
@@ -182,14 +188,17 @@ def main():
     # Bonus: str raw-vs-corrected at gap=0 (real-data check-2 proxy).
     # ------------------------------------------------------------------
     print("\nBonus — str raw-vs-corr at gap=0 (check-2 proxy)")
-    raw_panel = _build_family_panel(maximal, "raw")
+    cfg_raw_gap0 = _str_view_config("raw", signal_lag=0)
+    raw_panel = _build_family_panel(maximal, cfg_raw_gap0)
     print(f"  raw panel: {len(raw_panel):,} rows, "
           f"{int(raw_panel['ret'].notna().sum()):,} non-NaN ret")
     print("  Running engine: family=raw, signal_lag=0 ...")
-    res_raw_gap0 = run_characteristic_sort(raw_panel, _str_rulebook(0))
+    res_raw_gap0 = run_characteristic_sort(
+        raw_panel, _str_rulebook(cfg_raw_gap0.construction.signal_lag)
+    )
     print(f"    {res_raw_gap0['summary']['n_months']} months")
 
-    summary_raw_gap0 = _summarize(res_raw_gap0, "raw_gap0")
+    summary_raw_gap0 = _summarize(res_raw_gap0, "raw_gap0", cfg_raw_gap0)
     aoi_diff_meas_err_proxy = _paired_difference(
         res_raw_gap0["monthly_returns"], res_corr_gap0["monthly_returns"]
     )

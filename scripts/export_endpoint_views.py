@@ -13,8 +13,14 @@ the endpoint exports primary artefacts.
 Each parquet's Arrow schema metadata carries:
   panel_kind = uncorrected | corrected
   primary_key = cusip
-  registry_run_config_hash = <hex digest of the RunConfig that produced it>
+  registry_panel_view_hash = <hex digest of the panel_view block that produced it>
   source_panel_sha256 = <hex digest of the input maximal panel>
+
+The parquet is stamped with panel_view_hash(), NOT the full-config hash():
+view() consumes only the panel_view block, so the construction/evaluation
+toggles (signal_lag, expost_trim) are not embodied in the exported panel —
+stamping the full hash would over-claim. The JSON report records both the
+full RunConfig YAML and both hashes for complete provenance.
 
 Sibling report: data/development/monthly_panel_endpoint_reports.json
   - input panel sha256
@@ -39,9 +45,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "agents" / "quant" / "library"))
-from run_config import RunConfig, uncorrected, corrected  # noqa: E402
-from views import view  # noqa: E402
+sys.path.insert(0, str(REPO_ROOT))
+from agents.quant.library.run_config import RunConfig, uncorrected, corrected  # noqa: E402
+from agents.quant.library.views import view  # noqa: E402
 
 
 PANEL_FILE = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
@@ -74,7 +80,7 @@ def _write_export(
     meta.update({
         b"panel_kind":  panel_kind.encode("utf-8"),
         b"primary_key": b"cusip",
-        b"registry_run_config_hash": config.hash().encode("utf-8"),
+        b"registry_panel_view_hash": config.panel_view_hash().encode("utf-8"),
         b"source_panel_sha256":      source_panel_sha.encode("utf-8"),
     })
     table = table.replace_schema_metadata(meta)
@@ -135,6 +141,7 @@ def main():
                 "sha256": sha_unc,
                 "rows": int(len(panel_unc)),
                 "run_config_hash": cfg_unc.hash(),
+                "panel_view_hash": cfg_unc.panel_view_hash(),
                 "run_config_yaml": cfg_unc.to_yaml(),
             },
             "corrected": {
@@ -142,6 +149,7 @@ def main():
                 "sha256": sha_corr,
                 "rows": int(len(panel_corr)),
                 "run_config_hash": cfg_corr.hash(),
+                "panel_view_hash": cfg_corr.panel_view_hash(),
                 "run_config_yaml": cfg_corr.to_yaml(),
             },
         },

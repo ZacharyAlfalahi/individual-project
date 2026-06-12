@@ -1,53 +1,44 @@
 """
-Unit tests for TRACE preprocessing logic.
+Unit tests for TRACE preprocessing (Dick-Nielsen basic cleaning ONLY).
 
-DEFERRED: Phase 1 of the bias-toggle registry refactor relocates decimal-shift
-and price-plausibility to apply_decimal_shift.py (corrected branch only) per
-A1 of docs/bias_toggle_registry_amendments_v1_1.md. This file's tests assume
-the old single-pipeline shape (decimal_shift function, in-line price filter,
-trace_clean.parquet output path). Tests are skipped at module level pending
-adaptation to:
-  - new output path (trace_clean_raw.parquet) on Dick-Nielsen tests
-  - relocation of decimal-shift tests to test_apply_decimal_shift.py
-  - integration with the new injection suite (test_meas_err_injection.py)
+Post Phase-1 registry refactor: preprocess_trace.py performs only the
+basic-cleaning filters shared by both column families —
 
-The new injection tests cover the decimal-shift and price-plausibility behaviour
-end-to-end on synthetic data; the Dick-Nielsen pipeline still runs as designed
-but lacks unit coverage in this transition window.
+  1a. trc_st == "T"                 — drop cancelled/reversed/withdrawn records
+  1b. composite-key cancellation    — drop T records cancelled by a later C/W/X/Y/R
+  2.  asof_cd blank                 — keep only on-time original reports
+  3.  wis_fl != "Y"                 — drop when-issued trades
+  6.  interdealer dedup             — Dick-Nielsen B2 on RAW prices
+
+— plus the dev/holdout date split (< holdout_start_year dev, >= holdout) and
+trace_clean_raw.parquet partition writing.
+
+Price plausibility and decimal-shift were RELOCATED to apply_decimal_shift.py
+(corrected branch only) per amendment A1.7: under meas_err=OFF the raw family
+must preserve implausible prices BIT-EXACT. These tests therefore assert that
+zero/negative/over-ceiling/near-zero/decimal-slip prices SURVIVE this stage
+with their prices unchanged. Decimal-shift behaviour is covered in
+test_apply_decimal_shift.py / the meas_err injection suite, not here.
 """
-import pytest
-
-pytest.skip(
-    "Phase 1 registry refactor pending — see module docstring",
-    allow_module_level=True,
-)
-
 import csv
 import gzip
 import io
 import json
-import sys
+from collections import Counter
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
 from preprocess_trace import (
     KEEP_COLUMNS,
-    decimal_shift,
     load_thresholds,
     run_pandas,
     write_report,
-    DEV_OUT,
-    HOLD_OUT,
-    REPORT_OUT,
-    RAW_FILE,
 )
 
 # Load thresholds from the single source of truth — tests break if values change
 _cfg = load_thresholds()
-FLOOR = _cfg["price_floor"]
-CEILING = _cfg["price_ceiling"]
 
 # ---------------------------------------------------------------------------
 # Synthetic test data
@@ -60,6 +51,10 @@ CEILING = _cfg["price_ceiling"]
 #             orig_msg_seq_nb (default ""), bond_id_override (default None)
 # bond_sym_id is built as f"TEST_{label}" unless bond_id_override is set
 # (used to give the interdealer pair the same bond_id).
+#
+# A1.7 contract: price-implausible rows (zero, negative, over-ceiling,
+# near-zero, 10x/100x decimal slips) SURVIVE the raw cleaning stage with their
+# prices preserved bit-exact. exp_price == price for every survivor.
 
 SYNTHETIC_CASES = [
     {"label": "clean_trade",        "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":    98.5, "dt": "2015-06-01", "survives": True,  "exp_price": 98.5},
@@ -71,28 +66,31 @@ SYNTHETIC_CASES = [
     {"label": "asof_R",             "trc_st": "T", "asof_cd": "R", "wis_fl": "N", "price":    98.5, "dt": "2015-06-01", "survives": False, "exp_price": None},
     {"label": "asof_D",             "trc_st": "T", "asof_cd": "D", "wis_fl": "N", "price":    98.5, "dt": "2015-06-01", "survives": False, "exp_price": None},
     {"label": "asof_X",             "trc_st": "T", "asof_cd": "X", "wis_fl": "N", "price":    98.5, "dt": "2015-06-01", "survives": False, "exp_price": None},
-    {"label": "zero_price",         "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":     0.0, "dt": "2015-06-01", "survives": False, "exp_price": None},
-    {"label": "neg_price",          "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":    -1.0, "dt": "2015-06-01", "survives": False, "exp_price": None},
-    {"label": "over_ceiling",       "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price": 35000.0, "dt": "2015-06-01", "survives": False, "exp_price": None},
-    {"label": "decimal_10x",        "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":   985.0, "dt": "2015-06-01", "survives": True,  "exp_price": 98.5},
-    {"label": "decimal_100x",       "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":  9850.0, "dt": "2015-06-01", "survives": True,  "exp_price": 98.5},
+
+    # A1.7 — implausible prices are NOT filtered or shifted at this stage.
+    # They survive with prices bit-exact; apply_decimal_shift.py (corrected
+    # branch only) handles plausibility + shifting downstream.
+    {"label": "zero_price",         "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":     0.0, "dt": "2015-06-01", "survives": True,  "exp_price":     0.0},
+    {"label": "neg_price",          "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":    -1.0, "dt": "2015-06-01", "survives": True,  "exp_price":    -1.0},
+    {"label": "over_ceiling",       "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price": 35000.0, "dt": "2015-06-01", "survives": True,  "exp_price": 35000.0},
+    {"label": "decimal_10x",        "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":   985.0, "dt": "2015-06-01", "survives": True,  "exp_price":   985.0},
+    {"label": "decimal_100x",       "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":  9850.0, "dt": "2015-06-01", "survives": True,  "exp_price":  9850.0},
+    {"label": "near_zero_price",    "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":     0.5, "dt": "2015-06-01", "survives": True,  "exp_price":     0.5},
+
     {"label": "asof_A_drop",        "trc_st": "T", "asof_cd": "A", "wis_fl": "N", "price":    98.5, "dt": "2018-09-15", "survives": False, "exp_price": None},
     {"label": "asof_blank_keep",    "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":    98.5, "dt": "2019-12-31", "survives": True,  "exp_price": 98.5},
     {"label": "holdout_trade",      "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":    98.5, "dt": "2023-03-15", "survives": True,  "exp_price": 98.5},
 
-    # C1: floor raised from 0.0 to 1.0 — anything in (0, 1] must drop
-    {"label": "near_zero_price",    "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":     0.5, "dt": "2015-06-01", "survives": False, "exp_price": None},
-
-    # C2: interdealer pair (same bond_id, dt, price, vol; B and S sides) — keep S, drop B
+    # Interdealer pair (same bond_id, dt, price, vol; B and S sides) — keep S, drop B
     {"label": "interdealer_sell_A", "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":    95.0, "dt": "2016-03-01", "survives": True,  "exp_price": 95.0,
      "vol": 50000.0, "side": "S", "bond_id_override": "TEST_PAIR_A"},
     {"label": "interdealer_buy_A",  "trc_st": "T", "asof_cd": "",  "wis_fl": "N", "price":    95.0, "dt": "2016-03-01", "survives": False, "exp_price": None,
      "vol": 50000.0, "side": "B", "bond_id_override": "TEST_PAIR_A"},
-    # C2: B-side with no matching S — kept (not a duplicate)
+    # B-side with no matching S — kept (not a duplicate)
     {"label": "interdealer_buy_no_match", "trc_st": "T", "asof_cd": "", "wis_fl": "N", "price": 92.0, "dt": "2016-03-01", "survives": True, "exp_price": 92.0,
      "side": "B"},
 
-    # C3: T record that gets cancelled by a later C record. Pass 1 sees the C
+    # T record that gets cancelled by a later C record. Pass 1 sees the C
     # record's (bond, dt, orig_msg_seq_nb=9001) composite key and adds it to
     # cancelled_keys; Pass 2 drops the original T row via the same composite key.
     {"label": "original_later_cancelled", "trc_st": "T", "asof_cd": "", "wis_fl": "N", "price": 88.0, "dt": "2017-05-10", "survives": False, "exp_price": None,
@@ -103,15 +101,15 @@ SYNTHETIC_CASES = [
     {"label": "cancellation_record",    "trc_st": "C", "asof_cd": "", "wis_fl": "N", "price": 88.0, "dt": "2017-05-10", "survives": False, "exp_price": None,
      "msg_seq_nb": "9002", "orig_msg_seq_nb": "9001", "bond_id_override": "TEST_CXR_ORIG"},
 
-    # Fix Critical #1 — msg_seq_nb=9001 reused on a different (bond, dt).
-    # With the buggy bare-msg_seq_nb match, this row would be wrongly dropped.
-    # With the composite (bond, dt, msg_seq_nb) key it must SURVIVE.
+    # msg_seq_nb=9001 reused on a different (bond, dt). With a buggy
+    # bare-msg_seq_nb match this row would be wrongly dropped. With the
+    # composite (bond, dt, msg_seq_nb) key it must SURVIVE.
     {"label": "msg_seq_reuse_cross_day", "trc_st": "T", "asof_cd": "", "wis_fl": "N", "price": 102.0, "dt": "2020-08-15", "survives": True, "exp_price": 102.0,
      "msg_seq_nb": "9001"},
 
-    # Fix Critical #2 — market-maker scenario: 1 S + 2 B at the same key.
-    # Old set-based dedup dropped BOTH B's; the Counter pairs the first B with
-    # the S and keeps the second B (a legitimate client buy on the dealer's book).
+    # Market-maker scenario: 1 S + 2 B at the same key. Counter-based pairing
+    # consumes exactly one B per S and keeps the second B (a legitimate client
+    # buy on the dealer's book); set-based dedup would drop both B's.
     {"label": "mm_sell_A",          "trc_st": "T", "asof_cd": "", "wis_fl": "N", "price": 80.0, "dt": "2018-04-04", "survives": True,  "exp_price": 80.0,
      "vol": 25000.0, "side": "S", "bond_id_override": "TEST_MM_A"},
     {"label": "mm_buy_A_paired",    "trc_st": "T", "asof_cd": "", "wis_fl": "N", "price": 80.0, "dt": "2018-04-04", "survives": False, "exp_price": None,
@@ -140,7 +138,7 @@ def make_synthetic_df() -> pd.DataFrame:
         row["company_symbol"] = "TEST"
         row["rpt_side_cd"] = case.get("side", "")
         # Synthesize sequential msg_seq_nb when not given so apply_filters can
-        # do C3 matching via the standard column.
+        # do cancellation matching via the standard column.
         row["msg_seq_nb"] = case.get("msg_seq_nb") or str(1000 + i)
         row["orig_msg_seq_nb"] = case.get("orig_msg_seq_nb", "")
         rows.append(row)
@@ -150,14 +148,15 @@ def make_synthetic_df() -> pd.DataFrame:
 def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     """In-DataFrame equivalent of the two-pass production pipeline.
 
-    Mirrors the production logic: composite (bond, dt, msg_seq_nb) cancellation
-    key (Dick-Nielsen B1) and Counter-based pair dedup (Dick-Nielsen B2).
+    Mirrors the production logic exactly: composite (bond, dt, msg_seq_nb)
+    cancellation key (Dick-Nielsen B1), Counter-based pair dedup on RAW
+    prices (Dick-Nielsen B2), and — per the Phase-1 refactor — NO price
+    plausibility filter and NO decimal-shift. Sell-side dedup keys are
+    collected from rows passing filters 1a/2/3, matching production Pass 1.
     """
-    from collections import Counter as _Counter
-
     df = df.copy()
 
-    # Pass-1 equivalent: collect cancelled composite keys from non-T rows
+    # Pass-1 equivalent (a): collect cancelled composite keys from non-T rows
     non_t = df[df["trc_st"] != "T"]
     cancelled_keys: set = set()
     for _, r in non_t.iterrows():
@@ -165,6 +164,16 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
         if orig == "" or orig == "nan":
             continue
         cancelled_keys.add((str(r["bond_sym_id"]), str(r["trd_exctn_dt"]), orig))
+
+    # Pass-1 equivalent (b): sell-side dedup pool from rows passing 1a/2/3
+    pool = df[df["trc_st"] == "T"]
+    pool = pool[pool["asof_cd"].isna() | (pool["asof_cd"] == "")]
+    pool = pool[pool["wis_fl"] != "Y"]
+    sells = pool[pool["rpt_side_cd"] == "S"]
+    sell_counts: Counter = Counter()
+    for _, r in sells.iterrows():
+        sell_counts[(str(r["bond_sym_id"]), str(r["trd_exctn_dt"]),
+                     r["rptd_pr"], r["entrd_vol_qt"])] += 1
 
     # Filter 1a
     df = df[df["trc_st"] == "T"]
@@ -175,21 +184,15 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
                     str(r["msg_seq_nb"])) in cancelled_keys
         df = df[~df.apply(_is_cancelled, axis=1)]
 
+    # Filter 2: blank asof_cd only
     df = df[df["asof_cd"].isna() | (df["asof_cd"] == "")]
+    # Filter 3: when-issued
     df = df[df["wis_fl"] != "Y"]
-    df = df[(df["rptd_pr"] > FLOOR) & (df["rptd_pr"] <= 30_000)]
-    df["rptd_pr"] = df["rptd_pr"].apply(lambda p: decimal_shift(p, FLOOR, CEILING))
-    df = df.dropna(subset=["rptd_pr"])
-    df = df[df["rptd_pr"] <= CEILING]
 
-    # C2 — interdealer pair dedup using a Counter (multiset). 1 S consumes
-    # exactly 1 B; surplus B's on the same key remain (client trades).
-    sells = df[df["rpt_side_cd"] == "S"]
-    sell_counts: _Counter = _Counter()
-    for _, r in sells.iterrows():
-        sell_counts[(str(r["bond_sym_id"]), str(r["trd_exctn_dt"]),
-                     r["rptd_pr"], r["entrd_vol_qt"])] += 1
+    # NO price plausibility, NO decimal-shift — relocated downstream (A1.7).
 
+    # Filter 6 — interdealer pair dedup using a Counter (multiset). 1 S
+    # consumes exactly 1 B; surplus B's on the same key remain (client trades).
     if sell_counts:
         keep = []
         for idx, r in df.iterrows():
@@ -208,33 +211,6 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# decimal_shift
-# ---------------------------------------------------------------------------
-
-class TestDecimalShift:
-    def test_valid_price_unchanged(self):
-        assert decimal_shift(98.5, FLOOR, CEILING) == 98.5
-
-    def test_10x_correction(self):
-        assert decimal_shift(985.0, FLOOR, CEILING) == pytest.approx(98.5)
-
-    def test_100x_correction(self):
-        assert decimal_shift(9850.0, FLOOR, CEILING) == pytest.approx(98.5)
-
-    def test_boundary_exactly_at_ceiling_valid(self):
-        assert decimal_shift(CEILING, FLOOR, CEILING) == CEILING
-
-    def test_unresolvable_returns_none(self):
-        assert decimal_shift(99_999.0, FLOOR, CEILING) is None
-
-    def test_zero_returns_none(self):
-        assert decimal_shift(0.0, FLOOR, CEILING) is None
-
-    def test_negative_returns_none(self):
-        assert decimal_shift(-5.0, FLOOR, CEILING) is None
-
-
-# ---------------------------------------------------------------------------
 # Filter pipeline
 # ---------------------------------------------------------------------------
 
@@ -242,6 +218,11 @@ class TestFilterLogic:
     def setup_method(self):
         self.raw = make_synthetic_df()
         self.filtered = apply_filters(self.raw)
+
+    def _price_of(self, bond_id: str) -> float:
+        row = self.filtered[self.filtered["bond_sym_id"] == bond_id]
+        assert len(row) == 1
+        return row["rptd_pr"].iloc[0]
 
     def test_surviving_row_count(self):
         expected = sum(1 for c in SYNTHETIC_CASES if c["survives"])
@@ -258,6 +239,9 @@ class TestFilterLogic:
     def test_reversal_W_dropped(self):
         assert "TEST_reversal_W" not in self.filtered["bond_sym_id"].values
 
+    def test_correction_R_dropped(self):
+        assert "TEST_correction_R" not in self.filtered["bond_sym_id"].values
+
     def test_when_issued_dropped(self):
         assert "TEST_when_issued" not in self.filtered["bond_sym_id"].values
 
@@ -270,37 +254,34 @@ class TestFilterLogic:
     def test_asof_X_dropped(self):
         assert "TEST_asof_X" not in self.filtered["bond_sym_id"].values
 
-    def test_zero_price_dropped(self):
-        assert "TEST_zero_price" not in self.filtered["bond_sym_id"].values
-
-    def test_over_ceiling_dropped(self):
-        assert "TEST_over_ceiling" not in self.filtered["bond_sym_id"].values
-
     def test_asof_A_dropped(self):
         assert "TEST_asof_A_drop" not in self.filtered["bond_sym_id"].values
 
     def test_asof_blank_kept(self):
         assert "TEST_asof_blank_keep" in self.filtered["bond_sym_id"].values
 
-    def test_decimal_10x_corrected(self):
-        row = self.filtered[self.filtered["bond_sym_id"] == "TEST_decimal_10x"]
-        assert len(row) == 1
-        assert row["rptd_pr"].iloc[0] == pytest.approx(98.5)
+    # A1.7 — implausible prices survive the raw stage bit-exact (no drop,
+    # no shift). Exact equality is deliberate: bit-exact preservation is
+    # the contract, so pytest.approx would weaken the assertion.
+    def test_zero_price_survives_bit_exact(self):
+        assert self._price_of("TEST_zero_price") == 0.0
 
-    def test_decimal_100x_corrected(self):
-        row = self.filtered[self.filtered["bond_sym_id"] == "TEST_decimal_100x"]
-        assert len(row) == 1
-        assert row["rptd_pr"].iloc[0] == pytest.approx(98.5)
+    def test_negative_price_survives_bit_exact(self):
+        assert self._price_of("TEST_neg_price") == -1.0
 
-    def test_all_prices_in_valid_range(self):
-        assert (self.filtered["rptd_pr"] > FLOOR).all()
-        assert (self.filtered["rptd_pr"] <= CEILING).all()
+    def test_over_ceiling_survives_bit_exact(self):
+        assert self._price_of("TEST_over_ceiling") == 35000.0
 
-    # C1 — price floor raised from 0.0 to 1.0
-    def test_near_zero_price_dropped(self):
-        assert "TEST_near_zero_price" not in self.filtered["bond_sym_id"].values
+    def test_near_zero_price_survives_bit_exact(self):
+        assert self._price_of("TEST_near_zero_price") == 0.5
 
-    # C2 — interdealer dedup
+    def test_decimal_10x_not_shifted(self):
+        assert self._price_of("TEST_decimal_10x") == 985.0
+
+    def test_decimal_100x_not_shifted(self):
+        assert self._price_of("TEST_decimal_100x") == 9850.0
+
+    # Interdealer dedup
     def test_interdealer_sell_kept(self):
         # The S-side of the pair survives — bond_id is shared with the buy via
         # bond_id_override, so look up via that.
@@ -320,7 +301,7 @@ class TestFilterLogic:
     def test_interdealer_buy_no_match_kept(self):
         assert "TEST_interdealer_buy_no_match" in self.filtered["bond_sym_id"].values
 
-    # C3 — two-pass cancellation
+    # Two-pass cancellation
     def test_cancelled_original_dropped(self):
         # Composite (bond, dt, msg_seq_nb) match: the original T row at
         # (TEST_CXR_ORIG, 2017-05-10, 9001) is dropped because the C record
@@ -331,15 +312,15 @@ class TestFilterLogic:
         ]
         assert len(kept_orig) == 0
 
-    # Critical #1 regression: msg_seq_nb=9001 reused on a different (bond, dt)
-    # must NOT be dropped. With the buggy bare-msg_seq_nb match this row was
-    # wrongly removed; the composite key fix keeps it.
+    # Regression: msg_seq_nb=9001 reused on a different (bond, dt) must NOT
+    # be dropped. With a buggy bare-msg_seq_nb match this row was wrongly
+    # removed; the composite key keeps it.
     def test_cross_day_msg_seq_reuse_kept(self):
         assert "TEST_msg_seq_reuse_cross_day" in self.filtered["bond_sym_id"].values
 
-    # Critical #2 regression: market-maker with 1 S + 2 B at the same key.
-    # Counter-based pairing keeps the second B as a legitimate client trade;
-    # the buggy set-based dedup would drop both B's.
+    # Regression: market-maker with 1 S + 2 B at the same key. Counter-based
+    # pairing keeps the second B as a legitimate client trade; a set-based
+    # dedup would drop both B's.
     def test_market_maker_keeps_client_buy(self):
         mm_rows = self.filtered[self.filtered["bond_sym_id"] == "TEST_MM_A"]
         # Expect exactly 2 rows: the S, and one B (the second B is the client trade)
@@ -389,7 +370,7 @@ class TestOutputSchema:
         assert "bond_id" in self.output.columns
 
     def test_cusip_id_present(self):
-        # Post 2026-06-09 re-pull: cusip_id is now populated and retained
+        # Post 2026-06-09 re-pull: cusip_id is populated and retained
         # alongside bond_id for downstream FISD merging.
         assert "cusip_id" in self.output.columns
 
@@ -405,9 +386,8 @@ class TestOutputSchema:
 
 class TestHoldoutGuard:
     def test_guard_raises_on_holdout_read(self, tmp_path):
-        p = tmp_path / "holdout" / "trace_clean.parquet"
+        p = tmp_path / "holdout" / "trace_clean_raw.parquet"
         p.parent.mkdir()
-        p.write_text("dummy")
         with pytest.raises(AssertionError, match="holdout"):
             open(str(p))
 
@@ -454,21 +434,35 @@ def _make_synthetic_csv_gz(path: Path) -> int:
     return survivors
 
 
+def _redirect_paths(monkeypatch, tmp_path: Path, raw: Path) -> dict:
+    """Redirect all module path constants to tmp_path.
+
+    REPO_ROOT must be redirected too: write_report computes
+    DEV_OUT.relative_to(REPO_ROOT) without an is_relative_to guard, which
+    raises ValueError when the outputs live outside the repo.
+    """
+    import preprocess_trace as pt
+    paths = {
+        "dev_out": tmp_path / "development" / "trace_clean_raw.parquet",
+        "hold_out": tmp_path / "holdout" / "trace_clean_raw.parquet",
+        "report_out": tmp_path / "development" / "cleaning_report.json",
+    }
+    monkeypatch.setattr(pt, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(pt, "RAW_FILE", raw)
+    monkeypatch.setattr(pt, "DEV_OUT", paths["dev_out"])
+    monkeypatch.setattr(pt, "HOLD_OUT", paths["hold_out"])
+    monkeypatch.setattr(pt, "REPORT_OUT", paths["report_out"])
+    return paths
+
+
 class TestRunPandasEndToEnd:
     def test_produces_correct_outputs(self, tmp_path, monkeypatch):
-        raw = tmp_path / "trace_enhanced_raw.csv.gz"
-        dev_out = tmp_path / "development" / "trace_clean.parquet"
-        hold_out = tmp_path / "holdout" / "trace_clean.parquet"
-        report_out = tmp_path / "development" / "cleaning_report.json"
-
+        raw = tmp_path / "trace_enhanced_repull.csv.gz"
         expected_survivors = _make_synthetic_csv_gz(raw)
-
-        # Redirect all path constants to tmp_path
-        import preprocess_trace as pt
-        monkeypatch.setattr(pt, "RAW_FILE", raw)
-        monkeypatch.setattr(pt, "DEV_OUT", dev_out)
-        monkeypatch.setattr(pt, "HOLD_OUT", hold_out)
-        monkeypatch.setattr(pt, "REPORT_OUT", report_out)
+        paths = _redirect_paths(monkeypatch, tmp_path, raw)
+        dev_out, hold_out, report_out = (
+            paths["dev_out"], paths["hold_out"], paths["report_out"],
+        )
 
         counts = run_pandas(_cfg)
         write_report(counts, _cfg, "test")
@@ -476,26 +470,48 @@ class TestRunPandasEndToEnd:
         # Row count integrity
         assert counts["development_rows"] + counts["holdout_rows"] == counts["final_clean_total"]
         assert counts["final_clean_total"] == expected_survivors
+        assert counts["parquet_row_count_verified"] is True
 
-        # New counters from C2 + C3 must appear and reflect the synthetic cases
+        # Drop accounting against the synthetic cases:
+        #   5 non-T rows (C, W, R, X, cancellation record)  → dropped_trc_st
+        #   1 T row cancelled via composite key             → dropped_cancelled_original
+        #   4 non-blank asof rows (R, D, X, A)              → dropped_asof_cd
+        #   1 when-issued row                               → dropped_wis_fl
+        #   2 B-side duplicates (PAIR_A + MM_A paired B)    → dropped_interdealer_duplicate
+        assert counts["dropped_trc_st"] == 5
         assert counts["dropped_cancelled_original"] == 1, \
             "expected one T row dropped by Pass 1 composite-key cancellation"
-        # Two B drops: one from PAIR_A (simple 1S/1B pair), one from MM_A
-        # (1S/2B market-maker — only one B is paired with the S).
+        assert counts["dropped_asof_cd"] == 4
+        assert counts["dropped_wis_fl"] == 1
         assert counts["dropped_interdealer_duplicate"] == 2, \
             "expected two B-side interdealer duplicates dropped (PAIR_A + MM_A)"
+        assert counts["dropped_invalid_date"] == 0
 
         # Parquet outputs exist and are readable
         assert dev_out.exists(), "dev parquet must be written"
         assert hold_out.exists(), "holdout parquet must be written (holdout_trade row is post-2022)"
         df_dev = pd.read_parquet(dev_out)
         assert "bond_id" in df_dev.columns
-        # cusip_id is now retained as a column (2026-06-09 re-pull); the
-        # synthetic CSV leaves it blank, so the column is present but null.
+        # cusip_id is retained as a column (2026-06-09 re-pull); the synthetic
+        # CSV leaves it blank, so the column is present but null.
         assert "cusip_id" in df_dev.columns
-        assert (df_dev["rptd_pr"] > FLOOR).all()
-        assert (df_dev["rptd_pr"] <= CEILING).all()
         assert "TEST_holdout_trade" not in df_dev["bond_id"].values
+
+        # A1.7: implausible prices survive bit-exact in the raw parquet —
+        # no plausibility drop, no decimal-shift. Exact equality on purpose.
+        def _price(bond_id):
+            rows = df_dev[df_dev["bond_id"] == bond_id]
+            assert len(rows) == 1, f"{bond_id}: expected exactly one surviving row"
+            return rows["rptd_pr"].iloc[0]
+
+        assert _price("TEST_zero_price") == 0.0
+        assert _price("TEST_neg_price") == -1.0
+        assert _price("TEST_over_ceiling") == 35000.0
+        assert _price("TEST_decimal_10x") == 985.0
+        assert _price("TEST_decimal_100x") == 9850.0
+        assert _price("TEST_near_zero_price") == 0.5
+        assert _price("TEST_clean_trade") == 98.5
+
         # The interdealer S survives; its B partner is dropped
         pair_rows = df_dev[df_dev["bond_id"] == "TEST_PAIR_A"]
         assert len(pair_rows) == 1
@@ -505,35 +521,46 @@ class TestRunPandasEndToEnd:
         assert len(mm_rows) == 2
         assert set(mm_rows["rpt_side_cd"]) == {"S", "B"}
 
+        # Holdout partition: preprocess_trace.py is the sanctioned partition
+        # CREATOR, so reading back its own freshly written tmp partition is
+        # legitimate here. pq.read_table is not on the conftest guard list.
         import pyarrow.parquet as _pq
         df_hold = _pq.read_table(str(hold_out)).to_pandas()
         assert len(df_hold) == 1
         assert df_hold["bond_id"].iloc[0] == "TEST_holdout_trade"
-        assert df_hold["rptd_pr"].iloc[0] == pytest.approx(98.5)
+        assert df_hold["rptd_pr"].iloc[0] == 98.5
 
         # Report written atomically and parseable
         assert report_out.exists()
         with open(report_out) as f:
             report = json.load(f)
+        assert report["stage"] == "dick_nielsen_only"
         assert "rows" in report
         assert report["rows"]["final_clean_total"] == expected_survivors
+        # The cleaning report legitimately records holdout row counts:
+        # this script is the partition creator.
+        assert report["rows"]["holdout_rows"] == 1
+        assert report["rows"]["development_rows"] == expected_survivors - 1
         assert "dropped_invalid_date" in report["rows"]
         assert "dropped_cancelled_original" in report["rows"]
         assert "dropped_interdealer_duplicate" in report["rows"]
-        assert not report_out.with_suffix(".tmp").exists(), ".tmp file should not remain after atomic replace"
+        assert set(report["outputs"]) == {"dev", "holdout"}
+        assert "thresholds_sha256" in report
+        assert not report_out.with_suffix(".tmp").exists(), \
+            ".tmp file should not remain after atomic replace"
 
-        # CUSIP counter keys must use the explicit pre-bounce scope (renamed
-        # 2026-06-10 after code review). The legacy unscoped keys must NOT
-        # appear or downstream consumers will silently miss the post-bounce
-        # companions that bounce_back_filter.py writes.
-        assert "cusip_populated_pre_bounce" in report["rows"]
-        assert "cusip_blank_pre_bounce" in report["rows"]
+        # CUSIP counter keys use the post-Dick-Nielsen scope (this stage is
+        # pre-bounce-back logically, but the file is no longer overwritten by
+        # the bounce-back filter — see the NAMING note in run_pandas). Legacy
+        # unscoped keys must NOT appear.
+        assert "cusip_populated_post_dn" in report["rows"]
+        assert "cusip_blank_post_dn" in report["rows"]
         assert "cusip_populated" not in report["rows"], \
-            "legacy ambiguous key — must be renamed to *_pre_bounce"
+            "legacy ambiguous key — must carry the _post_dn scope suffix"
         assert "cusip_blank" not in report["rows"]
-        # All synthetic rows have cusip_id="" → 100% blank after Stage 1.
-        assert report["rows"]["cusip_blank_pre_bounce"] == expected_survivors
-        assert report["rows"]["cusip_populated_pre_bounce"] == 0
+        # All synthetic rows have cusip_id="" → 100% blank after this stage.
+        assert report["rows"]["cusip_blank_post_dn"] == expected_survivors
+        assert report["rows"]["cusip_populated_post_dn"] == 0
 
 
 class TestCusipBlankMaskCounting:
@@ -541,13 +568,12 @@ class TestCusipBlankMaskCounting:
 
     Locks the blank-mask behaviour: NaN cells (empty in CSV → NaN in pandas),
     whitespace-only cells, and the empty string all count as blank; anything
-    else counts as populated. Added 2026-06-10 after code review flagged the
-    isna() + str.strip() guard as correct-but-fragile.
+    else counts as populated.
     """
 
     def _make_csv(self, path: Path, cusip_values: list[str]) -> None:
-        """Build a synthetic CSV where every row passes filters 1a–4 and
-        decimal-shift. Only cusip_id varies; the count assertions are deterministic.
+        """Build a synthetic CSV where every row passes filters 1a–3 and
+        dedup. Only cusip_id varies; the count assertions are deterministic.
         """
         all_cols = KEEP_COLUMNS + ["trc_st", "asof_cd", "wis_fl", "msg_seq_nb", "orig_msg_seq_nb"]
         rows = []
@@ -585,17 +611,12 @@ class TestCusipBlankMaskCounting:
             "\t ",                                    # tab + space
         ]
         self._make_csv(raw, cusip_values)
-
-        import preprocess_trace as pt
-        monkeypatch.setattr(pt, "RAW_FILE", raw)
-        monkeypatch.setattr(pt, "DEV_OUT", tmp_path / "development" / "trace_clean.parquet")
-        monkeypatch.setattr(pt, "HOLD_OUT", tmp_path / "holdout" / "trace_clean.parquet")
-        monkeypatch.setattr(pt, "REPORT_OUT", tmp_path / "development" / "cleaning_report.json")
+        _redirect_paths(monkeypatch, tmp_path, raw)
 
         counts = run_pandas(_cfg)
-        assert counts["cusip_populated_pre_bounce"] == 3
-        assert counts["cusip_blank_pre_bounce"] == 4
-        assert counts["cusip_populated_pre_bounce"] + counts["cusip_blank_pre_bounce"] \
+        assert counts["cusip_populated_post_dn"] == 3
+        assert counts["cusip_blank_post_dn"] == 4
+        assert counts["cusip_populated_post_dn"] + counts["cusip_blank_post_dn"] \
             == counts["final_clean_total"]
 
     def test_leading_zero_preserved_in_parquet(self, tmp_path, monkeypatch):
@@ -603,16 +624,10 @@ class TestCusipBlankMaskCounting:
         # leading zeros without the dtype={"cusip_id": str} in _csv_reader.
         raw = tmp_path / "trace_raw.csv.gz"
         self._make_csv(raw, ["000115139", "037833100", "912828YY0"])
-
-        import preprocess_trace as pt
-        dev_out = tmp_path / "development" / "trace_clean.parquet"
-        monkeypatch.setattr(pt, "RAW_FILE", raw)
-        monkeypatch.setattr(pt, "DEV_OUT", dev_out)
-        monkeypatch.setattr(pt, "HOLD_OUT", tmp_path / "holdout" / "trace_clean.parquet")
-        monkeypatch.setattr(pt, "REPORT_OUT", tmp_path / "development" / "cleaning_report.json")
+        paths = _redirect_paths(monkeypatch, tmp_path, raw)
 
         run_pandas(_cfg)
-        df = pd.read_parquet(dev_out)
+        df = pd.read_parquet(paths["dev_out"])
         cusips = set(df["cusip_id"].dropna().tolist())
         assert "000115139" in cusips, \
             "leading zero stripped — dtype={'cusip_id': str} guard regressed"
