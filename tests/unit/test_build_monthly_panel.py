@@ -441,6 +441,25 @@ class TestOutputContract:
         assert pd.isna(_row(df, C1, "2015-05")["exit_reason"])   # pre-default
         assert pd.isna(_row(df, C2, "2015-06")["exit_reason"])   # never defaulted
 
+    def test_exit_reason_records_matured_and_defeased(self, tmp_path, monkeypatch):
+        # exit_reason records all three exit types (the audit label) — the
+        # survivorship TOGGLE (views.py) decides which ones to act on.
+        rows = [
+            _daily_row(C1, "2015-05-15", 100.0, 200_000),
+            _daily_row(C1, "2015-06-15", 100.0, 200_000),
+            _daily_row(C2, "2015-06-15", 50.0, 300_000),
+        ]
+        out, _ = _run(
+            tmp_path, monkeypatch, rows, rows,
+            [("2015-05", 0.001), ("2015-06", 0.001)],
+            fisd_profile={C1: {"maturity": "2015-06-01"},
+                          C2: {"defeased_date": "2015-06-01"}},
+        )
+        df = pd.read_parquet(out)
+        assert _row(df, C1, "2015-06")["exit_reason"] == "matured"
+        assert pd.isna(_row(df, C1, "2015-05")["exit_reason"])   # pre-maturity
+        assert _row(df, C2, "2015-06")["exit_reason"] == "defeased"
+
     def test_ineligible_bond_flagged(self, tmp_path, monkeypatch):
         rows = [_daily_row(C1, "2015-06-10", 100.0, 200_000),
                 _daily_row(C2, "2015-06-15", 50.0, 300_000)]

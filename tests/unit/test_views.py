@@ -248,19 +248,40 @@ class TestTerminalRows:
         out_on = view(panel, _cfg("corr", include_terminal_rows=True))
         pd.testing.assert_frame_equal(out_off, out_on)
 
-    def test_excludes_terminal_rows_when_toggle_off(self):
-        """When exit_reason carries a non-NaN value, the all-OFF view
-        excludes that row."""
+    def test_distress_rows_toggled_others_kept_in_both(self):
+        """The survivorship toggle acts ONLY on distress (default) exits: a
+        defaulted row is dropped in the as-published view and kept in the
+        corrected view, while matured/defeased rows are kept in BOTH (they
+        cancel out of the survivorship differential)."""
         panel = _make_maximal([
             _maximal_row("A", "2010-01", p_raw=100.0, p_corr=99.0,
                          r_raw=0.05, r_corr=0.04, exit_reason=None),
-            _maximal_row("B", "2010-01", p_raw=200.0, p_corr=198.0,
-                         r_raw=0.02, r_corr=0.01, exit_reason="maturity"),
+            _maximal_row("D", "2010-01", p_raw=80.0, p_corr=79.0,
+                         r_raw=-0.5, r_corr=-0.5, exit_reason="defaulted"),
+            _maximal_row("M", "2010-01", p_raw=200.0, p_corr=198.0,
+                         r_raw=0.02, r_corr=0.01, exit_reason="matured"),
+            _maximal_row("F", "2010-01", p_raw=150.0, p_corr=149.0,
+                         r_raw=0.0, r_corr=0.0, exit_reason="defeased"),
         ])
         out_off = view(panel, _cfg("corr", include_terminal_rows=False))
-        assert set(out_off["cusip"]) == {"A"}
         out_on = view(panel, _cfg("corr", include_terminal_rows=True))
-        assert set(out_on["cusip"]) == {"A", "B"}
+        # As-published drops ONLY the defaulted bond; maturity/defeased survive.
+        assert set(out_off["cusip"]) == {"A", "M", "F"}
+        # Corrected keeps everything.
+        assert set(out_on["cusip"]) == {"A", "D", "M", "F"}
+        # The survivorship differential is exactly the distress row.
+        assert set(out_on["cusip"]) - set(out_off["cusip"]) == {"D"}
+
+    def test_distress_exits_override(self):
+        """The distress_exits argument overrides the thresholds default."""
+        panel = _make_maximal([
+            _maximal_row("M", "2010-01", p_raw=200.0, p_corr=198.0,
+                         r_raw=0.02, r_corr=0.01, exit_reason="matured"),
+        ])
+        # Treat 'matured' as distress for this call → dropped when toggle off.
+        out = view(panel, _cfg("corr", include_terminal_rows=False),
+                   distress_exits=["matured"])
+        assert out.empty
 
 
 # ---------------------------------------------------------------------------

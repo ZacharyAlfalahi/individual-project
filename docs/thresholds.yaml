@@ -261,10 +261,15 @@ fisd:
     # maturity + coupon, never FISD/OSBAP md_dur) lands with the BBW signals.
     day_count_default: "30/360"
   survivorship:
-    # exit_reason inputs for the survivorship toggle (run_config view-level).
-    # A bond-month is terminal from the EARLIEST of: default_date, defeased_date,
-    # maturity. default_date is the first rating event in these tokens (FISD has
+    # exit_reason inputs. exit_reason records the EARLIEST of default_date,
+    # defeased_date, maturity (matured | defaulted | defeased) — the full audit
+    # label. default_date is the first rating event in default_tokens (FISD has
     # no default-date field; the rating ladder's default bucket dates it).
-    # NOTE: FISD cannot date CALLS (190/431k redemption rows carry a call_date),
-    # so called bonds are not flagged as terminal — a documented limitation.
     default_tokens: ["D", "SD", "DD", "DDD"]
+    # The survivorship TOGGLE (views.py) acts ONLY on these exit_reason values:
+    # distress rows are dropped in the naive run and kept in the corrected run —
+    # their difference is the survivorship gap. Maturity / defeased are recorded
+    # but NOT toggled: they are performance-neutral, anticipated exits, kept in
+    # BOTH runs so they cancel and add nothing to the gap. (Calls are undateable
+    # in FISD, so never flagged — a documented limitation.)
+    distress_exits: ["defaulted"]

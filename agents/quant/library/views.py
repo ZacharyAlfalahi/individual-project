@@ -59,6 +59,24 @@ def _load_stale_theta_days() -> int:
     return int(block["theta_days"])
 
 
+def _load_distress_exits() -> list:
+    """Default distress exit labels from thresholds.yaml:fisd.survivorship.
+
+    These are the `exit_reason` values the survivorship toggle acts on (dropped
+    in the as-published view, kept in the corrected view). Other exit types
+    (maturity, defeased) are recorded in exit_reason but kept in BOTH views, so
+    they cancel out of the survivorship differential."""
+    with open(THRESHOLDS_FILE) as f:
+        cfg = yaml.safe_load(f)
+    block = cfg.get("fisd", {}).get("survivorship")
+    if block is None or "distress_exits" not in block:
+        raise KeyError(
+            "thresholds.yaml missing fisd.survivorship.distress_exits; "
+            "needed for the survivorship toggle"
+        )
+    return list(block["distress_exits"])
+
+
 # ---------------------------------------------------------------------------
 # Family-column selection
 # ---------------------------------------------------------------------------
@@ -219,6 +237,7 @@ def view(
     config: RunConfig,
     signals: Optional[pd.DataFrame] = None,
     stale_threshold_days: Optional[int] = None,
+    distress_exits: Optional[Iterable[str]] = None,
 ) -> pd.DataFrame:
     """
     Materialise an engine-shape panel from the maximal panel + optional
@@ -243,6 +262,10 @@ def view(
         requests raise.
     stale_threshold_days : int, optional
         Override the default θ from thresholds.yaml. Useful for tests.
+    distress_exits : Iterable[str], optional
+        Override the exit_reason values the survivorship toggle acts on
+        (default: thresholds.yaml fisd.survivorship.distress_exits). Other exit
+        types are kept in both views.
 
     Returns
     -------
@@ -275,11 +298,20 @@ def view(
             stale_threshold_days = _load_stale_theta_days()
         panel = _apply_stale_mask(panel, stale_threshold_days)
 
-    # 3. Terminal rows (survivorship). FISD populates exit_reason with
-    # matured | defaulted | defeased. include_terminal_rows=False (as-published)
-    # DROPS those rows — the survivorship bias; =True (corrected) keeps them.
+    # 3. Terminal rows (survivorship). The toggle acts ONLY on distress exits
+    # (defaults): include_terminal_rows=False (as-published) DROPS them — the
+    # survivorship bias; =True (corrected) KEEPS them. Maturity/defeased rows are
+    # recorded in exit_reason but kept in BOTH views (performance-neutral,
+    # anticipated exits that cancel out of the differential).
+    #
+    # Return assumption: a kept distress row carries its TRACE-derived return
+    # (last distressed traded price); a month with no trade is NaN and never
+    # enters a sort. NO recovery overlay is applied — a bond that stops trading
+    # AT default contributes no crater, which understates the gap. Sensitivity
+    # test (last-price vs ~40% recovery) is tracked in docs/remaining_work.md.
     if "exit_reason" in panel.columns and not config.panel_view.include_terminal_rows:
-        panel = panel[panel["exit_reason"].isna()].copy()
+        distress = set(_load_distress_exits() if distress_exits is None else distress_exits)
+        panel = panel[~panel["exit_reason"].isin(distress)].copy()
 
     # exit_reason itself is metadata, not an engine input — drop from output.
     if "exit_reason" in panel.columns:

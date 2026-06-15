@@ -265,17 +265,27 @@ def _default_dates_by_issue(cfg: dict) -> pd.Series:
     tokens = cfg.get("survivorship", {}).get("default_tokens")
     if not tokens:
         raise KeyError("thresholds.yaml fisd.survivorship.default_tokens is required")
+    date_min = pd.Timestamp(cfg["rating"]["date_min"])
     r = pd.read_parquet(RATINGS_FILE, columns=["issue_id", "rating", "rating_date"])
     r = r[r["rating"].isin(set(tokens))].copy()
     r["issue_id"] = r["issue_id"].astype("Int64")
     r["rating_date"] = pd.to_datetime(r["rating_date"], errors="coerce").astype("datetime64[ns]")
     r = r.dropna(subset=["rating_date"])
+    # Exit-date hygiene: drop implausibly early default events (same date_min
+    # floor the ratings panel uses) so a garbage date can't make a bond's whole
+    # history terminal in the survivorship toggle.
+    r = r[r["rating_date"] >= date_min]
     return r.groupby("issue_id")["rating_date"].min()
 
 
 def build_static(cfg: dict) -> pd.DataFrame:
     """One row per cusip: universe eligibility + reason flags + carried facts."""
     issue = _load_issue()
+    # Exit-date hygiene: floor maturity / defeased_date at date_min so a
+    # parseable-but-implausibly-early date can't mislabel a bond's exit_reason.
+    date_min = pd.Timestamp(cfg["rating"]["date_min"])
+    for col in ("maturity", "defeased_date"):
+        issue.loc[issue[col] < date_min, col] = pd.NaT
     issue = apply_universe_rules(issue, cfg["universe"])
 
     # callable flag from the redemption schedule (issue_id level).

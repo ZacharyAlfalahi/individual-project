@@ -225,6 +225,20 @@ def test_default_date_is_earliest_default_event(tmp_path, monkeypatch, cfg):
     assert 2 not in dd.index                           # never defaulted → absent
 
 
+def test_default_date_excludes_pre_date_min_events(tmp_path, monkeypatch, cfg):
+    """Exit-date hygiene: a default rating event before date_min is dropped, so
+    a garbage-early date can't make a bond's whole history terminal."""
+    r = pd.DataFrame([
+        {"issue_id": 1.0, "rating": "D", "rating_date": "1975-01-01"},  # < date_min
+        {"issue_id": 1.0, "rating": "D", "rating_date": "2010-06-01"},  # valid
+    ])
+    p = tmp_path / "reference_fisd_ratings.parquet"
+    r.to_parquet(p)
+    monkeypatch.setattr(bfr, "RATINGS_FILE", p)
+    dd = bfr._default_dates_by_issue(cfg)
+    assert dd.loc[1] == pd.Timestamp("2010-06-01")    # 1975 garbage excluded
+
+
 # ---------------------------------------------------------------------------
 # Config validation
 # ---------------------------------------------------------------------------

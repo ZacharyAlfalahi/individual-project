@@ -282,7 +282,8 @@ def build_panel(cfg: dict) -> dict:
     # merge: size (= offering_amt), universe_eligible, rating, investment_grade,
     # maturity, time_to_maturity, and the survivorship exit_reason. Both
     # endpoint views inherit these identically (views.py _SHARED_PANEL_COLUMNS).
-    panel = merge_fisd(panel, load_fisd_config())
+    fisd_cfg = load_fisd_config()
+    panel = merge_fisd(panel, fisd_cfg)
 
     out_cols = [
         "cusip", "date", "size",
@@ -336,8 +337,32 @@ def build_panel(cfg: dict) -> dict:
             "rating_non_null": int(panel["rating"].notna().sum()),
             "exit_reason_tagged_rows": int(panel["exit_reason"].notna().sum()),
         },
+        "survivorship": _survivorship_report(panel, fisd_cfg),
     }
     return counts
+
+
+def _survivorship_report(panel: pd.DataFrame, fisd_cfg: dict) -> dict:
+    """Exit-reason breakdown (eligible) + the default-return picture.
+
+    Makes the kept-distress-row return assumption explicit: of the distress
+    (default) bond-months the corrected view keeps, how many carry a real
+    (non-NaN) corrected-family return vs NaN (no trade → no crater). A bond that
+    stops trading at default contributes NaN, so the survivorship gap is a LOWER
+    bound under the TRACE-derived (no-recovery-overlay) convention.
+    """
+    elig = panel[panel["universe_eligible"]]
+    distress = set(fisd_cfg.get("survivorship", {}).get("distress_exits", ["defaulted"]))
+    by_reason = elig["exit_reason"].value_counts(dropna=True).to_dict()
+    d = elig[elig["exit_reason"].isin(distress)]
+    return {
+        "eligible_terminal_by_reason": {str(k): int(v) for k, v in by_reason.items()},
+        "distress_exits": sorted(distress),
+        "distress_rows": int(len(d)),
+        "distress_rows_with_corr_return": int(d["ret_corr"].notna().sum()),
+        "distress_rows_nan_corr_return": int(d["ret_corr"].isna().sum()),
+        "return_convention": "trace_derived_last_price; no_recovery_overlay (gap is a lower bound)",
+    }
 
 
 def write_report(counts: dict, cfg: dict) -> None:
