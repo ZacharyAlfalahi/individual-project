@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Refuse to commit licensed/raw data (FISD + TRACE). Activate once per clone:
+#   bash scripts/install_hooks.sh
+exec "$(git rev-parse --show-toplevel)/scripts/check_no_licensed_data.sh"

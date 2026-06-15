@@ -1,11 +1,11 @@
-# Generated data outputs — large, not committed
-data/development/*.parquet
-data/development/*.json
-data/holdout/*.parquet
-
-# Raw source data
-data/*.csv.gz
-data/*.csv
+# Licensed / raw data — NEVER commit (FISD + TRACE). Enforced by .githooks + CI;
+# see docs/data_governance.md and scripts/check_no_licensed_data.sh.
+data/fisd/
+data/**/*.parquet
+data/**/*.csv
+data/**/*.csv.gz
+data/**/*.json
+data/trace_enhanced_*
 
 # Python
 __pycache__/

@@ -1,0 +1,15 @@
+name: data-governance
+
+# Server-side backstop: rejects any push or PR that tracks licensed/raw data
+# (FISD + TRACE). Catches anything past --no-verify or an unactivated local hook.
+# Enable branch protection on `main` requiring the `no-licensed-data` check so it
+# cannot be merged. See docs/data_governance.md.
+on: [push, pull_request]
+
+jobs:
+  no-licensed-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject FISD/TRACE licensed data
+        run: bash scripts/check_no_licensed_data.sh

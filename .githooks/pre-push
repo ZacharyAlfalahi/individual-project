@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Refuse to push licensed/raw data (FISD + TRACE) — the layer that keeps it off
+# GitHub entirely, since CI can only run after the blob has already been uploaded.
+# Activate once per clone:  bash scripts/install_hooks.sh
+exec "$(git rev-parse --show-toplevel)/scripts/check_no_licensed_data.sh"
