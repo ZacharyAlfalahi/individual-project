@@ -40,14 +40,14 @@ class TestPolarityConvention:
         assert c.construction.expost_trim == "as_published"
         assert c.evaluation.mt_flag == "informational"
 
-    def test_corrected_endpoint_is_all_on_except_survivorship(self):
-        """corrected() pre-FISD: corr family, stale mask on, signal_lag=1,
-        no expost_trim. include_terminal_rows stays False because exit_reason
-        is NaN pre-FISD."""
+    def test_corrected_endpoint_is_all_on(self):
+        """corrected() post-FISD: corr family, stale mask on, signal_lag=1,
+        no expost_trim, AND include_terminal_rows=True (survivorship on — the
+        terminal rows are KEPT now that FISD populates exit_reason)."""
         c = corrected()
         assert c.panel_view.price_family == "corr"
         assert c.panel_view.stale_mask is True
-        assert c.panel_view.include_terminal_rows is False
+        assert c.panel_view.include_terminal_rows is True
         assert c.construction.signal_lag == 1
         assert c.construction.expost_trim == "none"
 
@@ -55,6 +55,7 @@ class TestPolarityConvention:
         u, c = uncorrected(), corrected()
         assert u.panel_view.price_family != c.panel_view.price_family
         assert u.panel_view.stale_mask != c.panel_view.stale_mask
+        assert u.panel_view.include_terminal_rows != c.panel_view.include_terminal_rows
         assert u.construction.signal_lag != c.construction.signal_lag
         assert u.construction.expost_trim != c.construction.expost_trim
 

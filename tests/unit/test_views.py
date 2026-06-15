@@ -264,6 +264,35 @@ class TestTerminalRows:
 
 
 # ---------------------------------------------------------------------------
+# Universe restriction (FISD) — applied across all views when the flag exists
+# ---------------------------------------------------------------------------
+
+class TestUniverseRestriction:
+    @staticmethod
+    def _row(cusip, eligible):
+        r = _maximal_row(cusip, "2010-01", p_raw=100.0, p_corr=99.0,
+                         r_raw=0.05, r_corr=0.04)
+        r["universe_eligible"] = eligible
+        return r
+
+    def test_drops_ineligible_and_removes_column(self):
+        panel = _make_maximal([self._row("A", True), self._row("B", False)])
+        for fam in ("raw", "corr"):
+            out = view(panel, _cfg(fam))
+            assert set(out["cusip"]) == {"A"}, f"{fam}: ineligible bond not dropped"
+            assert "universe_eligible" not in out.columns
+
+    def test_no_op_when_column_absent(self):
+        # Panels without the flag (pre-FISD) keep all rows.
+        panel = _make_maximal([
+            _maximal_row("A", "2010-01", p_raw=100.0, p_corr=99.0, r_raw=0.05, r_corr=0.04),
+            _maximal_row("B", "2010-01", p_raw=200.0, p_corr=198.0, r_raw=0.02, r_corr=0.01),
+        ])
+        out = view(panel, _cfg("corr"))
+        assert set(out["cusip"]) == {"A", "B"}
+
+
+# ---------------------------------------------------------------------------
 # A9 cross-family raise
 # ---------------------------------------------------------------------------
 

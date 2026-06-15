@@ -16,65 +16,71 @@ source .venv/bin/activate
 pip install -r scripts/requirements_preprocess.txt -r scripts/requirements_parser.txt
 ```
 
+### Data governance (run once after cloning)
+
+FISD and TRACE Enhanced are **licensed data that must never be committed or pushed**.
+Activate the local guard hooks:
+
+```bash
+bash scripts/install_hooks.sh
+```
+
+This installs pre-commit and pre-push hooks that refuse any FISD/TRACE data
+(`data/fisd/**`, raw `data/trace_enhanced_*`, and any `.parquet`/`.csv`/`.csv.gz`
+under `data/`). The `data-governance` CI workflow is the un-bypassable backstop.
+Full policy and branch-protection setup: `docs/data_governance.md`.
+
 ---
 
 ## What's Built
 
-### 1. Data preprocessing (Stage 1)
-Cleans raw TRACE Enhanced data and splits into dev/holdout.
+The data layer produces a **dual-family** monthly panel (`raw` = as-published, `corr` = bias-corrected) that the bias-toggle registry's view layer materialises into two endpoint panels; the gap between them is the measured bias. Each stage hash-logs a report JSON.
 
+### 1. TRACE cleaning → dual families
 ```bash
-python scripts/preprocess_trace.py
+python scripts/preprocess_trace.py        # Dick-Nielsen (2009/2014) + dev/holdout split → trace_clean_raw
+python scripts/apply_decimal_shift.py      # WRDS-MMN decimal-shift (corrected family)
+python scripts/bounce_back_filter.py       # DRR (2026) Table A.2 bounce-back  → trace_clean_corr
 ```
+`raw` carries the as-published junk (no corrections); `corr` adds decimal-shift + bounce-back. Holdout (2022-01..2025-09, 45 months) is written once and **never read during development**. See `docs/trace_preprocessing.md`, `docs/bounce_back_filter_spec.md`.
 
-Reads `data/trace_enhanced_raw.csv.gz` (~435M rows). Applies Dick-Nielsen (2009/2014) filters (including blank `asof_cd` only) + WRDS-MMN decimal-shift correction. Writes:
-
-- `data/development/trace_clean.parquet` — 2002–2021 transactions, safe to use
-- `data/holdout/trace_clean.parquet` — 2022–2024, **never read during development**
-- `data/development/cleaning_report.json` — per-filter row counts with verified parquet integrity
-
-See `docs/trace_preprocessing.md` for full methodology.
-
-### 2. Bounce-back filter (Stage 2)
-Transaction-level removal of erroneous price spikes that survive Stage 1's decimal-shift correction.
-
+### 2. Daily layer + distressed filters
 ```bash
-python scripts/bounce_back_filter.py
+python scripts/build_daily_panel.py --family raw     # VWAP → (cusip, day), raw
+python scripts/build_daily_panel.py --family corr
+python scripts/apply_distressed_filters.py           # DRR App. A.3 filters 1–4, corr daily only
 ```
-
-Implements the DRR (Dickerson, Robotti, Rossetti 2026) bounce-back filter (Table A.2): uses each bond's own rolling trailing median as the reference and removes a flagged trade only when a future trade within 5 transactions shows recovery to the bond's actual level. Required because Stage 1's decimal-shift only catches clean ×10/×100 errors — it does not catch typos like "106 → 1.87" that distort the monthly VWAP and produce 50×+ returns the following month.
-
-Reads and atomically overwrites `data/development/trace_clean.parquet` and `data/holdout/trace_clean.parquet` (holdout is treated as a mechanical transformation; parameters are frozen in `thresholds.yaml` before any run). Updates `data/development/cleaning_report.json` with two new drop counters and additivity-verified row totals. Uses DuckDB for the partition-wide external sort (polars `sink_parquet` OOMs on the 200M-row dev partition).
-
-See `docs/bounce_back_filter_spec.md` for the full algorithm and `docs/trace_preprocessing.md` §5 for how it fits in the pipeline.
 
 ### 3. Risk-free rate
-Downloads 3-month T-bill rate (TB3MS) from FRED.
-
 ```bash
-python scripts/download_rf_rate.py
+python scripts/download_rf_rate.py         # FRED TB3MS → data/development/rf_rate.parquet
 ```
 
-Writes `data/development/rf_rate.parquet` (monthly, 1934–present).
+### 4. FISD reference preprocessing
+```bash
+python scripts/build_fisd_reference.py
+```
+Turns the licensed FISD reference tables (`data/fisd/*`) into a clean, CUSIP-keyed reference + a monthly **as-of credit-rating** panel (no look-ahead), plus a coverage/quality report. Derives the corporate **universe** filter, the **rating** ladder (1–22), survivorship **exit dates** (maturity / default / defeased), and the value-weight **size proxy** (`offering_amt`, since FISD `amount_outstanding` is ~84% zero). Outputs under `data/development/fisd/`. All rules live in `thresholds.yaml:fisd`.
 
-### 4. Monthly bond return panel
-Aggregates transaction data to bond × month panel with excess returns.
-
+### 5. Maximal monthly panel (+ FISD merge)
 ```bash
 python scripts/build_monthly_panel.py
 ```
+Outer-joins the two daily families into the dual-family maximal panel and **merges FISD characteristics** as shared, family-agnostic columns: `size` (value-weighting input), `universe_eligible`, `rating`, `investment_grade`, `maturity`, `time_to_maturity`, and a populated `exit_reason`. → `data/development/monthly_panel_maximal.parquet`.
 
-Requires: `trace_clean.parquet` (after Stage 1 + Stage 2) + `rf_rate.parquet`. Writes:
+### 6. Signals
+```bash
+python scripts/build_var_5pct.py           # BBW (2019) 5% VaR, family-indexed (var_5pct_raw/_corr)
+```
 
-- `data/development/monthly_panel.parquet` — bond_id, year_month, price_eom, ret, xret, n_trades, total_vol
-- `data/development/monthly_panel_report.json`
+### 7. Endpoint views (bias-toggle registry)
+```bash
+python scripts/export_endpoint_views.py
+```
+A `RunConfig` drives `agents/quant/library/views.py` to select a price family and apply the view-level toggles — meas_err (family), stale-price mask, **universe restriction**, **survivorship** (terminal-row drop), signal lag, ex-post trim — materialising `monthly_panel_uncorrected.parquet` (all-OFF / as-published) and `monthly_panel_corrected.parquet` (all-ON / corrected).
 
-Filters: CORP + pre-2012 null sub_prdct; institutional trades ≥100k par. Returns computed as `(P_t−P_{t-1})/P_{t-1}`; excess return = ret − rf_monthly (TB3MS/12/100).
-
-### 5. Characteristic-sort engine
-Signal-agnostic engine that measures what a "rank bonds by a property, buy the top group, sell the bottom group" strategy earned over history. One run measures one factor; the engine never computes the signal itself, only sorts on a column already in the panel. Supports equal- and size-weighted legs, single and independent double sorts, monthly rebalancing, and Newey–West HAC inference.
-
-Lives at `agents/quant/library/characteristic_sort.py`. Configured by the Quant agent per ARCHITECTURE.md hard constraints (LLM configures, never modifies). See `docs/characteristic_sort_engine_spec.md` for the build specification and `docs/characteristic_sort_engine_implementation.md` for the architecture, design decisions, and validation evidence.
+### 8. Characteristic-sort engine
+Signal-agnostic quintile long-short engine (equal/size-weighted legs, single and independent double sorts, monthly rebalancing, Newey–West HAC inference). Lives at `agents/quant/library/characteristic_sort.py`; configured by the Quant agent, never modified (per ARCHITECTURE.md). See `docs/characteristic_sort_engine_spec.md` and `…_implementation.md`.
 
 ---
 

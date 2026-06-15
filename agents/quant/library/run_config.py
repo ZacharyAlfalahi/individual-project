@@ -233,14 +233,17 @@ def uncorrected() -> RunConfig:
 
 
 def corrected() -> RunConfig:
-    """The all-ON-except-survivorship view — corrected endpoint pre-FISD.
+    """The all-ON view — corrected endpoint.
 
-      corr family + stale mask on + (terminal rows off — FISD-gated)
+      corr family + stale mask on + terminal rows KEPT (survivorship on)
       signal_lag = 1 + expost_trim = none
 
-    `include_terminal_rows` stays False because `exit_reason` is NaN
-    everywhere pre-FISD; flip to True once FISD lands and survivorship
-    becomes testable.
+    `include_terminal_rows=True` KEEPS the rows the panel's `exit_reason`
+    marks terminal (matured | defaulted | defeased). Excluding them is the
+    survivorship bias (the dead bonds' final crater returns vanish), so the
+    correction is to keep them — now possible because FISD populates
+    `exit_reason`. (FISD cannot date calls, so called bonds are not flagged —
+    a documented limitation.)
 
     Used to materialise `monthly_panel_corrected.parquet`.
     """
@@ -248,7 +251,7 @@ def corrected() -> RunConfig:
         panel_view=PanelViewConfig(
             price_family="corr",
             stale_mask=True,
-            include_terminal_rows=False,
+            include_terminal_rows=True,
         ),
         construction=ConstructionConfig(
             signal_lag=1,

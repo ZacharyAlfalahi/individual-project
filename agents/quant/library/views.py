@@ -74,13 +74,19 @@ _FAMILY_INDEXED_PANEL_COLUMNS = (
     "last_trade_date",
 )
 
-# Columns that pass through unchanged.
+# Columns that pass through unchanged (shared across families — bond
+# characteristics, not price-derived, so not family-indexed under A9).
 _SHARED_PANEL_COLUMNS = (
     "cusip",
     "date",
     "size",
     "rf_monthly",
     "exit_reason",
+    "universe_eligible",
+    "rating",
+    "investment_grade",
+    "maturity",
+    "time_to_maturity",
 )
 
 
@@ -255,17 +261,23 @@ def view(
     # 1. Family selection.
     panel = _select_family_columns(maximal_panel, family)
 
+    # 1b. Universe restriction (FISD). Applied across ALL views when the flag
+    # is present (registry: "universe restriction across all views"); pre-FISD
+    # panels lack the column → no-op. Not a RunConfig toggle, so it changes no
+    # config hash. Keep only universe-eligible bonds, then drop the flag.
+    if "universe_eligible" in panel.columns:
+        panel = panel[panel["universe_eligible"] == True].copy()  # noqa: E712
+        panel = panel.drop(columns=["universe_eligible"])
+
     # 2. Stale mask.
     if config.panel_view.stale_mask:
         if stale_threshold_days is None:
             stale_threshold_days = _load_stale_theta_days()
         panel = _apply_stale_mask(panel, stale_threshold_days)
 
-    # 3. Terminal rows.
-    # Pre-FISD exit_reason is NaN everywhere so the include-terminal toggle
-    # has no observable effect. When FISD lands and exit_reason carries
-    # default / maturity / other terminal codes, dropping `exit_reason != NaN`
-    # excludes those rows.
+    # 3. Terminal rows (survivorship). FISD populates exit_reason with
+    # matured | defaulted | defeased. include_terminal_rows=False (as-published)
+    # DROPS those rows — the survivorship bias; =True (corrected) keeps them.
     if "exit_reason" in panel.columns and not config.panel_view.include_terminal_rows:
         panel = panel[panel["exit_reason"].isna()].copy()
 

@@ -26,11 +26,15 @@ import pyarrow.parquet as pq
 import pytest
 
 import build_monthly_panel as bmp
-from build_monthly_panel import SIZE_PLACEHOLDER, load_config
+from build_monthly_panel import load_config
 
 # All thresholds come from docs/thresholds.yaml via the production loader —
 # never duplicated as literals here.
 _cfg = load_config()
+
+# Default synthetic FISD profile for test bonds: eligible, a known
+# offering_amt (size proxy), far-future maturity (never terminal), no default.
+_FISD_OFFERING_AMT = 1_000_000.0
 
 
 # ---------------------------------------------------------------------------
@@ -79,8 +83,49 @@ def _make_rf_parquet(path: Path, rf_pairs: list[tuple[str, float]]) -> None:
     pq.write_table(pa.Table.from_pandas(df, preserve_index=False), str(path))
 
 
-def _run(tmp_path, monkeypatch, raw_rows, corr_rows, rf_pairs):
-    """Write synthetic daily-layer + rf inputs, patch the module path
+def _make_fisd_parquets(tmp_path, cusips, profile=None):
+    """Write synthetic FISD reference + ratings parquets for the test cusips.
+
+    profile: optional {cusip: {eligible, offering_amt, maturity,
+    default_date, defeased_date, rating}} overriding the default eligible /
+    far-future-maturity / no-default profile.
+    """
+    profile = profile or {}
+    srows, rrows = [], []
+    for c in cusips:
+        p = profile.get(c, {})
+        srows.append({
+            "cusip": c,
+            "universe_eligible": p.get("eligible", True),
+            "offering_amt": p.get("offering_amt", _FISD_OFFERING_AMT),
+            "maturity": pd.Timestamp(p.get("maturity", "2099-12-31")),
+            "default_date": pd.Timestamp(p["default_date"]) if p.get("default_date") else pd.NaT,
+            "defeased_date": pd.Timestamp(p["defeased_date"]) if p.get("defeased_date") else pd.NaT,
+        })
+        if "rating" in p:
+            for ym, val in p["rating"].items():
+                rrows.append({"cusip": c, "date": _me(ym), "rating_numeric": float(val),
+                              "investment_grade": val <= 10})
+    static = pd.DataFrame(srows)
+    static["cusip"] = static["cusip"].astype(str)
+    for col in ("maturity", "default_date", "defeased_date"):
+        static[col] = static[col].astype("datetime64[ns]")
+    static.to_parquet(tmp_path / "fisd_reference_static.parquet")
+
+    ratings = pd.DataFrame(
+        rrows or {"cusip": pd.Series([], dtype=str),
+                  "date": pd.Series([], dtype="datetime64[ns]"),
+                  "rating_numeric": pd.Series([], dtype=float),
+                  "investment_grade": pd.Series([], dtype="boolean")}
+    )
+    if rrows:
+        ratings["cusip"] = ratings["cusip"].astype(str)
+        ratings["date"] = ratings["date"].astype("datetime64[ns]")
+    ratings.to_parquet(tmp_path / "fisd_ratings_monthly.parquet")
+
+
+def _run(tmp_path, monkeypatch, raw_rows, corr_rows, rf_pairs, fisd_profile=None):
+    """Write synthetic daily-layer + rf + FISD inputs, patch the module path
     constants to tmp_path, run build_panel. Returns (out_path, counts)."""
     raw_path = tmp_path / "trace_daily_raw.parquet"
     corr_path = tmp_path / "trace_daily_corr_filtered.parquet"
@@ -91,11 +136,16 @@ def _run(tmp_path, monkeypatch, raw_rows, corr_rows, rf_pairs):
     _make_daily_parquet(corr_path, corr_rows)
     _make_rf_parquet(rf_path, rf_pairs)
 
+    cusips = {r["cusip_id"] for r in (raw_rows + corr_rows)}
+    _make_fisd_parquets(tmp_path, cusips, fisd_profile)
+
     monkeypatch.setattr(bmp, "RAW_DAILY", raw_path)
     monkeypatch.setattr(bmp, "CORR_DAILY", corr_path)
     monkeypatch.setattr(bmp, "RF_FILE", rf_path)
     monkeypatch.setattr(bmp, "OUT_FILE", out_path)
     monkeypatch.setattr(bmp, "REPORT_OUT", tmp_path / "report.json")
+    monkeypatch.setattr(bmp, "FISD_STATIC", tmp_path / "fisd_reference_static.parquet")
+    monkeypatch.setattr(bmp, "FISD_RATINGS", tmp_path / "fisd_ratings_monthly.parquet")
 
     counts = bmp.build_panel(_cfg)
     return out_path, counts
@@ -335,6 +385,8 @@ class TestOutputContract:
         df = pd.read_parquet(out)
         for col in [
             "cusip", "date", "size",
+            "universe_eligible", "rating", "investment_grade",
+            "maturity", "time_to_maturity",
             "price_eom_raw", "price_eom_corr",
             "ret_raw", "ret_corr",
             "xret_raw", "xret_corr",
@@ -354,15 +406,49 @@ class TestOutputContract:
         assert d == d.normalize()                      # midnight, not 23:59:59
         assert d == d + pd.offsets.MonthEnd(0)         # already month-end
 
-    def test_size_is_placeholder_constant(self, tmp_path, monkeypatch):
+    def test_size_is_fisd_offering_amt(self, tmp_path, monkeypatch):
         out, _ = self._build(tmp_path, monkeypatch)
         df = pd.read_parquet(out)
-        assert (df["size"] == SIZE_PLACEHOLDER).all()
+        # size now comes from FISD offering_amt (value-weighting input), not a
+        # constant placeholder.
+        assert (df["size"] == _FISD_OFFERING_AMT).all()
 
-    def test_exit_reason_is_all_nan_placeholder(self, tmp_path, monkeypatch):
+    def test_universe_eligible_attached(self, tmp_path, monkeypatch):
+        out, _ = self._build(tmp_path, monkeypatch)
+        df = pd.read_parquet(out)
+        assert df["universe_eligible"].all()
+
+    def test_exit_reason_nan_when_not_terminal(self, tmp_path, monkeypatch):
+        # Default profile: far-future maturity, no default → never terminal.
         out, _ = self._build(tmp_path, monkeypatch)
         df = pd.read_parquet(out)
         assert df["exit_reason"].isna().all()
+
+    def test_exit_reason_tagged_from_default_date(self, tmp_path, monkeypatch):
+        # C1 defaults 2015-06; its 2015-06 row (and onward) is terminal.
+        rows = [
+            _daily_row(C1, "2015-05-15", 100.0, 200_000),
+            _daily_row(C1, "2015-06-15", 40.0, 200_000),
+            _daily_row(C2, "2015-06-15", 50.0, 300_000),
+        ]
+        out, _ = _run(
+            tmp_path, monkeypatch, rows, rows,
+            [("2015-05", 0.001), ("2015-06", 0.001)],
+            fisd_profile={C1: {"default_date": "2015-06-01"}},
+        )
+        df = pd.read_parquet(out)
+        assert _row(df, C1, "2015-06")["exit_reason"] == "defaulted"
+        assert pd.isna(_row(df, C1, "2015-05")["exit_reason"])   # pre-default
+        assert pd.isna(_row(df, C2, "2015-06")["exit_reason"])   # never defaulted
+
+    def test_ineligible_bond_flagged(self, tmp_path, monkeypatch):
+        rows = [_daily_row(C1, "2015-06-10", 100.0, 200_000),
+                _daily_row(C2, "2015-06-15", 50.0, 300_000)]
+        out, _ = _run(tmp_path, monkeypatch, rows, rows, [("2015-06", 0.001)],
+                      fisd_profile={C2: {"eligible": False}})
+        df = pd.read_parquet(out)
+        assert _row(df, C1, "2015-06")["universe_eligible"]
+        assert not _row(df, C2, "2015-06")["universe_eligible"]
 
     def test_cusip_carried_through_from_daily_layer(self, tmp_path, monkeypatch):
         out, counts = self._build(tmp_path, monkeypatch)
@@ -378,10 +464,10 @@ class TestOutputContract:
         assert meta.get(b"panel_kind") == b"maximal"
         assert meta.get(b"primary_key") == b"cusip"
         assert meta.get(b"families") == b"raw,corr"
-        assert meta.get(b"size_policy") == (
-            f"placeholder_const_{SIZE_PLACEHOLDER}".encode("utf-8")
+        assert meta.get(b"size_policy") == b"fisd_offering_amt"
+        assert meta.get(b"survivorship_policy") == (
+            b"exit_reason_from_FISD_maturity_default_defeased;calls_undateable"
         )
-        assert meta.get(b"survivorship_policy") == b"exit_reason_nan_pre_FISD"
 
     def test_no_tmp_leftover_after_success(self, tmp_path, monkeypatch):
         self._build(tmp_path, monkeypatch)

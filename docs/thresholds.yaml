@@ -44,15 +44,14 @@ monthly_panel:
   rf_rate_series: "TB3MS"
   rf_rate_url: "https://fred.stlouisfed.org/graph/fredgraph.csv?id=TB3MS"
 
-# Uncorrected-panel correction toggles. Both default false so the
-# baseline emitted by scripts/build_monthly_panel.py is the as-published
-# panel. Each toggle takes effect only once its correction is implemented.
+# SUPERSEDED — these build-level stubs are no longer read by any code. Both
+# corrections are now VIEW-level RunConfig toggles (agents/quant/library):
+#   apply_stale_price_filter      → panel_view.stale_mask (A3)
+#   apply_survivorship_correction → panel_view.include_terminal_rows (FISD
+#                                   exit_reason; live since the 2026-06-14 merge)
+# Kept here only as a pointer; safe to delete once nothing references the name.
 monthly_panel_corrections:
-  # FISD-free; will be implemented in a sibling commit after the uncorrected
-  # baseline is verified. Toggling true while unimplemented raises.
   apply_stale_price_filter: false
-  # FISD-gated (needs amount_outstanding and rating to define the at-risk
-  # universe). Stub only; toggling true while unimplemented raises.
   apply_survivorship_correction: false
 
 # Signal-prep constants. Each signal is computed from the monthly panel by
@@ -169,3 +168,103 @@ meas_err_distressed_filters:
                              # apply_distressed_filters REQUIRED_KEYS).
                              # Wiring an ultra-high gate would be a
                              # methodology change requiring its own review.
+
+# FISD reference preprocessing (scripts/build_fisd_reference.py).
+# Source: WRDS Mergent FISD reference tables (data/fisd/*). This block governs
+# the FISD-restricted universe definition, the rating letter→numeric ladder,
+# and the as-of monthly rating construction. It is a PREPROCESSING-only step:
+# it does NOT touch the monthly panel or the merge — those land in Phase 1.
+# [VERIFY] the universe rules against Dickerson-Robotti-Rossetti "Common
+# pitfalls" appendix / trace-data-pipeline before the Phase 1 merge is wired.
+fisd:
+  universe:
+    # Currency: FISD leaves domestic-USD currency blank (~100% null on the
+    # matched set), so null is treated as USD and allowed.
+    currency_allow: ["USD"]
+    allow_null_currency: true
+    exclude_convertible: true     # convertible == 'Y' dropped
+    exclude_asset_backed: true    # asset_backed == 'Y' dropped (structured/ABS)
+    exclude_144a: true            # rule_144a == 'Y' dropped (DRR convention — VERIFY)
+    exclude_perpetual: true       # perpetual == 'Y' dropped (no maturity → no TTM)
+    # Coupon type: 'F' fixed, 'Z' zero-coupon kept; 'V' variable/floating dropped.
+    # Keeping 'Z' is a flagged decision — confirm against DRR before the merge.
+    coupon_type_allow: ["F", "Z"]
+    # bond_type corporate keep-list. Excludes agency/government (USBN, FGOV),
+    # preferred (PS, PSTK), and non-corporate codes by omission. VERIFY the
+    # exact set against DRR; RNT/CCOV are borderline and flagged in the report.
+    bond_type_keep: ["CDEB", "CMTN", "CMTZ", "CPAS", "CPIK", "UCID"]
+  rating:
+    # Agency codes in reference_fisd_ratings.rating_type: SPR=S&P, MR=Moody's,
+    # FR=Fitch, DPR=DBRS. Priority order for the coalesced as-of rating; the
+    # first agency with a non-null rating as-of the month wins. DBRS excluded.
+    agency_priority: ["SPR", "MR", "FR"]
+    not_rated_tokens: ["NR"]              # NR → not-rated (null numeric)
+    withdrawn_status: ["WOFF", "Off"]     # rating withdrawn → not-rated from that date
+    date_min: "1980-01-01"               # rating_date hygiene: drop events before this
+    ig_threshold: 10                      # numeric ≤ 10 (BBB-/Baa3) ⇒ investment grade
+  rating_numeric_map:
+    # Unified 1–22 ladder (AAA/Aaa=1 … D=22). S&P/Fitch share the 'sp' map;
+    # Moody's uses 'moody'. Source: standard 22-notch rating ladder.
+    sp:
+      "AAA": 1
+      "AA+": 2
+      "AA": 3
+      "AA-": 4
+      "A+": 5
+      "A": 6
+      "A-": 7
+      "BBB+": 8
+      "BBB": 9
+      "BBB-": 10
+      "BB+": 11
+      "BB": 12
+      "BB-": 13
+      "B+": 14
+      "B": 15
+      "B-": 16
+      "CCC+": 17
+      "CCC": 18
+      "CCC-": 19
+      "CC": 20
+      "C": 21
+      "D": 22
+    moody:
+      "Aaa": 1
+      "Aa1": 2
+      "Aa2": 3
+      "Aa3": 4
+      "A1": 5
+      "A2": 6
+      "A3": 7
+      "Baa1": 8
+      "Baa2": 9
+      "Baa3": 10
+      "Ba1": 11
+      "Ba2": 12
+      "Ba3": 13
+      "B1": 14
+      "B2": 15
+      "B3": 16
+      "Caa1": 17
+      "Caa2": 18
+      "Caa3": 19
+      "Ca": 20
+      "C": 21
+  amount_outstanding:
+    # amount_outstanding in mergedissue is unreliable (median 0, some negative);
+    # offering_amt is the static issuance-size proxy until a time-varying
+    # reconstruction from FISD action events is built. Final VW choice is
+    # deferred to the Phase 1 merge — this step only surfaces the evidence.
+    size_proxy: "offering_amt"
+  duration:
+    # Carried for the future term/duration signal; duration recompute (from
+    # maturity + coupon, never FISD/OSBAP md_dur) lands with the BBW signals.
+    day_count_default: "30/360"
+  survivorship:
+    # exit_reason inputs for the survivorship toggle (run_config view-level).
+    # A bond-month is terminal from the EARLIEST of: default_date, defeased_date,
+    # maturity. default_date is the first rating event in these tokens (FISD has
+    # no default-date field; the rating ladder's default bucket dates it).
+    # NOTE: FISD cannot date CALLS (190/431k redemption rows carry a call_date),
+    # so called bonds are not flagged as terminal — a documented limitation.
+    default_tokens: ["D", "SD", "DD", "DDD"]
