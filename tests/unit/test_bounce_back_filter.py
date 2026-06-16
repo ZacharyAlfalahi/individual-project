@@ -233,6 +233,13 @@ def _row(bond: str, dt: datetime, tm: str, price: float) -> dict:
     }
 
 
+def _row_ci(cusip: str, bond: str, dt: datetime, tm: str, price: float) -> dict:
+    """Like _row but with an INDEPENDENT cusip_id (for CUSIP-vs-symbol tests)."""
+    r = _row(bond, dt, tm, price)
+    r["cusip_id"] = cusip
+    return r
+
+
 def _bond_rows(bond: str, prices, *, base_day: int = 1, month: int = 6) -> list:
     """Rows for one bond, one trade per day so DuckDB date sort preserves
     the intended price order. Days are zero-padded by datetime itself."""
@@ -327,6 +334,59 @@ def test_process_partition_no_drops_means_no_dropped_file(tmp_path):
     assert stats["kept_rows"] == stats["input_rows"] == n_in
     assert output_path.exists()
     assert not dropped_path.exists(), "no drops → companion artifact must NOT be created"
+
+
+def test_segments_by_cusip_across_symbol_change(tmp_path):
+    # One bond (CUSIP) reported under two TRACE symbols over its life. The
+    # warm-up that establishes the trailing-median anchor is under the OLD
+    # symbol; the recoverable spike is under the NEW symbol. Segmenting by
+    # CUSIP keeps the price history continuous so the spike is flagged and
+    # dropped. Segmenting by bond_id (the pre-fix behaviour) would reset the
+    # anchor at the symbol boundary — the spike's segment would start with
+    # < 2 trailing prices and the spike would survive.
+    cusip = "SAMECUSIP"
+    warmup = _SPIKE_PRICES[:_SPIKE_INDEX]      # [99, 101, 98, 102, 100]
+    spike_tail = _SPIKE_PRICES[_SPIKE_INDEX:]  # [200, 100, 100]
+    rows = (
+        [_row_ci(cusip, "SYM_OLD", datetime(2020, 6, 1 + i), "10:00:00", p)
+         for i, p in enumerate(warmup)]
+        + [_row_ci(cusip, "SYM_NEW", datetime(2020, 6, 6 + i), "10:00:00", p)
+           for i, p in enumerate(spike_tail)]
+    )
+    input_path = tmp_path / "trace_clean_decimal_shifted.parquet"
+    _write_trace(input_path, rows)
+
+    stats, output_path, _ = _run(tmp_path, input_path, "cusip_cont")
+
+    assert stats["dropped_bounce_back"] == 1, \
+        "spike across the symbol boundary must be flagged (CUSIP-continuous)"
+    kept = pq.read_table(str(output_path))
+    assert 200.0 not in kept.column("rptd_pr").to_pylist()
+
+
+def test_blank_cusip_falls_back_to_bond_id(tmp_path):
+    # Rows with a blank CUSIP must segment by bond_id, NOT collapse into one
+    # giant blank-keyed segment (which would let one bond's prices corrupt
+    # another's anchor). Two distinct blank-CUSIP bonds, processed
+    # independently: the spiky one drops its spike; the clean one is kept whole.
+    rows = (
+        [_row_ci("", "BLANK_SPIKE", datetime(2020, 6, 1 + i), "10:00:00", p)
+         for i, p in enumerate(_SPIKE_PRICES)]
+        + [_row_ci("", "BLANK_CLEAN", datetime(2020, 7, 1 + i), "10:00:00", p)
+           for i, p in enumerate(_CLEAN_PRICES)]
+    )
+    input_path = tmp_path / "trace_clean_decimal_shifted.parquet"
+    _write_trace(input_path, rows)
+
+    stats, output_path, _ = _run(tmp_path, input_path, "blank_cusip")
+
+    assert stats["dropped_bounce_back"] == 1, "only BLANK_SPIKE's spike drops"
+    kept = pq.read_table(str(output_path))
+    clean_kept = kept.filter(pc.equal(kept.column("bond_id"), "BLANK_CLEAN"))
+    assert clean_kept.num_rows == len(_CLEAN_PRICES), \
+        "clean blank-CUSIP bond must be untouched (not merged with the spiky one)"
+    spike_kept = kept.filter(pc.equal(kept.column("bond_id"), "BLANK_SPIKE"))
+    assert 200.0 not in spike_kept.column("rptd_pr").to_pylist()
 
 
 def test_process_partition_leaves_no_tmp_files(tmp_path):

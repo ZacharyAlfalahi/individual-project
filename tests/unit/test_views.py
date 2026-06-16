@@ -212,6 +212,29 @@ class TestStaleMask:
         assert pd.isna(feb["ret"])
         assert pd.isna(feb["xret"])
 
+    def test_stale_does_not_propagate_across_calendar_gap(self):
+        # Cusip A: Jan is stale; the NEXT panel row is Mar (Feb absent). ret(Mar)
+        # does not derive from price(Jan) — they are not calendar-adjacent — so
+        # the stale mask must NOT propagate to Mar. A positional shift(1) would
+        # wrongly mask it. Mar carries a real (non-NaN) return and a fresh price;
+        # the maximal panel is built directly so build-time adjacency does not
+        # pre-NaN it, isolating the view-layer propagation logic.
+        panel = _make_maximal([
+            _maximal_row("A", "2010-01", p_raw=100.0, p_corr=99.0,
+                         r_raw=0.05, r_corr=0.04,
+                         ltd_corr="2009-11-01"),     # Jan stale (60-day gap)
+            _maximal_row("A", "2010-03", p_raw=103.0, p_corr=102.0,
+                         r_raw=0.03, r_corr=0.03,
+                         ltd_corr="2010-03-26"),     # Mar fresh, real return
+        ])
+        out = view(panel, _cfg("corr", stale_mask=True), stale_threshold_days=30)
+        jan = out[out["date"] == _me("2010-01")].iloc[0]
+        mar = out[out["date"] == _me("2010-03")].iloc[0]
+        assert pd.isna(jan["ret"])            # Jan self-masked (stale)
+        assert mar["price_eom"] == 102.0      # Mar fresh — own price kept
+        assert mar["ret"] == 0.03             # NOT masked: Jan→Mar is a gap
+        assert pd.notna(mar["xret"])
+
     def test_stale_mask_distinct_from_ret_adjacency(self):
         """A3.4 coexistence: stale-mask masks because of price freshness;
         the existing ret-adjacency rule (baked into ret_corr at the

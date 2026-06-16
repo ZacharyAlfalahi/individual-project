@@ -167,6 +167,21 @@ C2 = "CUSIP0002"
 
 
 # ---------------------------------------------------------------------------
+# Risk-free merge guard
+# ---------------------------------------------------------------------------
+
+class TestRfMergeGuard:
+    def test_duplicate_rf_month_raises(self, tmp_path, monkeypatch):
+        # A duplicated rf year_month would silently fan out the panel via an
+        # m:m left-merge (each cusip-month multiplied). validate="m:1" must
+        # turn that into a hard MergeError instead.
+        raw = [_daily_row(C1, "2015-06-10", 100.0, 100_000)]
+        with pytest.raises(pd.errors.MergeError):
+            _run(tmp_path, monkeypatch, raw, raw,
+                 [("2015-06", 0.001), ("2015-06", 0.002)])
+
+
+# ---------------------------------------------------------------------------
 # Monthly price aggregation — Σ(daily_vwap × daily_vol) / Σ(daily_vol)
 # ---------------------------------------------------------------------------
 

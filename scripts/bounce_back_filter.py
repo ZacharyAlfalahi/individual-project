@@ -220,25 +220,35 @@ def process_partition(input_path: Path, output_path: Path, dropped_path: Path,
     print(f"  Stream-sorting {input_path.name} → {sorted_tmp.name} via DuckDB ...")
     in_lit = "'" + str(input_path).replace("'", "''") + "'"
     out_lit = "'" + str(sorted_tmp).replace("'", "''") + "'"
+    # Segment the per-bond filter by CUSIP, not the TRACE symbol (bond_id):
+    # one bond (CUSIP) can change bond_sym_id over its life, and the monthly
+    # panel keys on CUSIP — segmenting on bond_id would fragment a renamed
+    # bond's price history and reset the trailing-median anchor at the symbol
+    # boundary. seg_key = CUSIP when present, else fall back to bond_id (the
+    # ~0.03% of rows with a blank CUSIP); TRIM/NULLIF treat whitespace-only and
+    # empty as blank, matching preprocess_trace's CUSIP blank definition. The
+    # seg_key column is carried through the sort and dropped before write.
     with duckdb.connect() as con:
         con.execute(
             f"""
             COPY (
-                SELECT * FROM read_parquet({in_lit})
-                ORDER BY bond_id, trd_exctn_dt, trd_exctn_tm NULLS LAST
+                SELECT *, COALESCE(NULLIF(TRIM(cusip_id), ''), bond_id) AS seg_key
+                FROM read_parquet({in_lit})
+                ORDER BY COALESCE(NULLIF(TRIM(cusip_id), ''), bond_id),
+                         trd_exctn_dt, trd_exctn_tm NULLS LAST
             ) TO {out_lit} (FORMAT 'parquet')
             """
         )
 
     input_rows = pq.read_metadata(str(sorted_tmp)).num_rows
-    print(f"  Sorted {input_rows:,} rows; iterating bond-by-bond...")
+    print(f"  Sorted {input_rows:,} rows; iterating per CUSIP segment...")
 
     kept_writer = None
     dropped_writer = None
     kept_rows = 0
     dropped_rows = 0
     bond_segments: list = []
-    current_bond_id = None
+    current_seg_key = None
 
     def _flush_current_bond():
         nonlocal kept_rows, dropped_rows, kept_writer, dropped_writer
@@ -248,6 +258,9 @@ def process_partition(input_path: Path, output_path: Path, dropped_path: Path,
         sub_df = pl.from_arrow(sub_table)
         prices = sub_df.get_column("rptd_pr").to_list()
         mask, n_bb = _apply_bounce_back_loop(prices, params)
+        # Drop the synthetic segmentation key before writing — it is not part
+        # of OUTPUT_SCHEMA, and .cast() matches columns positionally.
+        sub_df = sub_df.drop("seg_key")
 
         # Write KEPT rows
         if any(mask):
@@ -286,24 +299,24 @@ def process_partition(input_path: Path, output_path: Path, dropped_path: Path,
                     f"Non-finite price found in {input_path.name} batch — "
                     "decimal-shift stage contract violated."
                 )
-            bond_col = batch.column("bond_id").to_pylist()
+            seg_col = batch.column("seg_key").to_pylist()
             run_starts = [0]
-            for i in range(1, len(bond_col)):
-                if bond_col[i] != bond_col[i - 1]:
+            for i in range(1, len(seg_col)):
+                if seg_col[i] != seg_col[i - 1]:
                     run_starts.append(i)
-            run_starts.append(len(bond_col))
+            run_starts.append(len(seg_col))
 
             for j in range(len(run_starts) - 1):
                 s, e = run_starts[j], run_starts[j + 1]
-                bid = bond_col[s]
+                skey = seg_col[s]
                 seg = batch.slice(s, e - s)
-                if current_bond_id is None or bid == current_bond_id:
+                if current_seg_key is None or skey == current_seg_key:
                     bond_segments.append(seg)
-                    current_bond_id = bid
+                    current_seg_key = skey
                 else:
                     _flush_current_bond()
                     bond_segments = [seg]
-                    current_bond_id = bid
+                    current_seg_key = skey
 
         _flush_current_bond()
     finally:

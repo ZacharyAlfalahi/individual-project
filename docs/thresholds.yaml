@@ -10,8 +10,14 @@ trace_cleaning:
   # the ultra-distressed filter in OSBAP achieves the same effect.
   price_floor: 1.0
   price_ceiling: 300.0
-  # Project design decision — committed before first run, never changed
+  # Project design decision — committed before first run, never changed.
+  # Holdout window is the closed interval [holdout_start_year, holdout_end_year]
+  # = 2022–2025 (the 2026-06-09 WRDS re-pull runs into 2025). holdout_end_year
+  # is an EXPLICIT upper bound: preprocess_trace.py raises if a future re-pull
+  # carries rows beyond it, so the window cannot silently creep — extending it
+  # must be a conscious edit here (and in the docs).
   holdout_start_year: 2022
+  holdout_end_year: 2025
   # Dick-Nielsen (2009) Table 1 Panel B: keep only blank asof_cd.
   # Drops A (late report), R (reversal), D (delayed), X (cancellation).
   # Keeping "A" risks double-counting trades reported as corrections of earlier submissions.

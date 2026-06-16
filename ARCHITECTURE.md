@@ -6,7 +6,7 @@ Every implementation is validated and verifiable.
 RQ1 — Librarian extraction fidelity on the gold-standard set (BBW, KPP, DG): field-level per-field accuracy, multi-model agreement rate, failure taxonomy (field-level reconstruction, NOT strategy-class routing).
 RQ2 — Quant implementation fidelity + coverage: reproduce as-published numbers within ±15% on the data-matched anchors; ReAct iteration distribution; fraction of the DRR zoo implementable via the 3 audited families vs gracefully refused.
 RQ3 — Bias prevalence (Auditor), differential: each strategy run uncorrected (as-published) vs corrected, bias = the gap; effect sizes with CIs (survival counts secondary); conservative lower bound on artefact; clean on the anchor set + traded-liquidity negative control, scale layer weaker/confounded.
-RQ4 — Repair rate (Scientist): fraction of proposals that repair failing strategies, retain in-sample alpha, survive BH-FDR, show positive OOS Sharpe on 2022–2024 holdout.
+RQ4 — Repair rate (Scientist): fraction of proposals that repair failing strategies, retain in-sample alpha, survive BH-FDR, show positive OOS Sharpe on 2022–2025 holdout.
 Each RQ has a structurally independent validation path — failure in one component cannot contaminate another.
 
 ## Data Rules (inviolable)

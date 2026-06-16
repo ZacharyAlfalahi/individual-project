@@ -96,7 +96,7 @@ def thresholds_sha256() -> str:
 
 
 def _csv_reader(chunk_size: int = 500_000):
-    """Chunked CSV reader with the dtype spec required for both passes."""
+    """Chunked CSV reader with the dtype spec required for all three scans."""
     import pandas as pd
     return pd.read_csv(
         RAW_FILE,
@@ -112,6 +112,12 @@ def _csv_reader(chunk_size: int = 500_000):
             "rpt_side_cd": str,
             "cusip_id": str,
             "bond_sym_id": str,
+            # Pin to str so the composite cancellation/dedup keys hash an
+            # IDENTICAL string in every scan. Left to inference, a chunk with a
+            # blank date infers float64 ("20200101.0") while an all-valid chunk
+            # infers int64 ("20200101") — the two-scan split makes that mismatch
+            # silently un-drop a cancelled trade or split a dedup key.
+            "trd_exctn_dt": str,
         },
         on_bad_lines="skip",
     )
@@ -127,7 +133,7 @@ def _composite_hash(*parts) -> int:
 
 
 def _collect_sets(cfg: dict, chunk_size: int = 500_000):
-    """Pass 1: scan the raw file once to build cross-chunk matching state.
+    """Build cross-chunk matching state in TWO scans of the raw file.
 
     Returns (cancelled_keys, sell_counts):
       - cancelled_keys: frozenset[int] of 64-bit hashes of
@@ -135,40 +141,79 @@ def _collect_sets(cfg: dict, chunk_size: int = 500_000):
         with a non-null orig_msg_seq_nb (Dick-Nielsen B1).
       - sell_counts: Counter[int] of (bond_sym_id, trd_exctn_dt, RAW price,
         entrd_vol_qt) for sell-side records surviving filters 1a/1b/2/3.
-        Note: RAW prices (no decimal-shift) — this is the dedup price basis
-        for both column families.
+        RAW prices (no decimal-shift) — the dedup basis for both families.
+
+    Why TWO scans: filter 1b (drop a T record cancelled by a later
+    C/W/X/Y/R) needs the COMPLETE cancelled_keys set, because a cancellation
+    can appear in a later chunk than its original. The sell pool therefore
+    cannot apply 1b in the same pass that builds cancelled_keys. Scan 1 builds
+    cancelled_keys; scan 2 — with cancelled_keys frozen — counts sells applying
+    filters in the SAME order as Pass 2 (1a → 1b → 2 → 3 → side==S), so the
+    dedup pool equals Pass 2's surviving sells exactly. A one-pass alternative
+    that retained every sell's msg_seq_nb to subtract afterwards would be
+    O(n_sells) memory; two scans keep it at O(distinct keys).
+
+    Rows with non-finite RAW price or volume are EXCLUDED from the pool:
+    _composite_hash uses repr(), and repr(nan)=='nan' (repr(inf)=='inf'), so
+    unrelated non-finite rows would otherwise collide into one dedup key and a
+    genuine buy could drop against a phantom NaN sell. Such rows are still
+    WRITTEN unchanged downstream (A1.7 raw-junk preservation); they are only
+    barred from dedup matching.
     """
     asof_keep = cfg["asof_cd_keep"]
 
-    cancelled_keys: set = set()
-    sell_counts: Counter = Counter()
-
-    print("Pass 1/2: scanning for cancellation keys and interdealer sell-side keys...")
-    for chunk in tqdm(_csv_reader(chunk_size), desc="pass1", unit="chunk"):
-        # Cancellation keys — composite (bond_sym_id, trd_exctn_dt, orig_msg_seq_nb)
-        # collected from non-T records that reference a prior original trade.
+    # --- Scan 1/3: cancellation keys only -----------------------------------
+    cancelled: set = set()
+    print("Scan 1/3: collecting cancellation keys...")
+    for chunk in tqdm(_csv_reader(chunk_size), desc="scan1", unit="chunk"):
         non_t = chunk[chunk["trc_st"] != "T"]
-        if not non_t.empty:
-            origs = non_t["orig_msg_seq_nb"]
-            mask = origs.notna() & (origs.astype(str) != "")
-            valid = non_t[mask]
-            if not valid.empty:
-                for b, d, m in zip(
-                    valid["bond_sym_id"].astype(str).tolist(),
-                    valid["trd_exctn_dt"].astype(str).tolist(),
-                    valid["orig_msg_seq_nb"].astype(str).tolist(),
-                ):
-                    cancelled_keys.add(_composite_hash(b, d, m))
+        if non_t.empty:
+            continue
+        origs = non_t["orig_msg_seq_nb"]
+        mask = origs.notna() & (origs.astype(str) != "")
+        valid = non_t[mask]
+        if valid.empty:
+            continue
+        for b, d, m in zip(
+            valid["bond_sym_id"].astype(str).tolist(),
+            valid["trd_exctn_dt"].astype(str).tolist(),
+            valid["orig_msg_seq_nb"].astype(str).tolist(),
+        ):
+            cancelled.add(_composite_hash(b, d, m))
+    cancelled_keys = frozenset(cancelled)
 
-        # Replicate Pass 2 Dick-Nielsen filters (NO price plausibility, NO
-        # decimal-shift — those are meas_err-gated downstream) to identify
-        # sell-side survivors that will be the dedup pool in Pass 2.
+    # --- Scan 2/3: interdealer sell-side dedup pool (post-1b) ----------------
+    # cancelled_keys is now complete, so 1b can be applied. Filter order
+    # mirrors Pass 2 exactly so the pool == Pass 2's surviving sells.
+    sell_counts: Counter = Counter()
+    print("Scan 2/3: collecting interdealer sell-side keys (post-1b)...")
+    for chunk in tqdm(_csv_reader(chunk_size), desc="scan2", unit="chunk"):
+        # 1a
         chunk = chunk[chunk["trc_st"] == "T"]
         if chunk.empty:
             continue
+        # 1b — drop T records cancelled by a later C/W/X/Y/R record
+        if cancelled_keys:
+            is_cancelled = np.fromiter(
+                (
+                    _composite_hash(b, d, m) in cancelled_keys
+                    for b, d, m in zip(
+                        chunk["bond_sym_id"].astype(str).tolist(),
+                        chunk["trd_exctn_dt"].astype(str).tolist(),
+                        chunk["msg_seq_nb"].astype(str).tolist(),
+                    )
+                ),
+                dtype=bool,
+                count=len(chunk),
+            )
+            chunk = chunk[~is_cancelled]
+            if chunk.empty:
+                continue
+        # 2
         chunk = chunk[chunk["asof_cd"].isna() | (chunk["asof_cd"] == asof_keep)]
         if chunk.empty:
             continue
+        # 3
         chunk = chunk[chunk["wis_fl"] != "Y"]
         if chunk.empty:
             continue
@@ -176,6 +221,14 @@ def _collect_sets(cfg: dict, chunk_size: int = 500_000):
         sells = chunk[chunk["rpt_side_cd"] == "S"]
         if sells.empty:
             continue
+        # Exclude non-finite price/volume from the dedup pool (see docstring).
+        finite = (
+            np.isfinite(sells["rptd_pr"].to_numpy())
+            & np.isfinite(sells["entrd_vol_qt"].to_numpy())
+        )
+        if not finite.any():
+            continue
+        sells = sells[finite]
         for b, d, pr, v in zip(
             sells["bond_sym_id"].astype(str).tolist(),
             sells["trd_exctn_dt"].astype(str).tolist(),
@@ -185,10 +238,10 @@ def _collect_sets(cfg: dict, chunk_size: int = 500_000):
             sell_counts[_composite_hash(b, d, pr, v)] += 1
 
     total_sells = sum(sell_counts.values())
-    print(f"  Pass 1 done: {len(cancelled_keys):,} cancellation keys, "
+    print(f"  Scans 1-2 done: {len(cancelled_keys):,} cancellation keys, "
           f"{total_sells:,} sell-side records "
           f"({len(sell_counts):,} distinct keys).")
-    return frozenset(cancelled_keys), sell_counts
+    return cancelled_keys, sell_counts
 
 
 def run_pandas(cfg: dict) -> dict:
@@ -198,6 +251,7 @@ def run_pandas(cfg: dict) -> dict:
 
     asof_keep = cfg["asof_cd_keep"]
     holdout_year = cfg["holdout_start_year"]
+    holdout_end_year = cfg["holdout_end_year"]
     chunk_size = 500_000
 
     cancelled_keys, sell_counts = _collect_sets(cfg, chunk_size)
@@ -220,7 +274,7 @@ def run_pandas(cfg: dict) -> dict:
         pa.field("scrty_type_cd",        pa.string()),
     ])
 
-    print("Pass 2/2: applying filters and writing output...")
+    print("Scan 3/3: applying filters and writing output...")
 
     dev_writer = None
     hold_writer = None
@@ -292,6 +346,12 @@ def run_pandas(cfg: dict) -> dict:
             # families.
             if sell_counts:
                 buys_mask = (chunk["rpt_side_cd"] == "B").to_numpy()
+                # Non-finite buys need no special handling here: _collect_sets
+                # (scan 2) excludes non-finite price/volume from sell_counts, so
+                # no NaN/inf key exists to match against. A non-finite buy hashes
+                # to a repr(nan)/repr(inf) key, finds no sell, and is kept —
+                # preserving raw junk bit-exact (A1.7). NaN handling lives in one
+                # place (the sell pool), not duplicated on the buy side.
                 if buys_mask.any():
                     buys = chunk[buys_mask]
                     buy_hashes = [
@@ -332,8 +392,26 @@ def run_pandas(cfg: dict) -> dict:
             counts["cusip_blank_post_dn"] += int(blank_mask.sum())
             counts["cusip_populated_post_dn"] += int(len(chunk) - blank_mask.sum())
 
-            dev_chunk = chunk[chunk["trd_exctn_dt"].dt.year < holdout_year]
-            hold_chunk = chunk[chunk["trd_exctn_dt"].dt.year >= holdout_year]
+            # Dev/holdout split. Window is the closed interval
+            # [holdout_year, holdout_end_year] = 2022–2025. The upper bound is
+            # EXPLICIT: raise on any row beyond it (e.g. a future re-pull) so
+            # the holdout window cannot silently creep — extending it must be a
+            # conscious thresholds.yaml + docs edit, not a side effect of new
+            # data landing in the file. NOTE: this fires mid-loop, so earlier
+            # chunks may already be written — abort leaves partial parquet, which
+            # a corrected re-run overwrites (ParquetWriter truncates on open).
+            year = chunk["trd_exctn_dt"].dt.year
+            beyond = year > holdout_end_year
+            if beyond.any():
+                raise ValueError(
+                    f"{int(beyond.sum()):,} row(s) dated beyond holdout_end_year"
+                    f"={holdout_end_year} (max year {int(year.max())}). The "
+                    f"dev/holdout window is {holdout_year}–{holdout_end_year}; "
+                    "raise holdout_end_year in docs/thresholds.yaml (and update "
+                    "the docs) before ingesting newer data."
+                )
+            dev_chunk = chunk[year < holdout_year]
+            hold_chunk = chunk[year >= holdout_year]
 
             if not dev_chunk.empty:
                 table = pa.Table.from_pandas(dev_chunk, schema=OUTPUT_SCHEMA, preserve_index=False)
@@ -437,7 +515,7 @@ def main():
     cfg = load_thresholds()
     print(f"Thresholds loaded from {THRESHOLDS_FILE}")
     print(f"  asof_cd_keep={cfg['asof_cd_keep']!r}, "
-          f"holdout_start_year={cfg['holdout_start_year']}")
+          f"holdout window={cfg['holdout_start_year']}–{cfg['holdout_end_year']}")
     print("Stage: Dick-Nielsen filters only (no price plausibility, no decimal-shift).")
     print("       Those are meas_err-gated and live in apply_decimal_shift.py downstream.")
 

@@ -24,6 +24,7 @@ import csv
 import gzip
 import io
 import json
+import math
 from collections import Counter
 from pathlib import Path
 
@@ -123,6 +124,15 @@ def _bond_id_for(case: dict) -> str:
     return case.get("bond_id_override") or f"TEST_{case['label']}"
 
 
+def _finite(x) -> bool:
+    """True iff x is a finite number (mirrors production's np.isfinite gate on
+    the dedup pool — NaN/inf price or volume is excluded from matching)."""
+    try:
+        return math.isfinite(float(x))
+    except (TypeError, ValueError):
+        return False
+
+
 def make_synthetic_df() -> pd.DataFrame:
     rows = []
     for i, case in enumerate(SYNTHETIC_CASES):
@@ -165,13 +175,23 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
             continue
         cancelled_keys.add((str(r["bond_sym_id"]), str(r["trd_exctn_dt"]), orig))
 
-    # Pass-1 equivalent (b): sell-side dedup pool from rows passing 1a/2/3
+    # Pass-1 equivalent (b): sell-side dedup pool from rows passing 1a/1b/2/3.
+    # Filter order mirrors production Pass 2 — 1b excludes cancelled sells so
+    # their phantom credit can't drop a genuine buy at the same key. Non-finite
+    # price/vol is excluded (repr(nan) collision); such rows are still kept.
     pool = df[df["trc_st"] == "T"]
+    if cancelled_keys:
+        def _pool_is_cancelled(r):
+            return (str(r["bond_sym_id"]), str(r["trd_exctn_dt"]),
+                    str(r["msg_seq_nb"])) in cancelled_keys
+        pool = pool[~pool.apply(_pool_is_cancelled, axis=1)]
     pool = pool[pool["asof_cd"].isna() | (pool["asof_cd"] == "")]
     pool = pool[pool["wis_fl"] != "Y"]
     sells = pool[pool["rpt_side_cd"] == "S"]
     sell_counts: Counter = Counter()
     for _, r in sells.iterrows():
+        if not (_finite(r["rptd_pr"]) and _finite(r["entrd_vol_qt"])):
+            continue
         sell_counts[(str(r["bond_sym_id"]), str(r["trd_exctn_dt"]),
                      r["rptd_pr"], r["entrd_vol_qt"])] += 1
 
@@ -198,6 +218,9 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
         for idx, r in df.iterrows():
             if r["rpt_side_cd"] != "B":
                 keep.append(idx)
+                continue
+            if not (_finite(r["rptd_pr"]) and _finite(r["entrd_vol_qt"])):
+                keep.append(idx)  # non-finite buy never dedup-matched — kept
                 continue
             key = (str(r["bond_sym_id"]), str(r["trd_exctn_dt"]),
                    r["rptd_pr"], r["entrd_vol_qt"])
@@ -561,6 +584,183 @@ class TestRunPandasEndToEnd:
         # All synthetic rows have cusip_id="" → 100% blank after this stage.
         assert report["rows"]["cusip_blank_post_dn"] == expected_survivors
         assert report["rows"]["cusip_populated_post_dn"] == 0
+
+
+class TestDedupPoolRegressions:
+    """Regression tests for two interdealer-dedup-pool bugs that silently
+    deleted genuine, economically-distinct trades.
+
+    (1) Phantom sell credit: a sell counted in Pass 1 but then dropped by 1b
+        (it was cancelled) left a phantom credit in sell_counts, so a genuine
+        buy at the same (bond, day, price, vol) key was wrongly dropped.
+    (2) NaN/inf key collision: _composite_hash uses repr(), and
+        repr(nan)=='nan', so unrelated non-finite rows collided into one dedup
+        key and a buy dropped against a phantom NaN sell.
+
+    Both exercise the REAL production path (run_pandas over a gz CSV). A
+    parallel mirror assertion (apply_filters) locks the in-test reimplementation
+    to the same contract.
+    """
+
+    def _write_csv(self, path: Path, rows: list[dict]) -> None:
+        """Write a gz CSV from partial row dicts (sensible blank defaults)."""
+        all_cols = KEEP_COLUMNS + ["trc_st", "asof_cd", "wis_fl",
+                                   "msg_seq_nb", "orig_msg_seq_nb"]
+        out = []
+        for i, r in enumerate(rows):
+            row = {col: "" for col in all_cols}
+            row.update({
+                "trd_exctn_tm": "10:00:00",
+                "company_symbol": "TEST",
+                "asof_cd": "",
+                "wis_fl": "N",
+                "entrd_vol_qt": 10000.0,
+                "msg_seq_nb": str(70000 + i),
+            })
+            row.update(r)
+            out.append(row)
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=all_cols)
+        w.writeheader()
+        w.writerows(out)
+        with gzip.open(path, "wt") as f:
+            f.write(buf.getvalue())
+
+    def test_cancelled_sell_does_not_drop_genuine_buy(self, tmp_path, monkeypatch):
+        # Key K shared by all three rows. The sell (7001) is cancelled by a
+        # later C record (7002) and removed by 1b; a separate genuine buy
+        # (7003) at K must SURVIVE — the cancelled sell must leave no phantom
+        # credit. On the pre-fix code the buy is wrongly dropped (len==0).
+        K = {"bond_sym_id": "TEST_PHANTOM", "trd_exctn_dt": "2019-04-01",
+             "rptd_pr": 77.0, "entrd_vol_qt": 30000.0}
+        rows = [
+            {**K, "trc_st": "T", "rpt_side_cd": "S", "msg_seq_nb": "7001"},
+            {**K, "trc_st": "C", "rpt_side_cd": "S", "msg_seq_nb": "7002",
+             "orig_msg_seq_nb": "7001"},
+            {**K, "trc_st": "T", "rpt_side_cd": "B", "msg_seq_nb": "7003"},
+        ]
+        raw = tmp_path / "trace_raw.csv.gz"
+        self._write_csv(raw, rows)
+        paths = _redirect_paths(monkeypatch, tmp_path, raw)
+
+        counts = run_pandas(_cfg)
+        df = pd.read_parquet(paths["dev_out"])
+        kept = df[df["bond_id"] == "TEST_PHANTOM"]
+        assert len(kept) == 1, \
+            "genuine buy wrongly dropped against a phantom cancelled sell"
+        assert kept["rpt_side_cd"].iloc[0] == "B"
+        assert kept["rptd_pr"].iloc[0] == 77.0
+        assert counts["dropped_cancelled_original"] == 1
+        assert counts["dropped_interdealer_duplicate"] == 0
+
+    def test_nan_priced_rows_do_not_collide_in_dedup(self, tmp_path, monkeypatch):
+        # Two unrelated NaN-priced rows (S and B) at the same bond/day/vol must
+        # BOTH survive: a repr(nan) collision must not pair them. On the pre-fix
+        # code the NaN buy drops against the phantom NaN sell (len==1).
+        base = {"bond_sym_id": "TEST_NAN", "trd_exctn_dt": "2016-07-07",
+                "rptd_pr": "", "entrd_vol_qt": 40000.0}  # blank price → NaN
+        rows = [
+            {**base, "trc_st": "T", "rpt_side_cd": "S", "msg_seq_nb": "8001"},
+            {**base, "trc_st": "T", "rpt_side_cd": "B", "msg_seq_nb": "8002"},
+        ]
+        raw = tmp_path / "trace_raw.csv.gz"
+        self._write_csv(raw, rows)
+        paths = _redirect_paths(monkeypatch, tmp_path, raw)
+
+        counts = run_pandas(_cfg)
+        df = pd.read_parquet(paths["dev_out"])
+        kept = df[df["bond_id"] == "TEST_NAN"]
+        assert len(kept) == 2, \
+            "NaN-priced buy wrongly dropped against a phantom NaN sell"
+        assert set(kept["rpt_side_cd"]) == {"S", "B"}
+        assert kept["rptd_pr"].isna().all()  # bit-exact NaN preserved (A1.7)
+        assert counts["dropped_interdealer_duplicate"] == 0
+
+    def test_apply_filters_mirror_excludes_cancelled_sell(self):
+        # The in-test apply_filters mirror must apply 1b to its sell pool too,
+        # or it silently diverges from production. Same phantom scenario.
+        def _r(side, st, msg, orig=""):
+            row = {col: "" for col in KEEP_COLUMNS}
+            row.update({
+                "bond_sym_id": "TEST_PHANTOM", "trd_exctn_dt": "2019-04-01",
+                "trd_exctn_tm": "10:00:00", "trc_st": st, "asof_cd": "",
+                "wis_fl": "N", "rptd_pr": 77.0, "entrd_vol_qt": 30000.0,
+                "rpt_side_cd": side, "msg_seq_nb": msg, "orig_msg_seq_nb": orig,
+            })
+            return row
+        df = pd.DataFrame([
+            _r("S", "T", "7001"),
+            _r("S", "C", "7002", orig="7001"),
+            _r("B", "T", "7003"),
+        ])
+        out = apply_filters(df)
+        kept = out[out["bond_sym_id"] == "TEST_PHANTOM"]
+        assert len(kept) == 1 and kept["rpt_side_cd"].iloc[0] == "B"
+
+    def test_populated_pool_dedups_finite_pair_and_keeps_nan_buy(self, tmp_path, monkeypatch):
+        # The realistic production path: sell_counts is NON-EMPTY (a finite
+        # interdealer pair populates it), so the buy-matching branch actually
+        # runs. The finite B is dropped (normal Dick-Nielsen B2 dedup); a
+        # separate NaN-priced buy must STILL survive even with a populated pool
+        # (scan 2 excluded the NaN sell, so no NaN key exists to match).
+        rows = [
+            {"bond_sym_id": "FIN", "trd_exctn_dt": "2018-05-05", "rptd_pr": 90.0,
+             "entrd_vol_qt": 20000.0, "trc_st": "T", "rpt_side_cd": "S", "msg_seq_nb": "1"},
+            {"bond_sym_id": "FIN", "trd_exctn_dt": "2018-05-05", "rptd_pr": 90.0,
+             "entrd_vol_qt": 20000.0, "trc_st": "T", "rpt_side_cd": "B", "msg_seq_nb": "2"},
+            {"bond_sym_id": "NANB", "trd_exctn_dt": "2018-05-05", "rptd_pr": "",
+             "entrd_vol_qt": 50000.0, "trc_st": "T", "rpt_side_cd": "S", "msg_seq_nb": "3"},
+            {"bond_sym_id": "NANB", "trd_exctn_dt": "2018-05-05", "rptd_pr": "",
+             "entrd_vol_qt": 50000.0, "trc_st": "T", "rpt_side_cd": "B", "msg_seq_nb": "4"},
+        ]
+        raw = tmp_path / "trace_raw.csv.gz"
+        self._write_csv(raw, rows)
+        paths = _redirect_paths(monkeypatch, tmp_path, raw)
+
+        counts = run_pandas(_cfg)
+        df = pd.read_parquet(paths["dev_out"])
+        fin = df[df["bond_id"] == "FIN"]
+        nanb = df[df["bond_id"] == "NANB"]
+        assert len(fin) == 1 and fin["rpt_side_cd"].iloc[0] == "S", \
+            "finite interdealer B must be dropped (normal dedup)"
+        assert counts["dropped_interdealer_duplicate"] == 1
+        assert len(nanb) == 2, "NaN buy must survive even with a populated pool"
+        assert nanb["rptd_pr"].isna().all()
+
+
+class TestHoldoutWindowGuard:
+    """The dev/holdout window is the closed interval [start, end] = 2022–2025.
+    A row dated beyond holdout_end_year must RAISE, not silently land in the
+    holdout (guards against a future re-pull quietly widening the window)."""
+
+    def test_row_beyond_end_year_raises(self, tmp_path, monkeypatch):
+        all_cols = KEEP_COLUMNS + ["trc_st", "asof_cd", "wis_fl",
+                                   "msg_seq_nb", "orig_msg_seq_nb"]
+        rows = []
+        # One clean in-window row + one row dated beyond holdout_end_year.
+        for i, (bond, dt) in enumerate([("IN_WINDOW", "2023-03-15"),
+                                        ("BEYOND_WINDOW", "2026-01-02")]):
+            row = {col: "" for col in all_cols}
+            row.update({
+                "bond_sym_id": bond, "trd_exctn_dt": dt, "trd_exctn_tm": "10:00:00",
+                "trc_st": "T", "asof_cd": "", "wis_fl": "N",
+                "rptd_pr": 98.5, "entrd_vol_qt": 10000.0,
+                "company_symbol": "TEST", "rpt_side_cd": "B",
+                "msg_seq_nb": str(60000 + i),
+            })
+            rows.append(row)
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=all_cols)
+        w.writeheader()
+        w.writerows(rows)
+        raw = tmp_path / "trace_raw.csv.gz"
+        with gzip.open(raw, "wt") as f:
+            f.write(buf.getvalue())
+        _redirect_paths(monkeypatch, tmp_path, raw)
+
+        assert _cfg["holdout_end_year"] == 2025
+        with pytest.raises(ValueError, match="holdout_end_year"):
+            run_pandas(_cfg)
 
 
 class TestCusipBlankMaskCounting:

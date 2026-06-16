@@ -190,40 +190,6 @@ def aggregate_family(daily_path: Path, family: str) -> pd.DataFrame:
     return df
 
 
-def compute_returns_inplace(panel: pd.DataFrame, family: str) -> None:
-    """Compute ret_<family> with the adjacency rule.
-
-    Applied AFTER the outer-join across families, so the function sees the
-    full panel of (cusip, year_month) rows (including rows that exist for
-    one family but not the other). Returns are computed PER FAMILY: each
-    family has its own price series with its own NaN pattern. The adjacency
-    rule is enforced within each family's own series.
-    """
-    price_col = f"price_eom_{family}"
-    panel.sort_values(["cusip_id", "year_month"], inplace=True)
-
-    panel[f"price_lag_{family}"] = panel.groupby("cusip_id")[price_col].shift(1)
-    panel[f"ret_{family}"] = (
-        (panel[price_col] - panel[f"price_lag_{family}"])
-        / panel[f"price_lag_{family}"]
-    )
-    # Adjacency: ret = NaN unless prior month is the immediately adjacent
-    # calendar month. Without this, a year-long gap would silently produce
-    # a one-month-style return.
-    ym_period = pd.PeriodIndex(panel["year_month"], freq="M")
-    prev_ym = panel.groupby("cusip_id")[f"price_lag_{family}"].transform(
-        lambda s: ym_period.to_series().reset_index(drop=True).reindex(s.index).shift(1).iloc[:len(s)]
-    )
-    # Simpler: shift year_month itself per group
-    panel["_ym_pd"] = ym_period
-    panel[f"_prev_ym_{family}"] = panel.groupby("cusip_id")["_ym_pd"].shift(1)
-    gap = (panel["_ym_pd"] - panel[f"_prev_ym_{family}"]).map(
-        lambda x: x.n if pd.notna(x) else float("nan")
-    )
-    panel.loc[(gap != 1) | gap.isna(), f"ret_{family}"] = float("nan")
-    panel.drop(columns=[f"price_lag_{family}", f"_prev_ym_{family}"], inplace=True)
-
-
 def build_panel(cfg: dict) -> dict:
     if not RF_FILE.exists():
         raise FileNotFoundError(f"RF rate file not found: {RF_FILE}")
@@ -239,8 +205,8 @@ def build_panel(cfg: dict) -> dict:
           f"{panel['cusip_id'].nunique():,} unique cusips")
 
     print("Computing per-family returns with adjacency rule ...")
-    # Use a simpler in-line adjacency implementation; the helper above tried
-    # to be too clever. Adjacency is per-family because NaN patterns diverge.
+    # In-line per-family adjacency: returns are computed per family because the
+    # raw and corr price series have divergent NaN patterns (A1.5).
     panel.sort_values(["cusip_id", "year_month"], inplace=True)
     panel["_ym_pd"] = pd.PeriodIndex(panel["year_month"], freq="M")
     for family in ("raw", "corr"):
@@ -263,7 +229,10 @@ def build_panel(cfg: dict) -> dict:
 
     print("Merging risk-free rate ...")
     rf = pd.read_parquet(RF_FILE)
-    panel = panel.merge(rf, on="year_month", how="left")
+    # validate="m:1": rf must be unique per year_month. A duplicated rf month
+    # would silently fan out the panel (m:m → multiplied cusip-month rows);
+    # this raises MergeError instead.
+    panel = panel.merge(rf, on="year_month", how="left", validate="m:1")
     missing_rf = panel["rf_monthly"].isna().sum()
     if missing_rf:
         print(f"  WARNING: {missing_rf:,} cusip-months have no matching rf rate")

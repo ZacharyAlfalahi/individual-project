@@ -163,16 +163,31 @@ def _apply_stale_mask(panel: pd.DataFrame, theta_days: int) -> pd.DataFrame:
     panel.loc[self_stale, "ret"] = float("nan")
     panel.loc[self_stale, "xret"] = float("nan")
 
-    # Propagation: ret(t+1) depends on price(t), so if price(t) was masked
-    # the NEXT row for the same cusip must also have its ret + xret masked.
+    # Propagation: ret(t+1) depends on price(t), so if price(t) was masked the
+    # NEXT row for the same cusip must also have its ret + xret masked — but
+    # ONLY when that next row is the immediately following calendar month.
+    # ret(t) depends on price(t-1) solely across an adjacent month; a row whose
+    # predecessor is a gap-month away does not derive from the stale price, so
+    # a positional shift(1) would over-mask. Gate the propagation on the
+    # per-cusip month gap == 1 (same adjacency notion the monthly-panel build
+    # uses for ret). Harmless today (gap-spanning ret is already NaN from
+    # build-time adjacency) but correct under any future time-varying row
+    # filter applied before this mask.
     panel["_stale_t"] = self_stale.values
     panel["_stale_prev"] = (
         panel.groupby("cusip")["_stale_t"].shift(1, fill_value=False)
     )
-    propagate_mask = panel["_stale_prev"]
+    ym = pd.PeriodIndex(panel["date"], freq="M")
+    panel["_ym"] = ym
+    prev_ym = panel.groupby("cusip")["_ym"].shift(1)
+    gap = (panel["_ym"] - prev_ym).map(
+        lambda x: x.n if pd.notna(x) else float("nan")
+    )
+    adjacent = (gap == 1).to_numpy()
+    propagate_mask = panel["_stale_prev"].to_numpy() & adjacent
     panel.loc[propagate_mask, "ret"] = float("nan")
     panel.loc[propagate_mask, "xret"] = float("nan")
-    panel = panel.drop(columns=["_stale_t", "_stale_prev"])
+    panel = panel.drop(columns=["_stale_t", "_stale_prev", "_ym"])
     return panel
 
 
