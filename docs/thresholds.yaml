@@ -201,9 +201,21 @@ fisd:
     bond_type_keep: ["CDEB", "CMTN", "CMTZ", "CPAS", "CPIK", "UCID"]
   rating:
     # Agency codes in reference_fisd_ratings.rating_type: SPR=S&P, MR=Moody's,
-    # FR=Fitch, DPR=DBRS. Priority order for the coalesced as-of rating; the
-    # first agency with a non-null rating as-of the month wins. DBRS excluded.
-    agency_priority: ["SPR", "MR", "FR"]
+    # FR=Fitch, DPR=DBRS.
+    #
+    # BBW/DRR convention (BBW_anchor_implementation_spec.md §2.3): the monthly
+    # numeric rating is the AVERAGE of the agencies in `average_agencies` when
+    # more than one is available, with single-agency fallback when only one is.
+    # Fitch (FR) and DBRS (DPR) are excluded by omission — BBW averages S&P and
+    # Moody's only. This deliberately MATCHES BBW (2019 §3.3.2) rather than the
+    # rejected first-non-null priority pick (audit trail in spec §2.3).
+    #
+    # Notch alignment: the `sp` and `moody` ladders below coincide notch-for-notch
+    # 1..21 (AAA/Aaa=1 … C/C=21); only S&P's D=22 has no Moody's equivalent, so a
+    # split S&P-D / Moody's-C averages to 21.5. That single residual bottom-notch
+    # mismatch is the CONFIRM-ON-READ item against DRR's exact reconciliation
+    # (spec §11.1); everything above C is already aligned, so the build proceeds.
+    average_agencies: ["SPR", "MR"]
     not_rated_tokens: ["NR"]              # NR → not-rated (null numeric)
     withdrawn_status: ["WOFF", "Off"]     # rating withdrawn → not-rated from that date
     date_min: "1980-01-01"               # rating_date hygiene: drop events before this

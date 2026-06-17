@@ -98,7 +98,7 @@ def load_config() -> dict:
     for key in ("universe", "rating", "rating_numeric_map", "amount_outstanding"):
         if key not in block:
             raise KeyError(f"thresholds.yaml fisd block missing '{key}'")
-    for key in ("agency_priority", "not_rated_tokens", "withdrawn_status",
+    for key in ("average_agencies", "not_rated_tokens", "withdrawn_status",
                 "date_min", "ig_threshold"):
         if key not in block["rating"]:
             raise KeyError(f"thresholds.yaml fisd.rating missing '{key}'")
@@ -192,17 +192,34 @@ def map_rating_events(ratings: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 def asof_monthly_rating(
     events: pd.DataFrame,
     grid: pd.DataFrame,
-    priority: list,
+    agencies: list,
     ig_threshold: int,
 ) -> pd.DataFrame:
-    """Coalesce per-agency as-of ratings onto a (cusip, date) grid.
+    """Average per-agency as-of ratings onto a (cusip, date) grid.
+
+    BBW/DRR convention (BBW_anchor_implementation_spec.md §2.3): rating_numeric
+    is the numeric MEAN of the available agency ratings in `agencies` (S&P
+    'SPR' and Moody's 'MR'), with single-agency fallback when only one is
+    available and NaN when neither is. Any agency not in `agencies` (Fitch
+    'FR', DBRS 'DPR') is excluded entirely. This deliberately MATCHES BBW
+    rather than the prior first-non-null priority pick (audit trail: spec §2.3).
 
     `events` columns: cusip, rating_date (datetime), rating_numeric (float,
     NaN for withdrawn/NR), agency (str). For each (cusip, month-end) the latest
     event with rating_date <= month-end per agency is taken (backward as-of, no
-    look-ahead); agencies are coalesced in `priority` order, first non-null
-    wins. Returns grid + rating_numeric, rating_agency_used, investment_grade,
-    is_rated, _sel_rating_date (the winning event date, for leakage checks).
+    look-ahead), then averaged across agencies. A withdrawal event carries a
+    non-null rating_date but NaN numeric, so it correctly advances the as-of
+    pointer while contributing nothing to the average ("currently not rated by
+    this agency").
+
+    Notch alignment: the sp/moody ladders coincide notch-for-notch 1..21; only
+    S&P's D=22 lacks a Moody's equivalent, so a split S&P-D / Moody's-C averages
+    to 21.5 — the one residual bottom-notch mismatch, flagged CONFIRM-ON-READ
+    against DRR's exact reconciliation (spec §11.1). Everything above C aligns.
+
+    Returns grid + rating_numeric, rating_agency_used ('SPR+MR' | 'SPR' | 'MR'
+    | None), investment_grade, is_rated, _sel_rating_date (the LATEST
+    contributing event date, the most stringent value for the leakage check).
     """
     grid = grid[["cusip", "date"]].copy()
     # merge_asof requires both date keys to share a datetime RESOLUTION. The
@@ -211,24 +228,49 @@ def asof_monthly_rating(
     grid["date"] = grid["date"].astype("datetime64[ns]")
     grid = grid.sort_values("date", kind="mergesort").reset_index(drop=True)
     result = grid.copy()
-    result["rating_numeric"] = np.nan
-    result["rating_agency_used"] = pd.Series([None] * len(result), dtype="object")
-    result["_sel_rating_date"] = pd.Series(pd.NaT, index=result.index, dtype="datetime64[ns]")
 
-    for ag in priority:
+    # Per-agency as-of numeric + selected event date, as parallel columns
+    # aligned to result's row order.
+    num_cols: dict[str, np.ndarray] = {}
+    date_cols: dict[str, np.ndarray] = {}
+    for ag in agencies:
         ev = events[events["agency"] == ag][["cusip", "rating_date", "rating_numeric"]].copy()
         ev["rating_date"] = ev["rating_date"].astype("datetime64[ns]")
         ev = ev.dropna(subset=["rating_date"]).sort_values("rating_date", kind="mergesort")
         if ev.empty:
+            num_cols[ag] = np.full(len(result), np.nan)
+            date_cols[ag] = np.full(len(result), np.datetime64("NaT", "ns"))
             continue
         merged = pd.merge_asof(
             grid, ev, left_on="date", right_on="rating_date",
             by="cusip", direction="backward",
         )
-        take = result["rating_numeric"].isna() & merged["rating_numeric"].notna()
-        result.loc[take, "rating_numeric"] = merged.loc[take, "rating_numeric"].to_numpy()
-        result.loc[take, "rating_agency_used"] = ag
-        result.loc[take, "_sel_rating_date"] = merged.loc[take, "rating_date"].to_numpy()
+        num_cols[ag] = merged["rating_numeric"].to_numpy(dtype=float)
+        date_cols[ag] = merged["rating_date"].to_numpy()
+
+    num_df = pd.DataFrame(num_cols, index=result.index)
+    contrib = num_df.notna()  # which agencies gave a live (non-withdrawn) rating
+
+    # Row-wise mean of the available agency ratings; all-NaN row → NaN.
+    result["rating_numeric"] = num_df.mean(axis=1, skipna=True)
+
+    # agency_used label, vectorised via a binary code over the agency columns
+    # (e.g. SPR=bit0, MR=bit1) so there is no per-row Python apply on the full
+    # grid. code 0 → None (unrated).
+    weights = (1 << np.arange(len(agencies)))
+    codes = contrib.to_numpy().astype(np.int64) @ weights
+    label_map: dict[int, str | None] = {0: None}
+    for code in range(1, 1 << len(agencies)):
+        used = [agencies[i] for i in range(len(agencies)) if (code >> i) & 1]
+        label_map[code] = "+".join(used)
+    result["rating_agency_used"] = pd.Series(codes, index=result.index).map(label_map)
+
+    # _sel_rating_date = latest CONTRIBUTING event date (dates of withdrawn /
+    # absent agencies are masked out). All contributing dates are <= month-end
+    # by the backward as-of, so the max is still <= month-end — the leakage
+    # check stays exact.
+    date_df = pd.DataFrame(date_cols, index=result.index).where(contrib)
+    result["_sel_rating_date"] = date_df.max(axis=1)
 
     result["is_rated"] = result["rating_numeric"].notna()
     ig = result["rating_numeric"] <= float(ig_threshold)
@@ -326,14 +368,14 @@ def build_static(cfg: dict) -> pd.DataFrame:
 
 def build_ratings_monthly(cfg: dict, grid: pd.DataFrame, issue_to_cusip: pd.Series) -> pd.DataFrame:
     """Build the (cusip, date) monthly as-of rating panel on the dev grid."""
-    priority = list(cfg["rating"]["agency_priority"])
+    agencies = list(cfg["rating"]["average_agencies"])
     date_min = pd.Timestamp(cfg["rating"]["date_min"])
     grid_max = pd.Timestamp(grid["date"].max())
 
     ratings = pd.read_parquet(
         RATINGS_FILE, columns=["issue_id", "rating", "rating_type", "rating_date", "rating_status"]
     )
-    ratings = ratings[ratings["rating_type"].isin(priority)].copy()
+    ratings = ratings[ratings["rating_type"].isin(agencies)].copy()
     ratings["issue_id"] = ratings["issue_id"].astype("Int64")
     ratings["cusip"] = ratings["issue_id"].map(issue_to_cusip).astype("string")
     ratings = ratings.dropna(subset=["cusip"])
@@ -355,7 +397,7 @@ def build_ratings_monthly(cfg: dict, grid: pd.DataFrame, issue_to_cusip: pd.Seri
 
     out = asof_monthly_rating(
         ratings[["cusip", "rating_date", "rating_numeric", "agency"]],
-        grid, priority, int(cfg["rating"]["ig_threshold"]),
+        grid, agencies, int(cfg["rating"]["ig_threshold"]),
     )
     out.attrs["n_dropped_rating_dates"] = int(n_dropped_dates)
     return out
@@ -428,7 +470,7 @@ def _write_report(report: dict) -> None:
         "## Decisions this report tees up (confirm before Phase 1 merge)",
         "- size proxy: `offering_amt` vs reconstructed `amount_outstanding`",
         "- zero-coupon (`Z`) & 144A inclusion; exact `bond_type` keep-list (DRR match)",
-        "- rating agency priority",
+        "- rating agency averaging set (S&P + Moody's; Fitch/DBRS excluded)",
     ]
     tmp_md = REPORT_MD.with_suffix(".md.tmp")
     tmp_md.write_text("\n".join(lines) + "\n")
@@ -447,7 +489,7 @@ def main():
             sys.exit(1)
 
     cfg = load_config()
-    print(f"Config: agency_priority={cfg['rating']['agency_priority']}, "
+    print(f"Config: average_agencies={cfg['rating']['average_agencies']}, "
           f"size_proxy={cfg['amount_outstanding']['size_proxy']}")
 
     print("Building static reference (universe + carried facts)...")

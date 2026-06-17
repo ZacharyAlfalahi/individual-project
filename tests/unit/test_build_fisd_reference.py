@@ -6,8 +6,9 @@ Covers:
     own excludes it via the matching reason flag.
   - Rating map: S&P and Moody's notches map to the same numeric ladder; NR
     and unmapped strings → NaN; withdrawn events → NaN numeric.
-  - As-of monthly rating: backward-only (no look-ahead), agency-priority
-    coalesce, withdrawal ends a rating, IG/HY threshold.
+  - As-of monthly rating: backward-only (no look-ahead), S&P+Moody's averaging
+    with single-agency fallback, Fitch excluded, withdrawal ends a rating,
+    IG/HY threshold.
   - CUSIP integrity: a leading-zero cusip survives the loader as a string.
   - Config validation: missing fisd block / required keys raise KeyError.
   - Real-data smoke (skipped if data/fisd/ absent): sane universe count and
@@ -151,8 +152,9 @@ def test_asof_is_backward_only_no_lookahead():
     assert out.loc[pd.Timestamp("2010-12-31"), "rating_numeric"] == 9.0
 
 
-def test_asof_agency_priority_and_withdrawal_fallback():
-    """S&P withdraws (NaN) → fall back to the still-live Moody's rating."""
+def test_asof_averages_sp_and_moody_with_single_agency_fallback():
+    """BBW/DRR convention (spec §2.3): average S&P + Moody's when both live;
+    fall back to the single live agency when the other has withdrawn."""
     events = pd.DataFrame([
         {"cusip": "X", "rating_date": pd.Timestamp("2010-01-15"), "rating_numeric": 6.0, "agency": "SPR"},
         {"cusip": "X", "rating_date": pd.Timestamp("2010-02-15"), "rating_numeric": 7.0, "agency": "MR"},
@@ -160,12 +162,40 @@ def test_asof_agency_priority_and_withdrawal_fallback():
     ])
     grid = _grid("X", ["2010-03", "2010-12"])
     out = bfr.asof_monthly_rating(events, grid, ["SPR", "MR"], ig_threshold=10).set_index("date")
-    # March: S&P is live (6.0) and wins by priority.
-    assert out.loc[pd.Timestamp("2010-03-31"), "rating_numeric"] == 6.0
-    assert out.loc[pd.Timestamp("2010-03-31"), "rating_agency_used"] == "SPR"
-    # December: S&P latest event is a withdrawal (NaN) → coalesce to Moody's.
+    # March: both live → average of 6.0 (S&P) and 7.0 (Moody's) = 6.5.
+    assert out.loc[pd.Timestamp("2010-03-31"), "rating_numeric"] == 6.5
+    assert out.loc[pd.Timestamp("2010-03-31"), "rating_agency_used"] == "SPR+MR"
+    # December: S&P latest event is a withdrawal (NaN) → only Moody's contributes.
     assert out.loc[pd.Timestamp("2010-12-31"), "rating_numeric"] == 7.0
     assert out.loc[pd.Timestamp("2010-12-31"), "rating_agency_used"] == "MR"
+
+
+def test_asof_split_rating_averages_to_half_notch():
+    """The headline spec §2.3 example: a BBB (S&P=9) / Baa1 (Moody's=8) bond
+    maps to 8.5, not 9 — split ratings straddle a quintile breakpoint."""
+    events = pd.DataFrame([
+        {"cusip": "S", "rating_date": pd.Timestamp("2010-01-15"), "rating_numeric": 9.0, "agency": "SPR"},
+        {"cusip": "S", "rating_date": pd.Timestamp("2010-01-15"), "rating_numeric": 8.0, "agency": "MR"},
+    ])
+    grid = _grid("S", ["2010-06"])
+    out = bfr.asof_monthly_rating(events, grid, ["SPR", "MR"], ig_threshold=10).set_index("date")
+    assert out.loc[pd.Timestamp("2010-06-30"), "rating_numeric"] == 8.5
+    assert out.loc[pd.Timestamp("2010-06-30"), "rating_agency_used"] == "SPR+MR"
+
+
+def test_asof_excludes_fitch_from_the_average():
+    """Fitch (FR) is dropped: a live FR event must not enter the average even
+    when present in the events frame, because it is not in `agencies`."""
+    events = pd.DataFrame([
+        {"cusip": "F", "rating_date": pd.Timestamp("2010-01-15"), "rating_numeric": 6.0, "agency": "SPR"},
+        {"cusip": "F", "rating_date": pd.Timestamp("2010-01-15"), "rating_numeric": 8.0, "agency": "MR"},
+        {"cusip": "F", "rating_date": pd.Timestamp("2010-01-15"), "rating_numeric": 2.0, "agency": "FR"},
+    ])
+    grid = _grid("F", ["2010-06"])
+    out = bfr.asof_monthly_rating(events, grid, ["SPR", "MR"], ig_threshold=10).set_index("date")
+    # (6 + 8) / 2 = 7.0; the FR=2.0 event is ignored (would give 5.33 if used).
+    assert out.loc[pd.Timestamp("2010-06-30"), "rating_numeric"] == 7.0
+    assert out.loc[pd.Timestamp("2010-06-30"), "rating_agency_used"] == "SPR+MR"
 
 
 def test_asof_investment_grade_threshold():
@@ -259,7 +289,7 @@ def test_load_config_missing_rating_key_raises(tmp_path, monkeypatch):
         "    exclude_convertible: true, exclude_asset_backed: true,\n"
         "    exclude_144a: true, exclude_perpetual: true,\n"
         "    coupon_type_allow: [F], bond_type_keep: [CDEB]}\n"
-        "  rating: {agency_priority: [SPR]}\n"          # missing not_rated_tokens etc.
+        "  rating: {average_agencies: [SPR, MR]}\n"     # missing not_rated_tokens etc.
         "  rating_numeric_map: {sp: {AAA: 1}, moody: {Aaa: 1}}\n"
         "  amount_outstanding: {size_proxy: offering_amt}\n"
     )
