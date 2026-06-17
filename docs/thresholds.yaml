@@ -172,6 +172,29 @@ validation:
   # upgrade). Only the osbap_directional sanity check depends on CRF's sign and
   # is expected to fail until accrual lands.
   bias_gates_sign_invariant: true
+  # Numeric pass/fail bounds for the §8 bias gates, externalised from the gate
+  # scripts per the thresholds-in-yaml rule. run_leadlag_gate.py,
+  # run_mom6_lab_gate.py, run_accrual_validation.py, diagnose_crf_lrf.py and
+  # build_str_decomposition.py read these instead of hard-coding, so the
+  # thresholds_sha256 each gate records now covers them. Source: the bias
+  # signatures in BBW_anchor_implementation_spec.md §8 (DRR-2023/2026).
+  gate_thresholds:
+    lead_lag:
+      collapse_max: 0.7      # corrupted-vs-correct corr must drop BELOW this (the lead/lag collapse signature)
+      restore_min: 0.90      # round-trip re-aligned corr must rise ABOVE this (the correction restores the factor)
+    mom6_lab:
+      drr_band: [0.15, 0.45]  # ex-post biased premium must land in this %/mo band (DRR ≈ +0.30)
+    accrual_validation:
+      gap_tol: 0.10          # |mom6 EP−EA gap_total − gap_clean| stays below this (%/mo) — accrual cancels in the differential
+      corr_tol: 0.15         # |lead/lag DRF corr_total − corr_clean| stays below this
+    crf_lrf_diagnostic:
+      lrf_lift_min: 0.0005   # rough-total LRF must exceed clean LRF by >= this (per-unit; = +0.05%/mo)
+      gamma_sep_ratio: 5.0   # |top-gamma-quintile mean| must exceed this x |bottom| to confirm the sort separates
+    str_decomposition:
+      arm_corr_min: 0.8      # month-end vs month-begin arm correlation floor (identical-sample sanity)
+      lib_share_lo: 0.6      # LIB share of the month-end reversal band [lo, hi] (SOFT: universe-sensitive — see script note)
+      lib_share_hi: 1.0
+      min_bonds: 20          # engine min_bonds eligibility for the decomposition sort
 
 # PyBondLab post-aggregation filters.
 # These apply to the monthly return PANEL, not raw TRACE transactions.

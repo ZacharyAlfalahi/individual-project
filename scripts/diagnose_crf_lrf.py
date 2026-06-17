@@ -34,6 +34,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -49,6 +50,7 @@ VAR_FILE = REPO_ROOT / "data" / "development" / "signals" / "var_5pct.parquet"
 GAMMA_FILE = REPO_ROOT / "data" / "development" / "signals" / "gamma_illiq.parquet"
 FISD_STATIC = REPO_ROOT / "data" / "development" / "fisd" / "fisd_reference_static.parquet"
 OUT = REPO_ROOT / "data" / "development" / "headlines" / "crf_lrf_diagnostic.json"
+THRESHOLDS_FILE = REPO_ROOT / "docs" / "thresholds.yaml"
 
 
 def _crf_from_panel(panel: pd.DataFrame) -> float:
@@ -63,6 +65,11 @@ def _factor_mean(panel: pd.DataFrame, name: str) -> float:
 
 
 def main():
+    with open(THRESHOLDS_FILE) as f:
+        diag_cfg = yaml.safe_load(f)["validation"]["gate_thresholds"]["crf_lrf_diagnostic"]
+    lrf_lift_min = float(diag_cfg["lrf_lift_min"])
+    gamma_sep_ratio = float(diag_cfg["gamma_sep_ratio"])
+
     print("Loading panel + signals + coupon...")
     maximal = pd.read_parquet(PANEL_FILE)
     var5 = pd.read_parquet(VAR_FILE)
@@ -99,7 +106,7 @@ def main():
     print(f"  DRF: clean {drf_clean*100:+.3f}%  →  rough-total {drf_tot*100:+.3f}%/mo (control)")
 
     accrual_flips_crf = crf_clean < 0 and crf_tot > 0
-    accrual_lifts_lrf = lrf_tot > lrf_clean + 0.0005  # > +0.05%/mo lift
+    accrual_lifts_lrf = lrf_tot > lrf_clean + lrf_lift_min  # default +0.05%/mo lift
 
     # ---- Check B: gamma separation in the LRF sort ----
     print("\nCheck B — gamma separation (top vs bottom gamma quintile):")
@@ -112,7 +119,7 @@ def main():
     print(f"  mean gamma  top quintile {top.mean():.6e}  vs  bottom quintile {bot.mean():.6e}")
     ratio = float(top.mean() / bot.mean()) if bot.mean() != 0 else float("inf")
     print(f"  separation ratio (top/bottom): {ratio:.1f}x")
-    gamma_sort_separates = abs(top.mean()) > 5 * abs(bot.mean())
+    gamma_sort_separates = abs(top.mean()) > gamma_sep_ratio * abs(bot.mean())
 
     verdict = {
         "check_A_accrual_flips_crf": bool(accrual_flips_crf),

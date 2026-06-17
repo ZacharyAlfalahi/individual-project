@@ -85,8 +85,10 @@ def accrued_and_coupon(
     frequency : coupons per year (1, 2, 4, 12). 0/NaN → treated as no coupon.
 
     Returns (ai, coupon_paid), both in price units (per 100 par). Zero-coupon
-    bonds (coupon == 0) and rows with no valid schedule (NaT maturity / freq not
-    in {1,2,4,12}) return AI = C = 0 — their return stays the clean-price return.
+    bonds (coupon == 0), rows with no valid schedule (NaT maturity / freq not in
+    {1,2,4,12}), and rows whose month-end falls AFTER the maturity month (the
+    bond has redeemed) return AI = C = 0 — their return stays the clean-price
+    return.
 
     A coupon of `coupon/frequency` is paid in a month iff that month is a coupon
     month (the schedule's day-of-month lands in it); AI accrues 30/360 from the
@@ -102,18 +104,21 @@ def accrued_and_coupon(
     coupon_paid = np.zeros(n)
 
     cpn_clean = np.where(np.isnan(cpn), 0.0, cpn)
+    date_index = _month_index(t)
+    mat_index = _month_index(mat)
     valid = (
         (cpn_clean > 0)
         & np.isin(freq, [1.0, 2.0, 4.0, 12.0])
         & ~np.asarray(mat.isna())
+        & (date_index <= mat_index)           # dead past maturity: no accrual/coupon after the maturity month
     )
     if not valid.any():
         return ai, coupon_paid
 
     freq_v = freq[valid].astype(int)
     p = 12 // freq_v                          # months per coupon period
-    Mt = _month_index(t)[valid]
-    Mmat = _month_index(mat)[valid]
+    Mt = date_index[valid]
+    Mmat = mat_index[valid]
     offset = np.mod(Mt - Mmat, p)             # months since the last coupon month (0..p-1)
     last_cpn_month = Mt - offset
     mat_day = mat.day.to_numpy()[valid]

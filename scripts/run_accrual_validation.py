@@ -48,8 +48,11 @@ CLEAN = DEV / "monthly_panel_maximal.parquet"
 TOTAL = DEV / "monthly_panel_total_return.parquet"
 OUT = DEV / "headlines" / "accrual_validation.json"
 import yaml
-MOM6 = yaml.safe_load(open(REPO_ROOT / "docs" / "thresholds.yaml"))["signals"]["mom6"]
-LAB = yaml.safe_load(open(REPO_ROOT / "docs" / "thresholds.yaml"))["bias_toggles"]["lab_filter"]
+with open(REPO_ROOT / "docs" / "thresholds.yaml") as _f:
+    _CFG = yaml.safe_load(_f)
+MOM6 = _CFG["signals"]["mom6"]
+LAB = _CFG["bias_toggles"]["lab_filter"]
+GATE = _CFG["validation"]["gate_thresholds"]["accrual_validation"]
 
 
 def _bbw_panel(panel_df, signals):
@@ -126,11 +129,14 @@ def main():
     gap_c, gap_t = mom6_gap(clean, mom6_sig), mom6_gap(total, mom6_sig)
     ll_c, ll_t = leadlag_drf_corr(comp_c), leadlag_drf_corr(comp_t)
 
+    gap_tol, corr_tol = float(GATE["gap_tol"]), float(GATE["corr_tol"])
     levels_corrected = (bt["crf"] > 0) and (bt["lrf"] > bc["lrf"]) and (mktb_t > mktb_c)
-    diffs_static = (abs(gap_t - gap_c) < 0.10) and (abs(ll_t - ll_c) < 0.15)
+    diffs_static = (abs(gap_t - gap_c) < gap_tol) and (abs(ll_t - ll_c) < corr_tol)
+    overall_pass = levels_corrected and diffs_static
 
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
+        "overall_pass": bool(overall_pass),
         "levels_corrected": {
             "crf_clean_pct": bc["crf"], "crf_total_pct": bt["crf"],
             "lrf_clean_pct": bc["lrf"], "lrf_total_pct": bt["lrf"],
@@ -167,7 +173,8 @@ def main():
     print(f"    lead/lag DRF corr: {ll_c:.3f} → {ll_t:.3f}")
     print(f"  FALLBACK EXPOSURE: eligible {report['fallback_exposure']['eligible_fallback_pct']:.2f}%; "
           f"CRF-long-leg months with a fallback bond: {months_with_fb}")
-    print(f"  → {OUT}")
+    print(f"  OVERALL: {'PASS' if overall_pass else 'FAIL'}  → {OUT}")
+    sys.exit(0 if overall_pass else 1)
 
 
 if __name__ == "__main__":

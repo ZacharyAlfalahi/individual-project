@@ -83,6 +83,12 @@ def load_window_days() -> int:
     return int(block["window_days"])
 
 
+def load_gate_cfg() -> dict:
+    with open(THRESHOLDS_FILE) as f:
+        cfg = yaml.safe_load(f)
+    return cfg["validation"]["gate_thresholds"]["str_decomposition"]
+
+
 def thresholds_sha256() -> str:
     return hashlib.sha256(THRESHOLDS_FILE.read_bytes()).hexdigest()
 
@@ -124,20 +130,20 @@ def build_returns(prices: pd.DataFrame) -> pd.DataFrame:
     return df[["cusip", "date", "r_end", "r_begin", "lib"]]
 
 
-def _rulebook() -> dict:
+def _rulebook(min_bonds: int) -> dict:
     return {
         "score": "score", "groups": 5, "weighting": "by_size",
         "long_group": 0, "short_group": 4, "signal_lag": 0, "nw_lags": None,
-        "min_bonds": 20,
+        "min_bonds": min_bonds,
     }
 
 
-def run_arm(panel: pd.DataFrame, ret_col: str) -> pd.DataFrame:
+def run_arm(panel: pd.DataFrame, ret_col: str, min_bonds: int) -> pd.DataFrame:
     """Run str with score=signal (the noisy prior return) and holding = ret_col.
     All arms share the score column and the identical-sample masking, so the
     only thing that varies is which held return is realised."""
     p = panel.rename(columns={ret_col: "ret"})[["cusip", "date", "ret", "size", "score"]]
-    res = run_characteristic_sort(p, _rulebook())
+    res = run_characteristic_sort(p, _rulebook(min_bonds))
     return res["monthly_returns"][["date", "strategy_ret"]]
 
 
@@ -148,6 +154,11 @@ def main():
             sys.exit(1)
 
     window_days = load_window_days()
+    gate_cfg = load_gate_cfg()
+    arm_corr_min = float(gate_cfg["arm_corr_min"])
+    lib_share_lo = float(gate_cfg["lib_share_lo"])
+    lib_share_hi = float(gate_cfg["lib_share_hi"])
+    min_bonds = int(gate_cfg["min_bonds"])
     print(f"Config: window_days={window_days} (FIXED 5-BD VW clean-price windows; "
           f"distinct from the trade-recognition window n)")
 
@@ -175,9 +186,9 @@ def main():
     print(f"  common-sample bond-months (all 3 windows priced): {int(common.sum()):,}")
 
     print("Running three arms (same signal, same sample): month-end / month-begin / lib...")
-    end = run_arm(panel, "hold_end").set_index("date")["strategy_ret"]
-    begin = run_arm(panel, "hold_begin").set_index("date")["strategy_ret"]
-    lib = run_arm(panel, "hold_lib").set_index("date")["strategy_ret"]
+    end = run_arm(panel, "hold_end", min_bonds).set_index("date")["strategy_ret"]
+    begin = run_arm(panel, "hold_begin", min_bonds).set_index("date")["strategy_ret"]
+    lib = run_arm(panel, "hold_lib", min_bonds).set_index("date")["strategy_ret"]
 
     j = pd.concat([end.rename("end"), begin.rename("begin"), lib.rename("lib")], axis=1).dropna()
     mean_end, mean_begin, mean_lib = float(j["end"].mean()), float(j["begin"].mean()), float(j["lib"].mean())
@@ -194,9 +205,9 @@ def main():
 
     direction_reproduced = (
         mean_end < 0 and mean_begin < 0 and mean_lib < 0
-        and abs(mean_end) >= abs(mean_begin) and correlation >= 0.8
+        and abs(mean_end) >= abs(mean_begin) and correlation >= arm_corr_min
     )
-    lib_share_in_band = lib_share is not None and 0.6 <= lib_share <= 1.0
+    lib_share_in_band = lib_share is not None and lib_share_lo <= lib_share <= lib_share_hi
 
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
@@ -221,7 +232,8 @@ def main():
         "gate": {
             "criterion": "direction + proportion (§8), sign-aware, NOT signed level",
             "direction_reproduced": bool(direction_reproduced),
-            "lib_share_in_band_0.6_1.0": bool(lib_share_in_band),
+            "lib_share_in_band": bool(lib_share_in_band),
+            "lib_share_band": [lib_share_lo, lib_share_hi],
         },
         "note": "Construction verified by the identity residual (end - lib - begin "
                 "≈ 0). DIRECTION reproduced (all arms negative, month-end most "
@@ -254,7 +266,7 @@ def main():
     print(f"  identity resid (end - lib - begin): {identity_resid*100:+.4f}%/mo (≈0 up to cross term)")
     print(f"  arm corr (end,begin): {correlation:.3f}   [target ~ 0.99];  n={len(j)} months")
     print(f"  direction reproduced: {'YES' if direction_reproduced else 'NO'}; "
-          f"LIB share in [0.6,1.0]: {'YES' if lib_share_in_band else 'NO'}")
+          f"LIB share in [{lib_share_lo},{lib_share_hi}]: {'YES' if lib_share_in_band else 'NO'}")
     print(f"  → {OUT_FILE}")
 
 

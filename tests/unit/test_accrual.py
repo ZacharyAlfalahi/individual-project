@@ -74,6 +74,28 @@ def test_zero_coupon_invariance():
     assert np.all(c == 0.0)
 
 
+def test_no_accrual_after_maturity_month():
+    # A bond is dead after it redeems: rows whose month-end falls AFTER the
+    # maturity month must return AI = C = 0. Before the maturity guard, a
+    # 2010-05-15 maturity fabricated AI=0.333/C=4.0 at 2010-06-30 and AI=2.333
+    # at 2010-09-30 — accrual running months past redemption.
+    dates = ["2010-06-30", "2010-09-30", "2011-01-31"]
+    ai, c = accrued_and_coupon(_d(dates), _d(["2010-05-15"] * 3),
+                               coupon=[8.0] * 3, frequency=[2] * 3)
+    assert np.all(ai == 0.0)
+    assert np.all(c == 0.0)
+
+
+def test_maturity_month_still_accrues():
+    # The maturity month itself is NOT dead: the final coupon is paid and AI
+    # accrues to month-end per the existing month-end convention (guard is
+    # date_index <= maturity_index, inclusive of the maturity month).
+    ai, c = accrued_and_coupon(_d(["2010-05-31"]), _d(["2010-05-15"]),
+                               coupon=[8.0], frequency=[2])
+    assert c[0] == pytest.approx(4.0, abs=1e-9)
+    assert ai[0] == pytest.approx(8.0 * 15 / 360, abs=1e-9)
+
+
 def test_quarterly_frequency():
     # 6% quarterly (freq=4), maturity 2010-12-20 → coupons on the 20th every 3
     # months: ...Mar, Jun, Sep, Dec. September IS a coupon month: at 2010-09-30
