@@ -85,6 +85,28 @@ signals:
     theta_days: 30
     source: "registry amendments v1.1 A3.3 (default); final value from 01_trace_explore"
 
+  # mom6 — 6-month momentum, Jostova et al. (2013), the mom6_1 anchor
+  # (BBW_anchor_implementation_spec.md §5.2). The SIGNAL is the trailing
+  # cumulative return over `formation_months` consecutive months ending at the
+  # row's month; the factor runner then applies signal_lag=`skip_months` (the
+  # Jostova skip) and a staggered `holding_months` hold. Deciles, equal-weighted,
+  # leg = winners − losers (P10 − P1). The skip means signal_lag=1 picks the
+  # window ending one month before formation, leaving month t unused.
+  mom6:
+    formation_months: 6     # J: trailing cumulative-return window (months t-6..t-1 at formation)
+    min_obs: 6              # require all 6 consecutive months (strict); NaN otherwise
+    skip_months: 1          # engine signal_lag (gap between formation window and holding)
+    holding_months: 6       # H: staggered/overlapping hold (Jostova)
+    n_groups: 10            # deciles P1..P10
+    weighting: "equal"      # equal-weighted within decile (Jostova; NOT value-weighted)
+
+  # str LIB decomposition (BBW_anchor_implementation_spec.md §5.1/§8) — the
+  # intra-month price-window length for the month-end vs month-begin reversal
+  # decomposition. "first/last 5 business days of the following month" (§5.1).
+  # CONFIRM-ON-READ exact length vs DRR-2026 code (§9/§11).
+  str_lib:
+    window_days: 5
+
 # PyBondLab post-aggregation filters.
 # These apply to the monthly return PANEL, not raw TRACE transactions.
 # Applied by the Quant agent's return-aggregation step, not by preprocess_trace.py.
