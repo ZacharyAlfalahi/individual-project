@@ -118,6 +118,31 @@ def main():
     gap = summarize_returns(gap_ser, nw_lags=None, months_per_year=12)
     gap_mean = float(gap_ser.mean() * 100)
 
+    # Sample-split test (closes the partial-collapse soft gate). The ex-ante
+    # threshold is an EXPANDING past-only percentile, so it differs most from the
+    # full-sample (ex-post) threshold EARLY (small history) and converges to it
+    # LATE. If the partial collapse is genuinely convergence — not a failure —
+    # the EP−EA gap should be larger in the early half and shrink in the late
+    # half, and ex-ante should sit closer to the un-winsorized baseline early.
+    joined = pd.concat([expost["series"].rename("ep"), exante["series"].rename("ea"),
+                        none["series"].rename("none")], axis=1).dropna().sort_index()
+    mid = len(joined) // 2
+
+    def _half(h: pd.DataFrame) -> dict:
+        return {
+            "n_months": int(len(h)),
+            "first": str(h.index.min().date()), "last": str(h.index.max().date()),
+            "ex_post_pct": float(h["ep"].mean() * 100),
+            "ex_ante_pct": float(h["ea"].mean() * 100),
+            "none_pct": float(h["none"].mean() * 100),
+            "ep_minus_ea_pct": float((h["ep"] - h["ea"]).mean() * 100),
+        }
+
+    sample_split = {"early_half": _half(joined.iloc[:mid]), "late_half": _half(joined.iloc[mid:])}
+    convergence_confirmed = (
+        sample_split["early_half"]["ep_minus_ea_pct"] > sample_split["late_half"]["ep_minus_ea_pct"]
+    )
+
     # The gate has two parts, reported separately for honesty:
     #  * DIRECTION (robust): ex-post is the more positive, biased premium; the
     #    EP−EA gap is positive — the look-ahead bias has the right sign.
@@ -146,6 +171,8 @@ def main():
         "ex_ante_corrected": {k: exante[k] for k in ("mean_pct", "t_stat", "n_months")},
         "ep_minus_ea_gap": {"mean_pct": gap_mean, "t_stat": float(gap["t_stat"]),
                             "n_months": int(gap["n_months"])},
+        "sample_split": sample_split,
+        "convergence_confirmed": bool(convergence_confirmed),
         "targets_drr2026": {"ex_post": "≈ +0.30%/mo (biased)", "ex_ante": "≈ 0 (corrected)"},
         "gate": {
             "criterion": "direction + collapse (§8), sign-aware",
@@ -180,6 +207,14 @@ def main():
     print(f"  direction reproduced (EP>EA, gap>0): {'YES' if direction_reproduced else 'NO'}")
     print(f"  ex-post in DRR +0.30 band: {'YES' if expost_matches_drr else 'NO'}; "
           f"full ex-ante collapse to baseline: NO (expanding-window convergence)")
+    eh, lh = sample_split["early_half"], sample_split["late_half"]
+    print("  sample-split (convergence test):")
+    print(f"    early {eh['first']}..{eh['last']}: EP {eh['ex_post_pct']:+.3f}  "
+          f"EA {eh['ex_ante_pct']:+.3f}  gap {eh['ep_minus_ea_pct']:+.3f}%")
+    print(f"    late  {lh['first']}..{lh['last']}: EP {lh['ex_post_pct']:+.3f}  "
+          f"EA {lh['ex_ante_pct']:+.3f}  gap {lh['ep_minus_ea_pct']:+.3f}%")
+    print(f"    convergence confirmed (early gap > late gap): "
+          f"{'YES' if convergence_confirmed else 'NO'}")
     print(f"  → {OUT}")
 
 
