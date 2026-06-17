@@ -98,7 +98,10 @@ def test_rating_map_sp_and_moody_parity(cfg):
     # BBB- (S&P) and Baa3 (Moody's) are the IG boundary → same numeric.
     assert bfr.rating_to_numeric("BBB-", "SPR", nmap, nr) == \
         bfr.rating_to_numeric("Baa3", "MR", nmap, nr)
-    # Fitch uses the S&P-style ladder.
+    # rating_to_numeric is a pure map: a non-Moody's code (here 'FR') resolves
+    # on the S&P ladder. NOTE this path is unused in the build — Fitch/DBRS
+    # events are filtered out at load (_build_ratings) and never reach the
+    # average; the assertion just documents the fallback, it is not a live path.
     assert bfr.rating_to_numeric("AA+", "FR", nmap, nr) == \
         bfr.rating_to_numeric("AA+", "SPR", nmap, nr)
 
@@ -196,6 +199,40 @@ def test_asof_excludes_fitch_from_the_average():
     # (6 + 8) / 2 = 7.0; the FR=2.0 event is ignored (would give 5.33 if used).
     assert out.loc[pd.Timestamp("2010-06-30"), "rating_numeric"] == 7.0
     assert out.loc[pd.Timestamp("2010-06-30"), "rating_agency_used"] == "SPR+MR"
+
+
+def test_asof_bottom_notch_default_behavior():
+    """TRIPWIRE — pins the one place the S&P (1..22) and Moody's (1..21) ladders
+    diverge: the bottom default notch. The build naive-averages the two scales
+    (CONFIRM-ON-READ in asof_monthly_rating / thresholds fisd.rating), which is
+    harmless ONLY because the universe excludes defaulted bonds, so these values
+    never enter a sort. This guard must fail loudly if the averaging logic drifts
+    OR if the universe filter is ever changed to admit defaults — at which point
+    22/21 here vs OSBAP comp_rating's composite-fill 21.5 starts to matter and
+    must be reconciled against the DRR factor-construction appendix. Guard, not
+    a target.
+    """
+    events = pd.DataFrame([
+        # Both agencies at their lowest notch: S&P D=22, Moody's C=21.
+        {"cusip": "BOTH", "rating_date": pd.Timestamp("2010-01-15"), "rating_numeric": 22.0, "agency": "SPR"},
+        {"cusip": "BOTH", "rating_date": pd.Timestamp("2010-01-15"), "rating_numeric": 21.0, "agency": "MR"},
+        # S&P-only default.
+        {"cusip": "SPONLY", "rating_date": pd.Timestamp("2010-01-15"), "rating_numeric": 22.0, "agency": "SPR"},
+        # Moody's-only lowest notch.
+        {"cusip": "MRONLY", "rating_date": pd.Timestamp("2010-01-15"), "rating_numeric": 21.0, "agency": "MR"},
+    ])
+    grid = pd.concat([
+        _grid("BOTH", ["2010-06"]),
+        _grid("SPONLY", ["2010-06"]),
+        _grid("MRONLY", ["2010-06"]),
+    ], ignore_index=True)
+    out = bfr.asof_monthly_rating(events, grid, ["SPR", "MR"], ig_threshold=10).set_index("cusip")
+    # Both-rated D/C → naive mean 21.5 (coincides with OSBAP comp_rating here).
+    assert out.loc["BOTH", "rating_numeric"] == 21.5
+    # Single-agency default → that agency's own bottom notch (BBW-literal),
+    # NOT OSBAP comp_rating's composite-fill 21.5. This is the documented divergence.
+    assert out.loc["SPONLY", "rating_numeric"] == 22.0
+    assert out.loc["MRONLY", "rating_numeric"] == 21.0
 
 
 def test_asof_investment_grade_threshold():

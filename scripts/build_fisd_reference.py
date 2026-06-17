@@ -151,8 +151,12 @@ def apply_universe_rules(issue: pd.DataFrame, rules: dict) -> pd.DataFrame:
 def rating_to_numeric(rating, agency: str, numeric_map: dict, not_rated_tokens) -> float:
     """Map a single rating string to the unified 1–22 numeric ladder.
 
-    Moody's (agency 'MR') uses the `moody` ladder; everyone else (S&P 'SPR',
-    Fitch 'FR') uses the S&P-style `sp` ladder. NR/blank/unmapped → NaN.
+    Moody's (agency 'MR') uses the `moody` ladder; any other code uses the
+    S&P-style `sp` ladder. In this pipeline only S&P ('SPR') ever takes the
+    non-Moody's branch — Fitch ('FR') and DBRS ('DPR') events are filtered out
+    at load (`_build_ratings`, the `average_agencies` `.isin` filter) and never
+    reach this function, so the `else` branch is a generic fallback, not a live
+    Fitch/DBRS path. NR/blank/unmapped → NaN.
     """
     if rating is None or (isinstance(rating, float) and np.isnan(rating)):
         return np.nan
@@ -213,9 +217,15 @@ def asof_monthly_rating(
     this agency").
 
     Notch alignment: the sp/moody ladders coincide notch-for-notch 1..21; only
-    S&P's D=22 lacks a Moody's equivalent, so a split S&P-D / Moody's-C averages
-    to 21.5 — the one residual bottom-notch mismatch, flagged CONFIRM-ON-READ
-    against DRR's exact reconciliation (spec §11.1). Everything above C aligns.
+    S&P's D=22 lacks a Moody's equivalent. The naive mean therefore diverges
+    from OSBAP `comp_rating` ONLY at single-agency defaults (S&P-only D → 22 and
+    Moody's-only C → 21 here, vs comp_rating's composite-fill 21.5; both-rated
+    D/C coincides at 21.5). This is a CONDITIONAL assertion: harmless ONLY
+    because the universe excludes defaulted bonds, so these rows never enter a
+    sort. It is enforced by `test_asof_bottom_notch_default_behavior` — if the
+    universe filter is ever changed to admit defaults, that tripwire fails and
+    the bottom notch must be reconciled against DRR's factor-construction
+    appendix (spec §11.1). Everything above C is already aligned.
 
     Returns grid + rating_numeric, rating_agency_used ('SPR+MR' | 'SPR' | 'MR'
     | None), investment_grade, is_rated, _sel_rating_date (the LATEST

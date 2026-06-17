@@ -299,18 +299,23 @@ fisd:
     # rejected first-non-null priority pick (audit trail in spec §2.3).
     #
     # Notch alignment: the `sp` and `moody` ladders below coincide notch-for-notch
-    # 1..21 (AAA/Aaa=1 … C/C=21); only S&P's D=22 has no Moody's equivalent, so a
-    # split S&P-D / Moody's-C averages to 21.5. That single residual bottom-notch
-    # mismatch is the CONFIRM-ON-READ item against DRR's exact reconciliation
-    # (spec §11.1); everything above C is already aligned, so the build proceeds.
+    # 1..21 (AAA/Aaa=1 … C/C=21); only S&P's D=22 has no Moody's equivalent. The
+    # naive average diverges from OSBAP `comp_rating` ONLY at single-agency
+    # defaults (S&P-only D → 22, Moody's-only C → 21 here, vs comp_rating 21.5;
+    # both-rated D/C coincides at 21.5). CONDITIONAL assertion: harmless because
+    # the universe excludes defaults, so these rows never enter a sort — enforced
+    # by the tripwire test_asof_bottom_notch_default_behavior. If the universe
+    # ever admits defaults, reconcile against DRR's factor-construction appendix
+    # (spec §11.1).
     average_agencies: ["SPR", "MR"]
     not_rated_tokens: ["NR"]              # NR → not-rated (null numeric)
     withdrawn_status: ["WOFF", "Off"]     # rating withdrawn → not-rated from that date
     date_min: "1980-01-01"               # rating_date hygiene: drop events before this
     ig_threshold: 10                      # numeric ≤ 10 (BBB-/Baa3) ⇒ investment grade
   rating_numeric_map:
-    # Unified 1–22 ladder (AAA/Aaa=1 … D=22). S&P/Fitch share the 'sp' map;
-    # Moody's uses 'moody'. Source: standard 22-notch rating ladder.
+    # Unified 1–22 ladder (AAA/Aaa=1 … D=22). S&P uses the 'sp' map, Moody's
+    # uses 'moody'. (Fitch/DBRS are filtered out at load and never mapped — see
+    # fisd.rating.average_agencies.) Source: standard 22-notch rating ladder.
     sp:
       "AAA": 1
       "AA+": 2
