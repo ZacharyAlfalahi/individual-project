@@ -107,6 +107,22 @@ signals:
   str_lib:
     window_days: 5
 
+  # gamma / ILLIQ (BPW 2011 eq.2; BBW_anchor_implementation_spec.md §1) — the one
+  # new characteristic. gamma = sign_multiplier * Cov(Δp_d, Δp_{d+1}) over
+  # consecutive within-month daily log-price changes (daily price = within-day VW
+  # clean price). Higher gamma = more illiquid. Screen = DRR-2023 RELAXED (default),
+  # NOT BPW's strict screen — a deliberate DESIGN choice (§1.3): formula is BPW's,
+  # thresholds are DRR's. BPW-strict retained as a documented non-default flag.
+  gamma_illiq:
+    min_pairs: 5            # >= 5 paired (Δp_d, Δp_{d+1}) obs in the month, else NaN (DRR §3.1 fn.1)
+    max_gap_bdays: 7        # inter-trade gap to recognise a daily change: <= 7 business days (DRR)
+    sign_multiplier: -1.0   # x(-1) so higher gamma = more illiquid (BBW/DRR convention)
+    cov_ddof: 1             # sample covariance over the month's paired changes
+    bpw_strict:             # rejected pure-BPW alternative (fn.10); off by default (§1.3)
+      enabled: false
+      min_pairs: 10         # BPW require >= 10 paired observations
+      min_bday_frac: 0.75   # AND >= 75% of the month's business days traded
+
 # PyBondLab post-aggregation filters.
 # These apply to the monthly return PANEL, not raw TRACE transactions.
 # Applied by the Quant agent's return-aggregation step, not by preprocess_trace.py.
