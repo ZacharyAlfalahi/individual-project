@@ -71,7 +71,7 @@ _ISSUE_COLS = [
     "complete_cusip", "issue_id", "issuer_id",
     "currency", "convertible", "asset_backed", "rule_144a", "perpetual",
     "coupon_type", "bond_type", "preferred_security",
-    "coupon", "day_count_basis", "maturity",
+    "coupon", "day_count_basis", "maturity", "interest_frequency",
     "offering_amt", "amount_outstanding",
     "defeased_date",
 ]
@@ -359,7 +359,7 @@ def build_static(cfg: dict) -> pd.DataFrame:
         "rule_144a", "perpetual",
         "offering_amt", "amount_outstanding",
         "maturity", "default_date", "defeased_date", "coupon", "day_count_basis",
-        "callable", "sic_code", "country_domicile",
+        "interest_frequency", "callable", "sic_code", "country_domicile",
     ]
     static = issue[keep].rename(columns={"complete_cusip": "cusip"})
     static["cusip"] = static["cusip"].astype("string")
