@@ -34,7 +34,7 @@ Full policy and branch-protection setup: `docs/data_governance.md`.
 
 ## What's Built
 
-The data layer produces a **dual-family** monthly panel (`raw` = as-published, `corr` = bias-corrected) that the bias-toggle registry's view layer materialises into two endpoint panels; the gap between them is the measured bias. Each stage hash-logs a report JSON.
+The data layer produces a **dual-family** monthly panel (`raw` = as-published, `corr` = bias-corrected) that the bias-toggle registry's view layer materialises into two endpoint panels; the gap between them is the measured bias. On top of it sits the **anchor factor layer** — the BBW (2019) four-factor model (MKTB, DRF, LRF, CRF), standalone short-term reversal (`str`) and 6-month momentum (`mom6`), plus the RQ2/RQ3 bias toggles that make them anchors. Each stage hash-logs a report JSON.
 
 ### 1. TRACE cleaning → dual families
 ```bash
@@ -70,8 +70,11 @@ Outer-joins the two daily families into the dual-family maximal panel and **merg
 
 ### 6. Signals
 ```bash
-python scripts/build_var_5pct.py           # BBW (2019) 5% VaR, family-indexed (var_5pct_raw/_corr)
+python scripts/build_var_5pct.py           # BBW (2019) 5% VaR        (var_5pct_raw/_corr)
+python scripts/build_gamma_illiq.py        # BPW (2011) γ illiquidity (gamma_raw/_corr)
+python scripts/build_mom6_signal.py        # Jostova trailing-6m cumulative return (mom6_raw/_corr)
 ```
+All signals are family-indexed (`_raw`/`_corr`) and written under `data/development/signals/`.
 
 ### 7. Endpoint views (bias-toggle registry)
 ```bash
@@ -82,10 +85,36 @@ A `RunConfig` drives `agents/quant/library/views.py` to select a price family an
 ### 8. Characteristic-sort engine
 Signal-agnostic quintile long-short engine (equal/size-weighted legs, single and independent double sorts, monthly rebalancing, Newey–West HAC inference). Lives at `agents/quant/library/characteristic_sort.py`; configured by the Quant agent, never modified (per ARCHITECTURE.md). See `docs/characteristic_sort_engine_spec.md` and `…_implementation.md`.
 
+### 9. Total-return upgrade (accrued interest + coupon)
+```bash
+python scripts/build_total_return_panel.py   # §2.1 total return = (P + AI + C) growth; 30E/360 accrual
+```
+The clean-price basis flips CRF's sign and flattens LRF (the credit/liquidity premia live in high-coupon bonds). The accrual engine (`agents/quant/library/accrual.py`) rebuilds the panel on total return — zero-coupon bonds stay byte-identical (the control-group invariance regression). This is the **headline basis** for the anchor factors.
+
+### 10. Anchor factors (BBW four-factor + str + mom6)
+```bash
+python scripts/build_mktb.py          # market factor (VW par excess return)
+python scripts/build_str.py           # short-term reversal (losers − winners)
+python scripts/build_mom6.py          # 6-month momentum (deciles, EW, P10 − P1, staggered H=6)
+python scripts/build_bbw_factors.py   # DRF / LRF / REV + CRF composite
+```
+Three independent 5×5 rating×{VaR, γ, REV} bivariate sorts on the audited engine (step 8); par value-weighted, correction-agnostic. On the development sample (2002–2021; licensed data not distributed), the corr-family MKTB is +0.50%/mo (≈ DRR-2023 0.47), with DRF/LRF/CRF correctly signed. Library: `agents/quant/library/{market_factor,bbw_factors}.py`.
+
+### 11. Bias toggles + §8 validation gates
+```bash
+python scripts/build_str_decomposition.py   # str LIB: month-end vs month-begin (CEIV) decomposition
+python scripts/run_mom6_lab_gate.py         # mom6 ex-post vs ex-ante winsorization (look-ahead)
+python scripts/run_leadlag_gate.py          # BBW lead/lag error → correlation collapse → restore
+python scripts/run_accrual_validation.py    # levels-corrected + differentials-static + Z-invariance
+python scripts/run_validation_gates.py      # aggregate §8 verdict
+```
+Anchors are validated by reproducing published **bias verdicts** (direction + magnitude of each toggle effect), not absolute factor levels (`thresholds.yaml:validation`). Toggles: ex-post/ex-ante winsorization (`winsorize.py`), lead/lag injection (`lead_lag.py`), the str LIB gap (`intramonth_prices.py`).
+
 ---
 
 ## Tests
 
 ```bash
-pytest tests/ -v
+./.venv/bin/python -m pytest tests/unit/ -q     # 365 passing
 ```
+Use the project venv (pandas 3.0.3), not a system/anaconda interpreter. Each signal, factor, and bias toggle has synthetic-fixture-with-known-answer unit tests (e.g. hand-computed γ covariance, accrued interest, leg directions on a 5×5 grid); the holdout firewall (`tests/conftest.py`) blocks any read of `data/holdout/`.
