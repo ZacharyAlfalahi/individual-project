@@ -123,6 +123,56 @@ signals:
       min_pairs: 10         # BPW require >= 10 paired observations
       min_bday_frac: 0.75   # AND >= 75% of the month's business days traded
 
+# RQ2/RQ3 bias toggles (BBW_anchor_implementation_spec.md §7). Each reproduces a
+# published defect on demand; both OFF (as-published) and ON (corrected) states
+# are produced and the gap is the measured bias.
+bias_toggles:
+  # lab_filter — mom6 look-ahead (§7.1). Ex-post (full-sample 99.5th right-tail
+  # winsorization, embeds future info → biased +0.30%/mo) vs ex-ante (expanding
+  # past-only threshold → ≈0). The EP−EA gap is the look-ahead bias. wins=clip,
+  # not trim; loc=right is one-sided (asymmetric, DRR Table 3).
+  lab_filter:
+    level: 99.5
+    loc: right
+    adj: wins
+  # lead_lag — BBW factor lead/lag (look-ahead) error (§7 toggle 1). OFF injects
+  # the original BBW defect, ON is the correct contemporaneous alignment; the
+  # signature is the original↔replicated correlation collapse (~0.26 DRF / ~0.44
+  # CRF) restored to >0.90 when corrected. Defect windows (DRR-2023):
+  lead_lag:
+    drf_crf_lead_months: 1          # DRF/CRF month t carried t+1's value (lead) ...
+    drf_crf_window: ["2004-08", "2014-12"]
+    lrf_lag_months: 1               # LRF month t carried t-1's value (lag) ...
+    lrf_window: ["2015-01", "2016-12"]
+  # Month-end trade-recognition window n (§7 toggle 4) — affects universe size
+  # only, NOT the price-measurement window (signals.str_lib.window_days).
+  trade_recognition_window_n: [1, 3, 5, 7, 10]
+
+# Anchor validation principle (BBW_anchor_implementation_spec.md §8) — recorded
+# here to supersede the ±15% absolute-level criterion FOR THE ANCHORS and to
+# justify on the merits. The pipeline has many deliberate divergences from every
+# external reference (par-weighting not mcap_e, a wider universe, relaxed BPW
+# screens, a self-built panel, clean-price returns pending the §2.1 accrual
+# upgrade), each of which moves factor MEANS by more than 15%. So the anchors are
+# validated by reproducing published BIAS VERDICTS — the direction and
+# approximate magnitude of each toggle's effect — within the pipeline, NOT by
+# matching published factor levels.
+validation:
+  anchor_criterion: "bias_attribution"   # NOT absolute_level_pm15 (the ±15% gate
+                                          # still applies to the data-matched
+                                          # replication in RQ2, not these anchors)
+  gates:
+    str_lib_decomposition: "month-end vs month-begin; direction + LIB proportion (§8 gate 1)"
+    mom6_lab: "ex-post vs ex-ante winsorization; EP biased ~+0.30, EP-EA gap > 0 (§8 gate 1)"
+    bbw_lead_lag: "lead/lag error collapses original-vs-corrected correlation to ~0.26 DRF / ~0.44 CRF, restored to >0.90 (§8 gate 1)"
+    osbap_directional: "loosened sign + order-of-magnitude vs OSBAP ret_vw (directional smoke test, NOT pass/fail; needs OSBAP data)"
+  # Critical guard (diagnostic-first protocol): every bias gate above is a
+  # within-pipeline DIFFERENTIAL or CORRELATION, hence SIGN-INVARIANT — so all
+  # are robust to the clean-price CRF sign-flip (fixed by the Chunk-5 accrual
+  # upgrade). Only the osbap_directional sanity check depends on CRF's sign and
+  # is expected to fail until accrual lands.
+  bias_gates_sign_invariant: true
+
 # PyBondLab post-aggregation filters.
 # These apply to the monthly return PANEL, not raw TRACE transactions.
 # Applied by the Quant agent's return-aggregation step, not by preprocess_trace.py.
