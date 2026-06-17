@@ -53,7 +53,12 @@ from agents.quant.library.run_config import (  # noqa: E402
 )
 from agents.quant.library.views import view  # noqa: E402
 
-PANEL_FILE = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
+# Anchor headline uses the §2.1 total-return panel when present (BBW_ANCHOR_PANEL
+# overrides; clean maximal fallback). For str/mom6 the coupon carry largely
+# cancels in the long-short, so the basis barely matters — but kept consistent.
+_TOTAL = REPO_ROOT / "data" / "development" / "monthly_panel_total_return.parquet"
+_CLEAN = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
+PANEL_FILE = Path(os.environ.get("BBW_ANCHOR_PANEL", str(_TOTAL if _TOTAL.exists() else _CLEAN)))
 OUT_DIR = REPO_ROOT / "data" / "development" / "factors"
 OUT_FILE = OUT_DIR / "str.parquet"
 REPORT_OUT = OUT_DIR / "str_report.json"

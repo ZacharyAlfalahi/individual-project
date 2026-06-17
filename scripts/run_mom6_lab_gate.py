@@ -50,7 +50,9 @@ from agents.quant.library.winsorize import winsorize_returns  # noqa: E402
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from build_mom6 import mom6_rulebook  # noqa: E402
 
-PANEL_FILE = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
+_TOTAL = REPO_ROOT / "data" / "development" / "monthly_panel_total_return.parquet"
+_CLEAN = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
+PANEL_FILE = Path(os.environ.get("BBW_ANCHOR_PANEL", str(_TOTAL if _TOTAL.exists() else _CLEAN)))
 SIGNAL_FILE = REPO_ROOT / "data" / "development" / "signals" / "mom6.parquet"
 OUT = REPO_ROOT / "data" / "development" / "headlines" / "mom6_lab_gate.json"
 THRESHOLDS_FILE = REPO_ROOT / "docs" / "thresholds.yaml"

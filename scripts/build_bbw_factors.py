@@ -51,7 +51,12 @@ from agents.quant.library.run_config import (  # noqa: E402
 )
 from agents.quant.library.views import view  # noqa: E402
 
-PANEL_FILE = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
+_TOTAL = REPO_ROOT / "data" / "development" / "monthly_panel_total_return.parquet"
+_CLEAN = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
+# Anchor headline uses the §2.1 total-return panel when present — the clean-price
+# CRF sign-flip / LRF-flatness is corrected on it (BBW_ANCHOR_PANEL overrides;
+# clean maximal fallback).
+PANEL_FILE = Path(os.environ.get("BBW_ANCHOR_PANEL", str(_TOTAL if _TOTAL.exists() else _CLEAN)))
 VAR_FILE = REPO_ROOT / "data" / "development" / "signals" / "var_5pct.parquet"
 GAMMA_FILE = REPO_ROOT / "data" / "development" / "signals" / "gamma_illiq.parquet"
 OUT_DIR = REPO_ROOT / "data" / "development" / "factors"

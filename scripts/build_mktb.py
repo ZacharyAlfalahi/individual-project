@@ -42,7 +42,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 from agents.quant.library.market_factor import compute_market_factor  # noqa: E402
 
-PANEL_FILE = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
+# Anchor-layer headline uses the §2.1 TOTAL-return panel when present (the
+# clean-price levels are wrong for the credit/liquidity legs); falls back to the
+# clean maximal panel, and is overridable via BBW_ANCHOR_PANEL for comparison.
+_TOTAL = REPO_ROOT / "data" / "development" / "monthly_panel_total_return.parquet"
+_CLEAN = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
+PANEL_FILE = Path(os.environ.get("BBW_ANCHOR_PANEL", str(_TOTAL if _TOTAL.exists() else _CLEAN)))
 OUT_DIR = REPO_ROOT / "data" / "development" / "factors"
 OUT_FILE = OUT_DIR / "mktb.parquet"
 REPORT_OUT = OUT_DIR / "mktb_report.json"
