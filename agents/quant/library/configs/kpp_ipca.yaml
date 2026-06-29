@@ -1,0 +1,61 @@
+# Gold spec for the KPP IPCA module — fields exactly per docs/ipca_spec.md §8.
+# Each field carries its value; evidence (tier + citation) is the inline comment, with
+# `UNVERIFIED→Kxx` noted where an open micro-item remains. This is a MODULE CONFIGURATION
+# (the Quant agent configures the library via this file); it is distinct from the Auditor's
+# docs/thresholds.yaml. Loader: agents.quant.library.ipca.IPCAConfig.from_path(<this file>).
+model:
+  K: 5                      # [PAPER §III; sweep 1..5 supported]
+  alpha: false              # restricted Γ_α=0 main spec [PAPER p.1983]
+estimation:
+  mode: in_sample           # in_sample | recursive  [PAPER Tables III vs IV]
+  month_weighting: per_month_normalized   # [INFERENCE; UNVERIFIED→K22]
+  tolerance: 1.0e-4         # [CODE Table_3.m:101]
+  max_iter_in_sample: 1000  # [CODE Table_3.m:100]
+  max_iter_recursive: 2000  # [CODE Table_4.m:66]
+  convergence_metric: max_abs_delta_gamma_and_F   # identified iterates [CODE]
+  init: svd_managed_portfolios   # Γ0=U, F0=sV' [CODE Table_3.m:158–160]
+  warm_start_recursion: true     # [CODE Table_4.m:163–170]
+  identification:
+    orthonormal_gamma: true
+    descending_factor_moments: true
+    nonneg_factor_means: true
+    applied_per_iteration: true                       # [CODE num_IPCA_estimate_ALS.m:91–103]
+    sign_eigvec_rule: largest_abs_component_positive  # [R2 adjudication — determinism; see docs/ipca_adjudications.md]
+    sign_fallback_mean_eps: 1.0e-8                    # [R2 adjudication — near-zero-mean sign fallback]
+    near_tie_moment_eps: 1.0e-8                       # [R2 adjudication — near-tie warning threshold]
+bootstrap:
+  sims: 1000                # [CODE Table_3.m:41]
+  dof: 7                    # [CODE Table_3.m:42]
+  alpha_block_len: 7        # [CODE Table_3.m:301–308]
+  beta_block_len: 1         # [CODE Table_3.m:357–364]
+  # multiplier_variance configures the ALPHA test arm only (kpp_faithful | unit). The
+  # CHARACTERISTIC test is pinned to `unit` by §3 and is NOT a toggle — do NOT forward this
+  # field to bootstrap_characteristic_test (the module hard-codes its `unit` default).
+  multiplier_variance: kpp_faithful   # kpp_faithful | unit  [CODE; Auditor toggle — ALPHA test]
+  alpha_residual_source: unrestricted # [CODE Table_3.m:296]
+  seed: 20260612            # [POLICY: fixed; reference used rng('shuffle')]
+data_contract:
+  L: 30
+  rank_map: rank_minus1_over_rmax_minus1_minus_half   # [CODE JF2_pubdata.m:212–217]
+  demean_after_map: false   # faithful [CODE]; true = declared deviation
+  characteristic_lag_months: 1   # next-return convention [CODE]
+  family: corr              # A9 [POLICY D6]
+scaling:
+  lane: DTSScaled25         # DTSScaled25 | VOLScaled010 | Unscaled [CODE]
+  dts_constant: 4.25e-4     # ×dur_years×spread_bp [CODE JF2_pubdata.m:147]
+  dts_floor: 0.25           # [CODE JF2_scaling_choices.m:30]
+  spread_validity_bp: [20, 2000]   # [CODE; paper '50' is text error]
+  duration_floor_years: 0.25       # [CODE; PAPER p.1979]
+  vol_floor: 0.01           # [CODE; PAPER fn.32]
+strategies:
+  tangency: {vol_target_monthly: 0.01, weights: sum_to_one_sign_flipped, history: insample_path_current_gamma}  # [CODE tanptfnext.m; K5]
+  spread:   {quantiles: 5, weighting: equal, expected_return: z_gamma_lambda, lambda: mean_insample_factors}     # [PAPER fn.12; CODE]
+  costs_bp_oneway: 19       # [PAPER p.1989]
+  smoothing_gamma_grid: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]   # [PAPER Table VIII]
+window:
+  # Spec §8 names this window `development`; renamed to `development` here to honour the
+  # standing terminology ban (never "the project"). Same object: the 2002–2021 dev window.
+  name: development         # paper | paper_analogue | development [POLICY K15]
+  oos_burn_in_months: 36    # [CODE Trange=36:T-1; PAPER Table IV caption]
+context_values:
+  source: kelly_2023_ipca.md §10.4   # NOT gates [POLICY D1]; file absent — placeholders until authored
