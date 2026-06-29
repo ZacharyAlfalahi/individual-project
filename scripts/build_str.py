@@ -17,8 +17,8 @@ month-begin/month-end decomposition (build_str_decomposition.py) and toggled in
 the bias lattice; it is not this builder's job.
 
 Weighting: value-weight by par `offering_amt` (panel `size`, §2.4) — now that
-FISD supplies real par sizes, str is VW (the run_str_lib_gap_aoi.py pattern-gate
-used equal weighting only because size was a pre-FISD placeholder).
+FISD supplies real par sizes, str is VW (the earlier pre-FISD pattern-gate used
+equal weighting only because `size` was then a placeholder).
 
 Family-indexed per A9: emits `str_raw` (xret/ret on the raw family) and
 `str_corr` (corr family). The engine's long-short nets out the safe rate, so

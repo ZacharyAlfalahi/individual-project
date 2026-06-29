@@ -50,16 +50,6 @@ monthly_panel:
   rf_rate_series: "TB3MS"
   rf_rate_url: "https://fred.stlouisfed.org/graph/fredgraph.csv?id=TB3MS"
 
-# SUPERSEDED — these build-level stubs are no longer read by any code. Both
-# corrections are now VIEW-level RunConfig toggles (agents/quant/library):
-#   apply_stale_price_filter      → panel_view.stale_mask (A3)
-#   apply_survivorship_correction → panel_view.include_terminal_rows (FISD
-#                                   exit_reason; live since the 2026-06-14 merge)
-# Kept here only as a pointer; safe to delete once nothing references the name.
-monthly_panel_corrections:
-  apply_stale_price_filter: false
-  apply_survivorship_correction: false
-
 # Signal-prep constants. Each signal is computed from the monthly panel by
 # a dedicated scripts/build_<signal>.py and emitted to
 # data/development/signals/<signal>.parquet keyed on (cusip, date) for
@@ -195,18 +185,6 @@ validation:
       lib_share_lo: 0.6      # LIB share of the month-end reversal band [lo, hi] (SOFT: universe-sensitive — see script note)
       lib_share_hi: 1.0
       min_bonds: 20          # engine min_bonds eligibility for the decomposition sort
-
-# PyBondLab post-aggregation filters.
-# These apply to the monthly return PANEL, not raw TRACE transactions.
-# Applied by the Quant agent's return-aggregation step, not by preprocess_trace.py.
-pybondlab_filters:
-  # Dickerson, Robotti, Rossetti (2025) / PyBondLab defaults
-  price_filter_threshold: 25.0
-  # WRDS-MMN (2025) bounce-back filter — verify exact value against Table A1 before first Quant run
-  bounce_filter_threshold: -0.25
-  # To be confirmed before first Quant run
-  trim_upper_bound: 0.40
-  winsorise_percentile: 99.5
 
 # DRR (Dickerson, Robotti, Rossetti 2026) bounce-back filter, Table A.2.
 # Applied by scripts/bounce_back_filter.py as a post-processing step after
