@@ -1,0 +1,64 @@
+# Machine-readable instrument registry for the IPCA Workstream B feed (the buildable FISD+TRACE
+# subset). Consumed by scripts/build_ipca_panel.py. Spec: docs/characteristic_registry_spec.md §1.
+#
+# Family policy (A9): price-derived instruments carry _raw/_corr; rating & maturity are agnostic.
+# All instruments are dated month m-1 (KPP next-return convention); the build sets
+# characteristic_asof = months - 1 so ipca.validate_panel's double-lag guard passes.
+# This is the buildable 7-instrument bond-only subset — NOT KPP's 29 (equity side + DtS deferred).
+meta:
+  L: 8                       # 7 non-constant instruments + the constant (appended last by the build)
+  default_family: corr       # [POLICY D6]
+  scaling_lane: VOLScaled010 # dependent variable scaled by bond_vol (see `scaler`)
+  train_end: "2021-12"       # wall: no observation beyond this month (period label)
+  comparability: "NON_COMPARABLE_TO_KPP — interface-validation only (7-instrument bond-only, no equity, VOL-scaled not DtS)"
+
+instruments:
+  - name: str_reversal
+    source: panel
+    column: {raw: xret_raw, corr: xret_corr}
+    family_indexed: true
+    provenance: STATED
+    evidence: "[PAPER] short-term reversal = prior-month return"
+  - name: mom6
+    source: signals/mom6.parquet
+    column: {raw: mom6_raw, corr: mom6_corr}
+    family_indexed: true
+    provenance: STATED
+    evidence: "[SOURCE-DOC Jostova 2013; thresholds.yaml signals.mom6]"
+  - name: var_5pct
+    source: signals/var_5pct.parquet
+    column: {raw: var_5pct_raw, corr: var_5pct_corr}
+    family_indexed: true
+    provenance: STATED
+    evidence: "[SOURCE-DOC BBW 2019; thresholds.yaml signals.var_5pct]"
+  - name: gamma_illiq
+    source: signals/gamma_illiq.parquet
+    column: {raw: gamma_raw, corr: gamma_corr}
+    family_indexed: true
+    provenance: DESIGN
+    evidence: "[SOURCE-DOC BPW 2011] formula + DESIGN [DRR-relaxed screen, thresholds.yaml signals.gamma_illiq] — PINNED"
+  - name: rating
+    source: panel
+    column: {raw: rating, corr: rating}
+    family_indexed: false
+    provenance: STATED
+    evidence: "[SOURCE-DOC FISD; thresholds.yaml fisd.rating]"
+  - name: time_to_maturity
+    source: panel
+    column: {raw: time_to_maturity, corr: time_to_maturity}
+    family_indexed: false
+    provenance: DESIGN
+    evidence: "[POLICY: maturity characteristic; par-duration-from-coupon deferred (needs a yield; DtS use blocked) — docs/characteristic_registry_spec.md §1]"
+  - name: bond_vol
+    source: signals/bond_vol.parquet
+    column: {raw: bond_vol_raw, corr: bond_vol_corr}
+    family_indexed: true
+    provenance: STATED
+    evidence: "[CODE JF2_pubdata.m:151 TOTAL_VOL #27; PAPER fn.32; thresholds.yaml signals.bond_vol] — dual role: instrument #7 AND VOLScaled010 scaler"
+
+# Dependent variable: R[m] = xret_m / max(bond_vol_{m-1}, floor); bond-months with bond_vol<=0 excluded.
+scaler:
+  name: bond_vol
+  column: {raw: bond_vol_raw, corr: bond_vol_corr}
+  floor: 0.01                # mirrors kpp_ipca.yaml:scaling.vol_floor [CODE; PAPER fn.32]
+return_column: {raw: xret_raw, corr: xret_corr}

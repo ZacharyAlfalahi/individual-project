@@ -34,7 +34,7 @@ Full policy and branch-protection setup: `docs/data_governance.md`.
 
 ## What's Built
 
-The data layer produces a **dual-family** monthly panel (`raw` = as-published, `corr` = bias-corrected) that the bias-toggle registry's view layer materialises into two endpoint panels; the gap between them is the measured bias. On top of it sits the **anchor factor layer** — the BBW (2019) four-factor model (MKTB, DRF, LRF, CRF), standalone short-term reversal (`str`) and 6-month momentum (`mom6`), plus the RQ2/RQ3 bias toggles that make them anchors. Each stage hash-logs a report JSON.
+The data layer produces a **dual-family** monthly panel (`raw` = as-published, `corr` = bias-corrected) that the bias-toggle registry's view layer materialises into two endpoint panels; the gap between them is the measured bias. On top of it sits the **anchor factor layer** — the BBW (2019) four-factor model (MKTB, DRF, LRF, CRF), standalone short-term reversal (`str`) and 6-month momentum (`mom6`), plus the RQ2/RQ3 bias toggles that make them anchors. Each stage hash-logs a report JSON. The first **audited scale-layer module** — the KPP IPCA estimator — sits alongside the anchors (§12), fed by a buildable bond-centric characteristic panel and exercised by an interface-validation shakedown (§13).
 
 ### 1. TRACE cleaning → dual families
 ```bash
@@ -73,6 +73,7 @@ Outer-joins the two daily families into the dual-family maximal panel and **merg
 python scripts/build_var_5pct.py           # BBW (2019) 5% VaR        (var_5pct_raw/_corr)
 python scripts/build_gamma_illiq.py        # BPW (2011) γ illiquidity (gamma_raw/_corr)
 python scripts/build_mom6_signal.py        # Jostova trailing-6m cumulative return (mom6_raw/_corr)
+python scripts/build_bond_vol.py           # 24m return-vol / KPP TOTAL_VOL (bond_vol_raw/_corr) — IPCA §13
 ```
 All signals are family-indexed (`_raw`/`_corr`) and written under `data/development/signals/`.
 
@@ -110,11 +111,27 @@ python scripts/run_validation_gates.py      # aggregate §8 verdict
 ```
 Anchors are validated by reproducing published **bias verdicts** (direction + magnitude of each toggle effect), not absolute factor levels (`thresholds.yaml:validation`). Toggles: ex-post/ex-ante winsorization (`winsorize.py`), lead/lag injection (`lead_lag.py`), the str LIB gap (`intramonth_prices.py`).
 
+### 12. IPCA estimator (KPP) — audited Quant library module
+```bash
+./.venv/bin/python -m pytest tests/synthetic/test_ipca_battery.py -q   # 30-test certification battery (§9)
+./.venv/bin/python -m mypy --strict agents/quant/library/ipca.py       # + ruff check — clean
+```
+`agents/quant/library/ipca.py` is the hand-built, **numpy-only** IPCA estimator (Kelly–Palhares–Pruitt): rank-transform + per-month sufficient statistics, the ALS estimator with per-iteration identification, the two wild-bootstrap tests (Γ_α and per-characteristic), recursive out-of-sample estimation, tangency (recursive + in-sample) and spread strategies with costs/turnover and the smoothing-γ cost curve, the fit metrics, and the §10 `context_table` acceptance harness — all **configured, never authored**, at run time via the gold spec `agents/quant/library/configs/kpp_ipca.yaml`. It consumes per-month matrices, enforces a hard `train_end` wall, and raises `ContractViolation` on contract violations (never imputes). Acceptance is the synthetic battery (`tests/synthetic/test_ipca_battery.py`, §9 tests 1–14: subspace/factor recovery, alpha-test size/power, rotation-invariance, idempotency, determinism, …) plus `mypy --strict` + `ruff` clean and a zero-side-effect import. Spec: `docs/ipca_spec.md`; build adjudications + known deviations: `docs/ipca_adjudications.md`.
+
+### 13. IPCA characteristic panel + bond-centric shakedown (Workstream B)
+```bash
+./.venv/bin/python scripts/build_bond_vol.py      # 24m return-vol (instrument #7 + the VOL scaler)
+./.venv/bin/python scripts/build_ipca_panel.py    # assemble the 7-instrument feed → ipca_panel_corr.parquet
+./.venv/bin/python scripts/run_ipca_shakedown.py  # in-sample K-sweep + recursive OOS → run-log + context-table
+```
+The buildable FISD+TRACE instrument subset — short-term reversal, mom6, VaR, γ-illiquidity, rating, time-to-maturity, 24m return-vol (+ constant) — assembled with the **next-return lag** (instruments at m−1, return at m; adjacent months only), complete-case selection, and **VOLScaled010** returns, emitted as the module's per-month `(Z, R)` feed (which passes the module's own `validate_panel` + wall by construction; 209 months, ~1,700 bonds/month). The shakedown runs the estimator end-to-end on this real feed. **Interface-validation only — NON-COMPARABLE to KPP**: a 7-instrument bond-only, VOL-scaled model is structurally different from KPP's 29-instrument DtS model, so every artifact carries that stamp and it **cannot be cited for RQ1/RQ2/RQ3**. The 15 equity/accounting characteristics and the DtS lane remain blocked (CRSP/Compustat access; spread/yield/OAS). Spec: `docs/characteristic_registry_spec.md`; workstream scaffolding: `docs/ipca_dnn_scaffolding.md`.
+
 ---
 
 ## Tests
 
 ```bash
-./.venv/bin/python -m pytest tests/unit/ -q     # 365 passing
+./.venv/bin/python -m pytest tests/unit/ -q                          # 372 passing
+./.venv/bin/python -m pytest tests/synthetic/test_ipca_battery.py -q # IPCA certification battery (30; ~80s)
 ```
-Use the project venv (pandas 3.0.3), not a system/anaconda interpreter. Each signal, factor, and bias toggle has synthetic-fixture-with-known-answer unit tests (e.g. hand-computed γ covariance, accrued interest, leg directions on a 5×5 grid); the holdout firewall (`tests/conftest.py`) blocks any read of `data/holdout/`.
+Use the project venv (pandas 3.0.3), not a system/anaconda interpreter. Each signal, factor, and bias toggle has synthetic-fixture-with-known-answer unit tests (e.g. hand-computed γ covariance, accrued interest, leg directions on a 5×5 grid); the IPCA module adds the synthetic certification battery and is `mypy --strict` + `ruff` clean (tooling: `pip install mypy ruff types-PyYAML`). The holdout firewall (`tests/conftest.py`) blocks any read of `data/holdout/`.

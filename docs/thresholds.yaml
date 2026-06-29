@@ -113,6 +113,17 @@ signals:
       min_pairs: 10         # BPW require >= 10 paired observations
       min_bday_frac: 0.75   # AND >= 75% of the month's business days traded
 
+  # bond_vol — 24-month rolling bond-return volatility. This is KPP's TOTAL_VOL (Table A.I #27)
+  # AND the scaler for the VOLScaled010 return-scaling lane. Computed from monthly EXCESS returns
+  # per family (xret_raw / xret_corr). `window` = trailing-month window; `min_obs` = eligibility
+  # gate (a DESIGN choice — enough history for a stable std). Decimal monthly units. The vol floor
+  # (0.01) used when scaling lives in agents/quant/library/configs/kpp_ipca.yaml:scaling.vol_floor.
+  # Source: [CODE JF2_pubdata.m:151 (TOTAL_VOL #27); PAPER fn.32]; consumed by Workstream B
+  # (scripts/build_bond_vol.py + scripts/build_ipca_panel.py), per docs/characteristic_registry_spec.md.
+  bond_vol:
+    window: 24
+    min_obs: 18
+
 # RQ2/RQ3 bias toggles (BBW_anchor_implementation_spec.md §7). Each reproduces a
 # published defect on demand; both OFF (as-published) and ON (corrected) states
 # are produced and the gap is the measured bias.
