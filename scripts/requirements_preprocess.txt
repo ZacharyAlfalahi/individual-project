@@ -8,3 +8,9 @@ pandas>=1.5
 # whereas polars sink_parquet materialises the full sorted frame and
 # OOM-kills on the 200M-row dev partition.
 duckdb>=0.10.0
+
+# --- Test + lint toolchain (Tests section + §12 mypy --strict / ruff gates) ---
+pytest>=8.0
+mypy>=1.8
+ruff>=0.6
+types-PyYAML>=6.0

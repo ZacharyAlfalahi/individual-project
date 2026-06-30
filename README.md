@@ -8,11 +8,14 @@ Six-agent LLM pipeline: PDF ingestion → strategy extraction → backtesting �
 
 ## Setup
 
-Requires Python 3.12 (PyBondLab/Numba constraint).
+Requires Python 3.12 (the version the project venv is built and tested against).
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+# 1. Create and activate the virtual environment
+python3.12 -m venv .venv
+source .venv/bin/activate          # ← run this in EVERY new shell, before any command below
+
+# 2. Install the runtime, test/lint, and PDF-parsing dependencies
 pip install -r scripts/requirements_preprocess.txt -r scripts/requirements_parser.txt
 ```
 
@@ -29,6 +32,15 @@ This installs pre-commit and pre-push hooks that refuse any FISD/TRACE data
 (`data/fisd/**`, raw `data/trace_enhanced_*`, and any `.parquet`/`.csv`/`.csv.gz`
 under `data/`). The `data-governance` CI workflow is the un-bypassable backstop.
 Full policy and branch-protection setup: `docs/data_governance.md`.
+
+### Input data (licensed — supply your own)
+
+The build pipeline (§1–§13) reads licensed raw inputs that are **not** in the repo:
+
+- **TRACE Enhanced** → `data/trace_enhanced_repull.csv.gz` (consumed by §1)
+- **FISD reference tables** → `data/fisd/*.parquet` (consumed by §4)
+
+Place these under `data/` before running the build steps; without them §1/§4 cannot run and every later stage has nothing to build on. The **test suite needs none of this** — it runs on synthetic fixtures, so a fresh clone can run `python -m pytest tests/unit/` immediately.
 
 ---
 
@@ -53,7 +65,7 @@ python scripts/apply_distressed_filters.py           # DRR App. A.3 filters 1–
 
 ### 3. Risk-free rate
 ```bash
-python scripts/download_rf_rate.py         # FRED TB3MS → data/development/rf_rate.parquet
+python scripts/download_rf_rate.py         # FRED TB3MS → rf_rate.parquet (needs internet; no API key)
 ```
 
 ### 4. FISD reference preprocessing
@@ -113,16 +125,16 @@ Anchors are validated by reproducing published **bias verdicts** (direction + ma
 
 ### 12. IPCA estimator (KPP) — audited Quant library module
 ```bash
-./.venv/bin/python -m pytest tests/synthetic/test_ipca_battery.py -q   # 30-test certification battery (§9)
-./.venv/bin/python -m mypy --strict agents/quant/library/ipca.py       # + ruff check — clean
+python -m pytest tests/synthetic/test_ipca_battery.py -q   # 33-test certification battery (§9)
+python -m mypy --strict agents/quant/library/ipca.py       # + ruff check — clean
 ```
 `agents/quant/library/ipca.py` is the hand-built, **numpy-only** IPCA estimator (Kelly–Palhares–Pruitt): rank-transform + per-month sufficient statistics, the ALS estimator with per-iteration identification, the two wild-bootstrap tests (Γ_α and per-characteristic), recursive out-of-sample estimation, tangency (recursive + in-sample) and spread strategies with costs/turnover and the smoothing-γ cost curve, the fit metrics, and the §10 `context_table` acceptance harness — all **configured, never authored**, at run time via the gold spec `agents/quant/library/configs/kpp_ipca.yaml`. It consumes per-month matrices, enforces a hard `train_end` wall, and raises `ContractViolation` on contract violations (never imputes). Acceptance is the synthetic battery (`tests/synthetic/test_ipca_battery.py`, §9 tests 1–14: subspace/factor recovery, alpha-test size/power, rotation-invariance, idempotency, determinism, …) plus `mypy --strict` + `ruff` clean and a zero-side-effect import. Spec: `docs/ipca_spec.md`; build adjudications + known deviations: `docs/ipca_adjudications.md`.
 
 ### 13. IPCA characteristic panel + bond-centric shakedown (Workstream B)
 ```bash
-./.venv/bin/python scripts/build_bond_vol.py      # 24m return-vol (instrument #7 + the VOL scaler)
-./.venv/bin/python scripts/build_ipca_panel.py    # assemble the 7-instrument feed → ipca_panel_corr.parquet
-./.venv/bin/python scripts/run_ipca_shakedown.py  # in-sample K-sweep + recursive OOS → run-log + context-table
+python scripts/build_bond_vol.py      # 24m return-vol (instrument #7 + the VOL scaler)
+python scripts/build_ipca_panel.py    # assemble the 7-instrument feed → ipca_panel_corr.parquet
+python scripts/run_ipca_shakedown.py  # in-sample K-sweep + recursive OOS → run-log + context-table
 ```
 The buildable FISD+TRACE instrument subset — short-term reversal, mom6, VaR, γ-illiquidity, rating, time-to-maturity, 24m return-vol (+ constant) — assembled with the **next-return lag** (instruments at m−1, return at m; adjacent months only), complete-case selection, and **VOLScaled010** returns, emitted as the module's per-month `(Z, R)` feed (which passes the module's own `validate_panel` + wall by construction; 209 months, ~1,700 bonds/month). The shakedown runs the estimator end-to-end on this real feed. **Interface-validation only — NON-COMPARABLE to KPP**: a 7-instrument bond-only, VOL-scaled model is structurally different from KPP's 29-instrument DtS model, so every artifact carries that stamp and it **cannot be cited for RQ1/RQ2/RQ3**. The 15 equity/accounting characteristics and the DtS lane remain blocked (CRSP/Compustat access; spread/yield/OAS). Spec: `docs/characteristic_registry_spec.md`; workstream scaffolding: `docs/ipca_dnn_scaffolding.md`.
 
@@ -131,7 +143,7 @@ The buildable FISD+TRACE instrument subset — short-term reversal, mom6, VaR, �
 ## Tests
 
 ```bash
-./.venv/bin/python -m pytest tests/unit/ -q                          # 372 passing
-./.venv/bin/python -m pytest tests/synthetic/test_ipca_battery.py -q # IPCA certification battery (30; ~80s)
+python -m pytest tests/unit/ -q                          # 372 passing
+python -m pytest tests/synthetic/test_ipca_battery.py -q # IPCA certification battery (33; ~90s)
 ```
-Use the project venv (pandas 3.0.3), not a system/anaconda interpreter. Each signal, factor, and bias toggle has synthetic-fixture-with-known-answer unit tests (e.g. hand-computed γ covariance, accrued interest, leg directions on a 5×5 grid); the IPCA module adds the synthetic certification battery and is `mypy --strict` + `ruff` clean (tooling: `pip install mypy ruff types-PyYAML`). The holdout firewall (`tests/conftest.py`) blocks any read of `data/holdout/`.
+With the venv active these run on the project interpreter (pandas 3.0.3); a different pandas means you forgot `source .venv/bin/activate`. Each signal, factor, and bias toggle has synthetic-fixture-with-known-answer unit tests (e.g. hand-computed γ covariance, accrued interest, leg directions on a 5×5 grid); the IPCA module adds the synthetic certification battery and is `mypy --strict` + `ruff` clean (toolchain installed by the Setup `pip install`). The holdout firewall (`tests/conftest.py`) blocks any read of `data/holdout/`.
