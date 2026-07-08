@@ -20,7 +20,6 @@ Usage:
 """
 
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,7 +46,7 @@ DEV = REPO_ROOT / "data" / "development"
 CLEAN = DEV / "monthly_panel_maximal.parquet"
 TOTAL = DEV / "monthly_panel_total_return.parquet"
 OUT = DEV / "headlines" / "accrual_validation.json"
-import yaml
+import yaml  # noqa: E402
 with open(REPO_ROOT / "docs" / "thresholds.yaml") as _f:
     _CFG = yaml.safe_load(_f)
 MOM6 = _CFG["signals"]["mom6"]
@@ -152,7 +151,7 @@ def main():
             "criterion": "sign-invariant bias gates unchanged (accrual cancels in differentials)",
         },
         "fallback_exposure": {
-            "eligible_fallback_pct": float(total.loc[total["universe_eligible"] == True, "day_count_fallback"].mean() * 100),
+            "eligible_fallback_pct": float(total.loc[total["universe_eligible"].eq(True), "day_count_fallback"].mean() * 100),
             "months_with_fallback_in_crf_long_leg": months_with_fb,
             "max_fallback_bonds_in_a_long_leg_month": int(fb_in_long.max()),
             "note": "ACT/* bonds priced on 30/360; surfaced so a surprising CRF month is cross-checkable.",

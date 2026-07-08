@@ -176,7 +176,6 @@ def main():
     with open(REPORT_OUT, "w") as f:
         json.dump(report, f, indent=2)
 
-    raw_ret = panel["ret_raw"].dropna()
     print("\nDone.")
     print(f"  total-return panel: {len(panel):,} rows  →  {OUT_FILE}")
     print(f"  day_count_fallback: {int(fb.sum()):,} bond-months ({fb.mean()*100:.2f}%)")

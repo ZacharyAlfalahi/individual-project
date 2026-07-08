@@ -122,7 +122,6 @@ def test_h2_hand_computed_with_cohort_overlap():
     A buggy form-and-hold-one-month (engine at H=1) produces only
     Feb=0.10, Mar=0.02 -- no Apr row at all.
     """
-    score_map = {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0}
     # One row per (cusip, date). The engine's validator rejects duplicates,
     # so a single row carries BOTH the row's own ret (used by holding-period
     # lookups at this month) AND the score that makes the month a formation
