@@ -1,0 +1,27 @@
+# Project tooling config. Ruff lint gate for the pre-lock hygiene pass.
+#
+# Scope note: this configures the LINTER only. It does not touch, and must never
+# be used to justify touching, the frozen numerical engine under
+# agents/quant/library/ (which is clean: `ruff check agents/quant/library/`
+# passes with zero findings).
+
+[tool.ruff]
+# Pin the ruff version: "exits 0" is only a stable CI gate under a fixed ruleset.
+# Rule sets grow between releases; unpinned, CI would go red later for reasons
+# unrelated to the code. PEP 440 specifier (a bare "0.15.20" is ambiguous).
+required-version = "==0.15.20"
+
+# docs/ledger_validation_artifacts/flip_checks.py is FROZEN validation evidence.
+# Linting it would invite edits to files that document past validation runs, so
+# the whole docs/ tree is out of lint scope by design.
+extend-exclude = ["docs/"]
+
+[tool.ruff.lint.per-file-ignores]
+# E702 (multiple-statements-on-one-line) is intentional compact style in these
+# two files, not accidental:
+#   run_accrual_validation.py — copy-then-mutate (:84,:85), paired timestamp
+#     bounds (:92), print-then-exit (:102).
+#   test_build_fisd_reference.py — compact fixture-setup semicolons.
+# Documented here rather than mangling the source.
+"scripts/run_accrual_validation.py" = ["E702"]
+"tests/unit/test_build_fisd_reference.py" = ["E702"]
