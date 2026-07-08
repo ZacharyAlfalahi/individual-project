@@ -1,0 +1,20 @@
+name: lint
+
+# Ruff lint gate — the ratchet that keeps the repo clean under the pinned ruleset
+# in pyproject.toml (required-version == 0.15.20; docs/ excluded as frozen
+# validation evidence). Kept separate from data-governance.yml (the licensed-data
+# backstop) so each workflow has a single responsibility.
+on: [push, pull_request]
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff (pinned to match pyproject required-version)
+        run: pip install ruff==0.15.20
+      - name: Ruff check
+        run: ruff check .
