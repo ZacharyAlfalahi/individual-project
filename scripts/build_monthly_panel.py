@@ -382,7 +382,7 @@ def main():
     counts = build_panel(cfg)
     write_report(counts, cfg)
 
-    print(f"\nDone.")
+    print("\nDone.")
     print(f"  {counts['cusip_month_observations']:,} cusip-month observations")
     print(f"  {counts['unique_cusips']:,} unique cusips")
     print(f"  {counts['date_range_start']} – {counts['date_range_end']}")

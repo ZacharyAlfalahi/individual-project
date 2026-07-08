@@ -22,7 +22,6 @@ import math
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from agents.quant.library.characteristic_sort import (
     regress_on_benchmark,

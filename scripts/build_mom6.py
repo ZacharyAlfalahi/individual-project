@@ -202,7 +202,7 @@ def main():
     print(f"Config: skip={cfg['skip_months']}, holding={cfg['holding_months']}, "
           f"deciles={cfg['n_groups']}, weighting={cfg['weighting']}")
 
-    print(f"Loading panel + signal")
+    print("Loading panel + signal")
     maximal = pd.read_parquet(PANEL_FILE)
     signal = pd.read_parquet(SIGNAL_FILE)
 

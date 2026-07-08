@@ -18,7 +18,6 @@ from agents.quant.library.characteristic_sort import (
     _apply_defaults,
     _assign_groups,
     _build_lagged_panel,
-    _form_legs,
     _nw_auto_lags,
     _nw_hac_variance,
     _validate_panel,

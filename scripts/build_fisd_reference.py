@@ -467,7 +467,7 @@ def _write_report(report: dict) -> None:
         "",
         "## Ratings (monthly as-of, dev grid)",
         f"- grid rows: {r['grid_rows']:,} · rated: **{r['rated_rows']:,}** ({r['rated_pct']:.1f}%)",
-        f"- agency used: " + ", ".join(f"{k}={v:,}" for k, v in r["agency_used"].items()),
+        "- agency used: " + ", ".join(f"{k}={v:,}" for k, v in r["agency_used"].items()),
         f"- investment grade / high yield (rated rows): {r['ig_rows']:,} / {r['hy_rows']:,}",
         f"- rating events dropped by date hygiene: {r['dropped_rating_dates']:,}",
         f"- **future-date leakage: {r['future_date_leakage']}** (must be 0)",
