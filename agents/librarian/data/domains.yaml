@@ -1,0 +1,95 @@
+# Closed-domain declarations (D24 part 2) -- v1
+#
+# Every variable declares its full value set (enum) or range (numeric). Enforced
+# at the form-validator gate (this file's Librarian-side consumer). Two families:
+#
+#   part2   -- the 37 paper-facing Part 2 fields (source:
+#              docs/part2_schema_and_silence_policy_v1.md). Every enum carries
+#              "other" (P3). Signal identity (sort_signal / control_axis) is a
+#              SignalRef, not a scalar domain -- its concept_id domain is the
+#              Signal Concept Registry (checked in validate_librarian_spec), so
+#              it has no row here.
+#
+#   engine  -- the engine-side field domains (source:
+#              docs/engine_truth_table.md). Carried here so the transform-table
+#              gate and engine-config gate share ONE domain source. These are
+#              engine coordinates and live BEHIND the wall (D3) -- the Librarian
+#              never writes them; they are here for the adapter/engine gates and
+#              for the exhaustive enumeration tests (D24). n_groups-relative
+#              ranges (e.g. long_group in [0, n_groups)) are expressed as a
+#              parametric range referencing n_groups.
+#
+# A Domain is one of:
+#   {kind: enum,  values: [...]}
+#   {kind: int,   min: <int|null>, max: <int|null>}          # inclusive bounds; null = unbounded
+#   {kind: int,   min: 0, max_field: n_groups, max_exclusive: true}  # parametric
+#
+# expost_trim / significance_convention are composites in the schema; the
+# paper-facing menu component (method / t_stat) is declared here.
+
+version: v1
+
+part2:
+  # --- sort block (per-leg unless noted) -------------------------------------
+  sort_kind:            {kind: enum, values: [single, independent, conditional, other]}
+  bucketing_method:     {kind: enum, values: [equal_count, breakpoint, other]}
+  n_groups:             {kind: int, min: 2, max: null}
+  stripe_aggregation:   {kind: enum, values: [equal, count, value, other]}
+  control_missing_policy: {kind: enum, values: [drop, pool, other]}
+  long_leg:             {kind: enum, values: [lowest_signal, highest_signal, other]}
+  signal_transform:     {kind: enum, values: [none, winsorize, standardize, other]}
+  combiner:             {kind: enum, values: [single_leg, equal_average, other]}
+
+  # --- common block (spec-level) ---------------------------------------------
+  eligibility_missing_policy: {kind: enum, values: [drop, impute, carry_forward, other]}
+  return_availability_policy: {kind: enum, values: [require_next_month_return, hold_to_recovery, other]}
+  signal_lag:           {kind: int, min: 0, max: null}
+  lag_convention:       {kind: enum, values: [month_end, business_day, positional, other]}
+  min_bonds:            {kind: int, min: 1, max: null}
+  min_bonds_granularity: {kind: enum, values: [total, per_group, per_leg, other]}
+  tie_break_policy:     {kind: enum, values: [deterministic_id, random, other]}
+  weighting_scheme:     {kind: enum, values: [equal, value, other]}
+  weighting_base:       {kind: enum, values: [par, market_value, other]}
+  weight_timing:        {kind: enum, values: [formation, updated, other]}
+  strategy_side:        {kind: enum, values: [long_short, long_only, short_only, other]}
+  empty_leg_policy:     {kind: enum, values: [skip, zero_fill, one_sided, other]}
+  transaction_cost_convention: {kind: enum, values: [gross, net_of_costs, other]}
+  return_label:         {kind: enum, values: [formation, realisation, other]}
+  rebalance_frequency:  {kind: enum, values: [monthly, quarterly, weekly, daily, other]}
+  holding_period:       {kind: int, min: 1, max: null}
+  overlap_convention:   {kind: enum, values: [overlapping, non_overlapping, other]}
+  cohort_weighting:     {kind: enum, values: [equal, value, other]}
+  burn_in_policy:       {kind: enum, values: [keep, drop_ramp, scale, other]}
+  missing_return_policy: {kind: enum, values: [drop_and_renormalise, hold_to_recovery, impute_default_return, other]}
+  realisation_min_survivors: {kind: int, min: 0, max: null}
+  return_compounding:   {kind: enum, values: [arithmetic, geometric, other]}
+  # significance_convention: paper-facing t_stat component (kernel / hac_mode are
+  # engine-fixed detection-only settings, not paper-facing menus).
+  significance_convention: {kind: enum, values: [hac_t_of_mean, se_over_sqrt_t, other]}
+  hac_lags:             {kind: int, min: 0, max: null}
+  annualisation:        {kind: enum, values: [arithmetic, geometric, other]}
+  rf_convention:        {kind: enum, values: [none, subtract_rf, other]}
+  benchmark_model:      {kind: enum, values: [none, capm, ff5, bbw4, other]}
+  # expost_trim: method component (bounds carried separately in the schema).
+  expost_trim:          {kind: enum, values: [none, truncate, winsorise, other]}
+
+# --- engine-side domains (behind the wall; docs/engine_truth_table.md) --------
+engine:
+  # weighting enum ceiling (v2-38): {equal, by_size}; anything else -> refusal.
+  weighting:            {kind: enum, values: [equal, by_size]}
+  # groups (v2-7): bucket count, >= 2.
+  groups:               {kind: int, min: 2, max: null}
+  # signal_lag (v2-6): lag count, >= 0.
+  signal_lag:           {kind: int, min: 0, max: null}
+  # min_bonds (v2-5): total eligible-count threshold, >= 1.
+  min_bonds:            {kind: int, min: 1, max: null}
+  # holding_period (v2-21): overlap argument, >= 1.
+  holding_period:       {kind: int, min: 1, max: null}
+  # long_group / short_group (v2-39): which score-group is the long vs short leg;
+  # in [0, groups). Parametric range referencing groups.
+  long_group:           {kind: int, min: 0, max_field: groups, max_exclusive: true}
+  short_group:          {kind: int, min: 0, max_field: groups, max_exclusive: true}
+  # control_groups (v2-10): default = groups, >= 2 (validated unconditionally).
+  control_groups:       {kind: int, min: 2, max: null}
+  # trim_rule method (v2-36): the engine-supported trim variants.
+  trim_method:          {kind: enum, values: [none, truncate, winsorise]}

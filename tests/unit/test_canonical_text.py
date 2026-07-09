@@ -1,0 +1,134 @@
+"""
+Unit tests for CanonicalText + the status gate (build brief §5.1).
+
+Covers: the stub loads with ``status == "stub"``; ``require_frozen`` RAISES on the
+stub and PASSES on a ``status: frozen`` fixture built in-test; and ``locate`` finds
+a substring present in ``pages`` (returning a byte-correct L0 Locator) and returns
+None for an absent one.
+"""
+
+from pathlib import Path
+
+import pytest
+
+from agents.quant.config import Locator
+
+from agents.librarian.config import CanonicalText, load_canonical_text
+from agents.librarian.errors import CanonicalTextNotFrozenError, LibrarianSchemaError
+
+_STUB_PATH = Path(__file__).resolve().parent.parent.parent / (
+    "agents/librarian/fixtures/canonical_text.stub.yaml"
+)
+
+
+@pytest.fixture(scope="module")
+def stub():
+    return load_canonical_text(_STUB_PATH)
+
+
+def _frozen(pages=("alpha beta gamma", "delta epsilon")):
+    """A minimal status: frozen CanonicalText built in-test (never a real paper)."""
+    return CanonicalText(
+        source_pdf="synthetic/frozen.pdf",
+        source_sha256="ff" * 32,
+        parser={"name": "stub-parser", "version": "0.0.0"},
+        normalisation={"ladder_level": "L0", "rules": []},
+        pages=pages,
+        status="frozen",
+    )
+
+
+# --- the stub loads ---------------------------------------------------------
+
+def test_stub_loads_with_stub_status(stub):
+    assert stub.status == "stub"
+    assert not stub.is_frozen
+    assert len(stub.pages) == 2
+    assert stub.parser["name"] == "stub-parser"
+
+
+# --- the status gate --------------------------------------------------------
+
+def test_require_frozen_raises_on_stub(stub):
+    with pytest.raises(CanonicalTextNotFrozenError):
+        stub.require_frozen()
+    # subclasses LibrarianSchemaError -> broad ValueError handlers keep working.
+    with pytest.raises(LibrarianSchemaError):
+        stub.require_frozen()
+
+
+def test_require_frozen_passes_on_frozen():
+    ct = _frozen()
+    assert ct.require_frozen() is ct
+    assert ct.is_frozen
+
+
+# --- locate (L0 exact substring) --------------------------------------------
+
+def test_locate_finds_present_substring(stub):
+    loc = stub.locate("quintiles")
+    assert isinstance(loc, Locator)
+    # byte-correct span into the located page.
+    assert stub.pages[loc.page][loc.char_start:loc.char_end] == "quintiles"
+
+
+def test_locate_returns_none_for_absent_substring(stub):
+    assert stub.locate("this phrase is definitely not in the stub") is None
+
+
+def test_locate_searches_across_pages():
+    ct = _frozen(pages=("first page only", "second page has the TARGET token"))
+    loc = ct.locate("TARGET")
+    assert loc is not None
+    assert loc.page == 1
+    assert ct.pages[1][loc.char_start:loc.char_end] == "TARGET"
+
+
+def test_locate_rejects_empty_quote(stub):
+    with pytest.raises(LibrarianSchemaError):
+        stub.locate("")
+
+
+# --- construction guards ----------------------------------------------------
+
+def test_bad_status_is_build_error():
+    with pytest.raises(LibrarianSchemaError):
+        CanonicalText(
+            source_pdf="x.pdf",
+            source_sha256="ab",
+            parser={"name": "p", "version": "1"},
+            normalisation={"ladder_level": "L0", "rules": []},
+            pages=("page",),
+            status="draft",  # not in {stub, frozen}
+        )
+
+
+def test_missing_status_key_is_build_error(tmp_path):
+    f = tmp_path / "ct.yaml"
+    f.write_text(
+        "source_pdf: x.pdf\n"
+        "source_sha256: ab\n"
+        "parser: {name: p, version: '1'}\n"
+        "normalisation: {ladder_level: L0, rules: []}\n"
+        "pages: ['a page']\n",  # no status
+        encoding="utf-8",
+    )
+    with pytest.raises(LibrarianSchemaError):
+        load_canonical_text(f)
+
+
+def test_missing_file_raises(tmp_path):
+    with pytest.raises(LibrarianSchemaError):
+        load_canonical_text(tmp_path / "nope.yaml")
+
+
+def test_empty_pages_is_build_error():
+    with pytest.raises(LibrarianSchemaError):
+        CanonicalText(
+            source_pdf="x.pdf",
+            source_sha256="ab",
+            parser={"name": "p", "version": "1"},
+            normalisation={"ladder_level": "L0", "rules": []},
+            pages=(),
+            status="frozen",
+        )

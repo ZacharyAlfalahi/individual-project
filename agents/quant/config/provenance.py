@@ -53,6 +53,42 @@ def _nonempty(s: object) -> bool:
 
 
 @dataclass(frozen=True)
+class Locator:
+    """A page + character span into the canonical parsed text, locating a STATED
+    quote (D6/D7).
+
+    D7 makes the locator globally mandatory for STATED (not Librarian-only), so the
+    requirement is enforced in ``Inherited.__post_init__``, not here. Added additively
+    to the frozen provenance layer per the D6 amendment (2026-07-09): additive fields
+    + one strengthened guard, no change to existing values, tags, or ``to_rulebook``.
+    """
+
+    page: int
+    char_start: int
+    char_end: int
+
+    def __post_init__(self) -> None:
+        for name, v in (
+            ("page", self.page),
+            ("char_start", self.char_start),
+            ("char_end", self.char_end),
+        ):
+            # bool is an int subclass; reject it (mirrors the config layer's int guards).
+            if not isinstance(v, int) or isinstance(v, bool):
+                raise ProvenanceError(f"Locator.{name} must be an int; got {v!r}")
+        if self.page < 0:
+            raise ProvenanceError(f"Locator.page must be >= 0; got {self.page}")
+        if self.char_start < 0 or self.char_end < self.char_start:
+            raise ProvenanceError(
+                "Locator span invalid: 0 <= char_start <= char_end required; "
+                f"got char_start={self.char_start}, char_end={self.char_end}"
+            )
+
+    def to_dict(self) -> dict:
+        return {"page": self.page, "char_start": self.char_start, "char_end": self.char_end}
+
+
+@dataclass(frozen=True)
 class Evidence:
     """
     The justification attached to a provenance record. Which subfields are
@@ -67,9 +103,16 @@ class Evidence:
       candidates  -- the columns considered              (Binding AMBIGUOUS)
       chosen      -- the column selected                 (Binding AMBIGUOUS)
       column      -- the bound column                    (Binding BOUND)
+      locator     -- page + char span into canonical text (Inherited STATED, D7)
+      unknown_reason -- structured UNKNOWN reason code    (Inherited UNKNOWN, D11)
 
     ``candidates`` is a tuple so ``Evidence`` stays hashable/frozen;
     ``to_dict`` converts it to a list (PyYAML/JSON cannot represent tuples).
+
+    ``locator`` and ``unknown_reason`` are additive (D6 amendment, 2026-07-09).
+    ``unknown_reason`` is a bare string whose value domain (D11's three codes plus
+    D24's ``input_unknown``) is enforced by the tag-reason registry validator (D24, P5),
+    **not** here -- a hardcoded check would reject legitimate adapter ``input_unknown``.
     """
 
     quote: str | None = None
@@ -79,6 +122,8 @@ class Evidence:
     candidates: tuple[str, ...] | None = None
     chosen: str | None = None
     column: str | None = None
+    locator: Locator | None = None
+    unknown_reason: str | None = None
 
     def __post_init__(self) -> None:
         # Coerce a list of candidates to a tuple so Evidence stays hashable and
@@ -100,9 +145,12 @@ class Evidence:
             ),
             ("chosen", self.chosen),
             ("column", self.column),
+            ("unknown_reason", self.unknown_reason),
         ):
             if val is not None:
                 out[key] = val
+        if self.locator is not None:
+            out["locator"] = self.locator.to_dict()
         return out
 
 
@@ -128,6 +176,11 @@ class Inherited(Generic[T]):
             raise ProvenanceError("Inherited.evidence must be an Evidence")
         if self.tag == "STATED" and not _nonempty(self.evidence.quote):
             raise ProvenanceError("STATED requires a non-empty verbatim quote")
+        if self.tag == "STATED" and self.evidence.locator is None:
+            raise ProvenanceError(
+                "STATED requires a locator (page + char span into the canonical "
+                "text) per D7 -- locator required for every STATED, globally"
+            )
         if self.tag == "INFERRED" and not _nonempty(self.evidence.rule_id):
             raise ProvenanceError("INFERRED requires a rule_id")
         if self.tag == "DESIGN" and not _nonempty(self.evidence.note):

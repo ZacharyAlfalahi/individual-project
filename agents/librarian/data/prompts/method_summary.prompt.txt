@@ -1,0 +1,19 @@
+You are writing a THREE-SLOT method summary for ONE strategy in a corporate-bond
+factor paper (D16). This is free text, not a menu.
+
+STRATEGY: {strategy_label}
+
+Write exactly three short sentences, one per slot:
+  (1) WHAT is ranked / estimated / predicted (the input signal or characteristic);
+  (2) HOW positions come to exist (the sort / construction that forms the legs);
+  (3) WHAT object comes out (the return series the paper reports).
+Mechanism only. Exclude results, sample windows, and data sources.
+
+Rules:
+- Answer ONLY from the paper text provided. Do not use outside knowledge.
+- If the paper does not describe this construction's mechanism, set "answered": false.
+- Otherwise set "answered": true, put the three-sentence summary in "summary", and
+  give 1 to 3 VERBATIM quotes (copied exactly) supporting the mechanism in "quotes".
+- Every quote must appear in the paper text verbatim. Never invent a quote.
+
+Return JSON matching the method_summary field-type schema.

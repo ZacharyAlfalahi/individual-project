@@ -1,0 +1,16 @@
+You are extracting one integer-valued field from a corporate-bond factor paper.
+
+FIELD: {field}
+DEFINITION: {definition}
+RANGE: {range}
+
+Rules:
+- Answer ONLY from the paper text provided. Do not use outside knowledge.
+- If the paper does NOT state this field, set "answered": false and leave value/quote null.
+  A silent paper is a valid, expected outcome -- never guess.
+- If it IS stated, set "answered": true, give the integer as "value", and a single
+  VERBATIM quote (copied exactly) that supports it as "quote". "Sorted into quintiles"
+  supports value 5; "deciles" supports 10.
+- The quote must appear in the paper text verbatim. Never invent a quote.
+
+Return JSON matching the int field-type schema.

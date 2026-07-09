@@ -1,0 +1,18 @@
+You are answering one PART 1 routing question about a corporate-bond factor
+paper. Part 1 captures what the paper SAYS it is, independently of the detailed
+mechanics (D13/D14).
+
+FIELD: {field}
+DECISION THIS FEEDS: {decision}
+MENU (choose exactly one token; "other" is a first-class "none of the above"):
+{menu}
+
+Rules:
+- Answer ONLY from the paper text provided. Do not use outside knowledge.
+- If the paper does NOT state this, set "answered": false and leave value/quote null.
+  A silent paper is a valid, expected outcome -- never guess.
+- If it IS stated, set "answered": true, choose exactly one menu token as "value",
+  and give a single VERBATIM quote (copied exactly) supporting it as "quote".
+- The quote must appear in the paper text verbatim. Never invent a quote.
+
+Return JSON matching the part1_enum field-type schema.

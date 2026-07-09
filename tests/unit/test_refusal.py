@@ -11,9 +11,12 @@ from agents.quant.config import (
     ConfigRefusal,
     Evidence,
     Inherited,
+    Locator,
     RefusalCode,
     build_quant_config,
 )
+
+_LOC = Locator(1, 0, 1)  # placeholder span for synthetic STATED fixtures (D7 needs a locator to exist)
 
 
 def _score():
@@ -48,7 +51,7 @@ def test_out_of_enum_weighting_refuses():
     r = build_quant_config(
         "s3",
         _score(),
-        weighting=Inherited("market_value", "STATED", Evidence(quote="value-weighted by market value")),
+        weighting=Inherited("market_value", "STATED", Evidence(locator=_LOC, quote="value-weighted by market value")),
     )
     assert isinstance(r, ConfigRefusal)
     assert r.code is RefusalCode.OUT_OF_ENUM_WEIGHTING
@@ -60,7 +63,7 @@ def test_unsupported_trim_variant_refuses():
         _score(),
         trim=Inherited(
             {"method": "truncate", "bounds": {"type": "percentile", "lo": 0.01, "hi": 0.99}},
-            "STATED", Evidence(quote="winsorised at 1/99 percentiles"),
+            "STATED", Evidence(locator=_LOC, quote="winsorised at 1/99 percentiles"),
         ),
     )
     assert isinstance(r, ConfigRefusal)
@@ -72,7 +75,7 @@ def test_control_plus_multimonth_hold_refuses():
         "s5",
         _score(),
         control=Binding("rating", "BOUND", Evidence(column="rating", note="rating axis")),
-        holding_period=Inherited(6, "STATED", Evidence(quote="held six months")),
+        holding_period=Inherited(6, "STATED", Evidence(locator=_LOC, quote="held six months")),
     )
     assert isinstance(r, ConfigRefusal)
     assert r.code is RefusalCode.UNSUPPORTED_COMBINATION
@@ -100,7 +103,7 @@ def test_supported_trim_without_bounds_raises():
             _score(),
             trim=Inherited(
                 {"method": "truncate", "bounds": {"type": "absolute"}},  # no lo/hi
-                "STATED", Evidence(quote="truncate"),
+                "STATED", Evidence(locator=_LOC, quote="truncate"),
             ),
         )
 
@@ -112,7 +115,7 @@ def test_unsupported_trim_target_refuses():
         "s8", _score(),
         trim=Inherited(
             {"method": "truncate", "target": "xret", "bounds": {"type": "absolute", "lo": -0.1}},
-            "STATED", Evidence(quote="trim excess return"),
+            "STATED", Evidence(locator=_LOC, quote="trim excess return"),
         ),
     )
     assert isinstance(r, ConfigRefusal)
@@ -125,7 +128,7 @@ def test_unsupported_trim_sample_refuses():
         trim=Inherited(
             {"method": "truncate", "bounds": {"type": "absolute", "lo": -0.1},
              "sample": "by_month_cross_section"},
-            "STATED", Evidence(quote="per-month trim"),
+            "STATED", Evidence(locator=_LOC, quote="per-month trim"),
         ),
     )
     assert isinstance(r, ConfigRefusal)
@@ -137,7 +140,7 @@ def test_trim_bounds_not_mapping_refuses():
         "s10", _score(),
         trim=Inherited(
             {"method": "truncate", "bounds": "nope"},
-            "STATED", Evidence(quote="malformed bounds"),
+            "STATED", Evidence(locator=_LOC, quote="malformed bounds"),
         ),
     )
     assert isinstance(r, ConfigRefusal)
@@ -153,7 +156,7 @@ def test_ambiguous_control_plus_multimonth_hold_refuses():
             "rating", "AMBIGUOUS",
             Evidence(candidates=("rating", "rating_numeric"), chosen="rating", note="chose rating"),
         ),
-        holding_period=Inherited(6, "STATED", Evidence(quote="held six months")),
+        holding_period=Inherited(6, "STATED", Evidence(locator=_LOC, quote="held six months")),
     )
     assert isinstance(r, ConfigRefusal)
     assert r.code is RefusalCode.UNSUPPORTED_COMBINATION

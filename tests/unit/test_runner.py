@@ -12,10 +12,13 @@ from agents.quant.config import (
     ConfigRefusal,
     Evidence,
     Inherited,
+    Locator,
     RefusalCode,
     build_quant_config,
     run_from_config,
 )
+
+_LOC = Locator(1, 0, 1)  # placeholder span for synthetic STATED fixtures (D7 needs a locator to exist)
 
 _ENVELOPE_KEYS = {
     "monthly_returns",
@@ -51,10 +54,10 @@ def _str_cfg():
     return build_quant_config(
         "str",
         Binding("score", "BOUND", Evidence(column="score", note="prior-month return")),
-        groups=Inherited(5, "STATED", Evidence(quote="quintiles")),
+        groups=Inherited(5, "STATED", Evidence(locator=_LOC, quote="quintiles")),
         weighting=Inherited("size", "DESIGN", Evidence(note="VW par")),
-        long_group=Inherited(0, "STATED", Evidence(quote="losers")),
-        short_group=Inherited(4, "STATED", Evidence(quote="winners")),
+        long_group=Inherited(0, "STATED", Evidence(locator=_LOC, quote="losers")),
+        short_group=Inherited(4, "STATED", Evidence(locator=_LOC, quote="winners")),
     )
 
 
@@ -62,12 +65,12 @@ def _mom6_cfg():
     return build_quant_config(
         "mom6",
         Binding("mom6", "BOUND", Evidence(column="mom6", note="6m momentum")),
-        groups=Inherited(10, "STATED", Evidence(quote="deciles")),
-        weighting=Inherited("equal", "STATED", Evidence(quote="EW")),
-        long_group=Inherited(9, "STATED", Evidence(quote="winners")),
-        short_group=Inherited(0, "STATED", Evidence(quote="losers")),
-        signal_lag=Inherited(1, "STATED", Evidence(quote="skip")),
-        holding_period=Inherited(6, "STATED", Evidence(quote="H=6")),
+        groups=Inherited(10, "STATED", Evidence(locator=_LOC, quote="deciles")),
+        weighting=Inherited("equal", "STATED", Evidence(locator=_LOC, quote="EW")),
+        long_group=Inherited(9, "STATED", Evidence(locator=_LOC, quote="winners")),
+        short_group=Inherited(0, "STATED", Evidence(locator=_LOC, quote="losers")),
+        signal_lag=Inherited(1, "STATED", Evidence(locator=_LOC, quote="skip")),
+        holding_period=Inherited(6, "STATED", Evidence(locator=_LOC, quote="H=6")),
     )
 
 

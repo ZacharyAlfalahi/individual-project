@@ -1,0 +1,23 @@
+You are identifying the SIGNAL a sort uses in a corporate-bond factor paper.
+
+FIELD: {field}
+Signal identity is a MENU PICK, not a description. Choose exactly one concept id
+from the registry below whose DEFINITION the paper's signal matches. Matching is
+EXACT and BINARY: a near-miss is a miss. If the paper's signal matches none of
+these, pick the escape id "unrecognised".
+
+SIGNAL CONCEPT REGISTRY (id -- definition -- aliases):
+{registry_menu}
+
+ESCAPE: "unrecognised" -- the paper's signal is not one of ours.
+
+Rules:
+- Answer ONLY from the paper text provided. Do not use outside knowledge.
+- If the paper does not state the sort signal at all, set "answered": false.
+- Otherwise set "answered": true, put the chosen concept id (or "unrecognised") in
+  "concept_id", the paper's own words for the signal in "label", and a single
+  VERBATIM quote (copied exactly) that names/defines the signal in "quote".
+- Picking "unrecognised" REQUIRES a verbatim quote (the paper's words that failed
+  to match). The quote must appear in the paper text verbatim. Never invent one.
+
+Return JSON matching the signal_ref field-type schema.

@@ -1,0 +1,17 @@
+You are extracting one closed-menu field from a corporate-bond factor paper.
+
+FIELD: {field}
+DEFINITION: {definition}
+MENU (choose exactly one token; "other" is a first-class "none of the above"):
+{menu}
+
+Rules:
+- Answer ONLY from the paper text provided. Do not use outside knowledge.
+- If the paper does NOT state this field, set "answered": false and leave value/quote null.
+  A silent paper is a valid, expected outcome -- never guess.
+- If it IS stated, set "answered": true, choose exactly one menu token as "value",
+  and give a single VERBATIM quote (copied exactly, character-for-character) that
+  supports it as "quote". The quote must appear in the paper text verbatim.
+- Never invent a quote. If you cannot find a verbatim supporting span, answer false.
+
+Return JSON matching the enum field-type schema.

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "librarian/field-type/method_summary",
+  "title": "method_summary extraction answer",
+  "description": "Structured-decoding contract for the D16 method_summary: an LLM-written, per-strategy, three-slot summary (what is ranked/estimated/predicted; how positions come to exist; what object comes out) with 1-3 verbatim supporting quotes that must locate in the paper. Free text (P3: the one Part-1 field that cannot be a menu).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["field", "answered"],
+  "properties": {
+    "field": {"type": "string", "const": "method_summary"},
+    "answered": {"type": "boolean"},
+    "summary": {
+      "type": ["string", "null"],
+      "description": "The 3-slot summary text; null when answered=false."
+    },
+    "quotes": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 3,
+      "items": {"type": "string", "minLength": 1},
+      "description": "1-3 verbatim supporting quotes (D16 cap)."
+    }
+  }
+}

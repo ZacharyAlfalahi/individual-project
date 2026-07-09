@@ -1,0 +1,114 @@
+# Signal Concept Registry (D22) -- v1 seed
+#
+# The menu of signal *identities* a StrategySpec may reference (the sort signal,
+# the control axis of a double sort). Every entry carries:
+#   id               -- the stable, canonical concept id (the registry key)
+#   definition       -- a human definition (audit / prompt injection)
+#   aliases          -- surface strings a paper may use for this concept
+#   parameter_schema -- {param_name: type-token}; type-tokens are "int" | "float"
+#                       | "str" | "bool" (mapped to Python types by the loader)
+#
+# WALL-SPLIT (D22). This Librarian-side file carries ids/definitions/aliases/
+# parameter schemas ONLY -- **no column names**. The concept->column table lives
+# on the Quant side of the wall; a `column:` key here is a build error.
+#
+# MIRROR RULE (D22). Membership mirrors the panel's audited signal columns:
+# distinct column => distinct entry; same column, different dial => a parameter.
+# v1 seeds the 7 audited concepts (prior-1m excess return, past-6m cumulative
+# return, 5% VaR, credit rating, Bao-Pan-Wang gamma, maturity, size). The
+# registry grows only when the panel grows (a new version by the same mirror
+# rule, never curation).
+#
+# REGISTRY PARAMETERS (boundary resolutions -- part2 field-inventory
+# registry-parameter appendix). The ledger surfaces exactly two candidate
+# registry parameters, BOTH still boundary_flag at v1 (registry parameter vs a
+# common Part 2 field), so NEITHER is committed to a schema here:
+#   * `lag`       (v2-6) -- a cross-entry signal-timing dial; competes with the
+#                           common `signal_lag` Part 2 field.
+#   * `transform` (v2-9) -- a per-entry pre-processing dial; competes with the
+#                           common `signal_transform` Part 2 field.
+# No entry-specific numeric parameter (window/months/min-obs) arises from the
+# ledger: signal-construction windows are baked into each concept's IDENTITY
+# (e.g. "6-month" lives in `past_6m_cumulative_return`), not a parameter. The v1
+# parameter schemas are therefore intentionally empty; when S3 resolves either
+# boundary flag to a registry parameter, it lands here as a versioned edit.
+#
+# Version + content_hash (sha256 over canonically-serialised concept contents)
+# are stamped into every spec header (SpecHeader.registry_version / _hash).
+
+version: v1
+
+concepts:
+  - id: prior_1m_excess_return
+    definition: >-
+      The bond's excess return over the single month prior to formation
+      (short-term reversal signal).
+    aliases:
+      - prior one-month return
+      - lagged one-month return
+      - short-term reversal
+      - one-month excess return
+    parameter_schema: {}
+
+  - id: past_6m_cumulative_return
+    definition: >-
+      The bond's cumulative return over the six months prior to formation
+      (six-month momentum signal).
+    aliases:
+      - six-month momentum
+      - past six-month return
+      - 6-month cumulative return
+      - momentum
+    parameter_schema: {}
+
+  - id: var_5pct
+    definition: >-
+      The 5% Value-at-Risk of the bond's return distribution (a downside-risk
+      characteristic).
+    aliases:
+      - 5% VaR
+      - value-at-risk
+      - VaR (5%)
+      - fifth-percentile loss
+    parameter_schema: {}
+
+  - id: credit_rating
+    definition: >-
+      The bond's credit rating (a rating-based characteristic used as a sort or
+      control axis).
+    aliases:
+      - rating
+      - credit quality
+      - agency rating
+    parameter_schema: {}
+
+  - id: bpw_gamma
+    definition: >-
+      The Bao-Pan-Wang illiquidity measure (gamma): the negative autocovariance
+      of price changes, a bond-level illiquidity characteristic.
+    aliases:
+      - BPW gamma
+      - Bao-Pan-Wang gamma
+      - illiquidity (gamma)
+      - gamma illiquidity
+    parameter_schema: {}
+
+  - id: maturity
+    definition: >-
+      The bond's time to maturity (a term characteristic used as a sort or
+      control axis).
+    aliases:
+      - time to maturity
+      - term
+      - years to maturity
+    parameter_schema: {}
+
+  - id: size
+    definition: >-
+      The bond issue's size (e.g. amount outstanding), a size characteristic used
+      as a sort or control axis.
+    aliases:
+      - issue size
+      - amount outstanding
+      - bond size
+    parameter_schema: {}

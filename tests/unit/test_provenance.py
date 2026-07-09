@@ -2,7 +2,7 @@
 
 import pytest
 
-from agents.quant.config import Binding, Evidence, Inherited
+from agents.quant.config import Binding, Evidence, Inherited, Locator
 from agents.quant.config.provenance import ProvenanceError
 from agents.quant.library.characteristic_sort import _RESERVED_COLUMNS
 
@@ -24,7 +24,14 @@ def test_binding_rejects_inherited_tag():
 def test_stated_requires_quote():
     with pytest.raises(ProvenanceError):
         Inherited(5, "STATED", Evidence())
-    Inherited(5, "STATED", Evidence(quote="the paper says five"))  # ok
+    Inherited(5, "STATED", Evidence(quote="the paper says five", locator=Locator(7, 0, 5)))  # ok
+
+
+def test_stated_requires_locator():
+    # D7 (D6 amendment 2026-07-09): STATED requires a locator globally, not just a quote.
+    with pytest.raises(ProvenanceError):
+        Inherited(5, "STATED", Evidence(quote="the paper says five"))  # quote, but no locator
+    Inherited(5, "STATED", Evidence(quote="the paper says five", locator=Locator(7, 0, 5)))  # ok
 
 
 def test_inferred_requires_rule_id():
@@ -96,3 +103,29 @@ def test_evidence_list_candidates_coerced_to_tuple_and_hashable():
     assert ev.candidates == ("a", "b")
     assert isinstance(ev.candidates, tuple)
     hash(ev)  # must not raise (would raise for a list field)
+
+
+# --- Locator validation (D6 amendment 2026-07-09) --------------------------
+
+def test_locator_validates_span_and_rejects_bool():
+    Locator(0, 0, 0)   # empty span at page 0 is valid
+    Locator(7, 3, 10)  # normal span
+    with pytest.raises(ProvenanceError):
+        Locator(-1, 0, 5)     # page < 0
+    with pytest.raises(ProvenanceError):
+        Locator(1, -1, 5)     # char_start < 0
+    with pytest.raises(ProvenanceError):
+        Locator(1, 10, 5)     # char_end < char_start
+    with pytest.raises(ProvenanceError):
+        Locator(True, 0, 5)   # bool is an int subclass; must be rejected
+
+
+def test_evidence_to_dict_locator_and_unknown_reason_only_when_set():
+    ev = Evidence(quote="q", locator=Locator(7, 2, 9))
+    d = ev.to_dict()
+    assert d["locator"] == {"page": 7, "char_start": 2, "char_end": 9}
+    assert "unknown_reason" not in d  # None dropped
+    ev2 = Evidence(note="not stated; searched §3", unknown_reason="not_stated")
+    d2 = ev2.to_dict()
+    assert d2["unknown_reason"] == "not_stated"
+    assert "locator" not in d2  # None dropped

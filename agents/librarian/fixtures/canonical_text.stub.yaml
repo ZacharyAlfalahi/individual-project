@@ -1,0 +1,37 @@
+# Canonical-text STUB fixture (build brief §5.1) -- status: stub
+#
+# A minimal, offline, CLEARLY SYNTHETIC canonical text for tests only. This is
+# NOT a real paper and carries NO real quote fixtures (authoring those is a
+# separate human-only task). Its `status: stub` means the status gate
+# (`require_frozen`) REFUSES to let it reach a real extraction -- so no test path
+# can accidentally run the Librarian against this placeholder.
+#
+# The parser/normalisation blocks are placeholders; the real machine-readable
+# freeze (parser name + pinned version, ladder level, ordered rules, normalise.py
+# sha256) lands from the parser bake-off into config/canonical_text.yaml [P2].
+
+source_pdf: synthetic/stub_paper.pdf
+source_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+
+parser:
+  name: stub-parser
+  version: "0.0.0-stub"
+
+normalisation:
+  ladder_level: L0
+  rules: []
+
+status: stub
+
+pages:
+  - >-
+    This synthetic stub paper studies a simple sorted-portfolio construction on a
+    toy universe. Bonds are ranked each month by a placeholder characteristic and
+    sorted into quintiles. The long leg holds the highest-signal bonds and the
+    short leg holds the lowest-signal bonds. No real data or real quotes appear on
+    this page.
+  - >-
+    Positions are value-weighted at formation and rebalanced monthly. The reported
+    object is a long-short factor return series. This second page exists only so
+    that the stub exercises the multi-page locate path. Everything here is
+    fabricated for offline testing.

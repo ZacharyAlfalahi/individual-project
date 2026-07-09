@@ -10,6 +10,7 @@ from agents.quant.config import (
     Binding,
     Evidence,
     Inherited,
+    Locator,
     QuantConfig,
     TrimRule,
     build_quant_config,
@@ -24,6 +25,8 @@ from scripts.build_str import str_rulebook
 from scripts.build_mom6 import mom6_rulebook
 from agents.quant.library.bbw_factors import factor_rulebook
 
+_LOC = Locator(1, 0, 1)  # placeholder span for synthetic STATED fixtures (D7 needs a locator to exist)
+
 
 # --- config builders mirroring the three anchors ---------------------------
 
@@ -31,11 +34,11 @@ def _str_config():
     return build_quant_config(
         "str",
         Binding("score", "BOUND", Evidence(column="score", note="prior-month return")),
-        groups=Inherited(5, "STATED", Evidence(quote="quintile portfolios")),
+        groups=Inherited(5, "STATED", Evidence(locator=_LOC, quote="quintile portfolios")),
         weighting=Inherited("size", "DESIGN", Evidence(note="VW par (BBW §2.4)")),
-        long_group=Inherited(0, "STATED", Evidence(quote="long the losers")),
-        short_group=Inherited(4, "STATED", Evidence(quote="short the winners")),
-        signal_lag=Inherited(0, "STATED", Evidence(quote="as-published, contemporaneous")),
+        long_group=Inherited(0, "STATED", Evidence(locator=_LOC, quote="long the losers")),
+        short_group=Inherited(4, "STATED", Evidence(locator=_LOC, quote="short the winners")),
+        signal_lag=Inherited(0, "STATED", Evidence(locator=_LOC, quote="as-published, contemporaneous")),
     )
 
 
@@ -52,12 +55,12 @@ def _drf_config(control_tag="BOUND"):
         "drf",
         Binding("var_5pct", "BOUND", Evidence(column="var_5pct", note="5% VaR")),
         control=control,
-        groups=Inherited(5, "STATED", Evidence(quote="quintiles")),
-        control_groups=Inherited(5, "STATED", Evidence(quote="5x5 bivariate sort")),
+        groups=Inherited(5, "STATED", Evidence(locator=_LOC, quote="quintiles")),
+        control_groups=Inherited(5, "STATED", Evidence(locator=_LOC, quote="5x5 bivariate sort")),
         weighting=Inherited("size", "DESIGN", Evidence(note="VW par")),
-        long_group=Inherited(4, "STATED", Evidence(quote="high VaR")),
-        short_group=Inherited(0, "STATED", Evidence(quote="low VaR")),
-        signal_lag=Inherited(0, "STATED", Evidence(quote="contemporaneous")),
+        long_group=Inherited(4, "STATED", Evidence(locator=_LOC, quote="high VaR")),
+        short_group=Inherited(0, "STATED", Evidence(locator=_LOC, quote="low VaR")),
+        signal_lag=Inherited(0, "STATED", Evidence(locator=_LOC, quote="contemporaneous")),
     )
 
 
@@ -65,12 +68,12 @@ def _mom6_config():
     return build_quant_config(
         "mom6",
         Binding("mom6", "BOUND", Evidence(column="mom6", note="trailing 6m cumulative return")),
-        groups=Inherited(10, "STATED", Evidence(quote="decile portfolios")),
-        weighting=Inherited("equal", "STATED", Evidence(quote="equal-weighted (Jostova)")),
-        long_group=Inherited(9, "STATED", Evidence(quote="top decile winners")),
-        short_group=Inherited(0, "STATED", Evidence(quote="bottom decile losers")),
-        signal_lag=Inherited(1, "STATED", Evidence(quote="skip the most recent month")),
-        holding_period=Inherited(6, "STATED", Evidence(quote="six-month staggered hold")),
+        groups=Inherited(10, "STATED", Evidence(locator=_LOC, quote="decile portfolios")),
+        weighting=Inherited("equal", "STATED", Evidence(locator=_LOC, quote="equal-weighted (Jostova)")),
+        long_group=Inherited(9, "STATED", Evidence(locator=_LOC, quote="top decile winners")),
+        short_group=Inherited(0, "STATED", Evidence(locator=_LOC, quote="bottom decile losers")),
+        signal_lag=Inherited(1, "STATED", Evidence(locator=_LOC, quote="skip the most recent month")),
+        holding_period=Inherited(6, "STATED", Evidence(locator=_LOC, quote="six-month staggered hold")),
     )
 
 
@@ -126,7 +129,7 @@ def test_groups_below_two_raises():
         build_quant_config(
             "bad",
             Binding("score", "BOUND", Evidence(column="score", note="x")),
-            groups=Inherited(1, "STATED", Evidence(quote="one group")),
+            groups=Inherited(1, "STATED", Evidence(locator=_LOC, quote="one group")),
         )
 
 
@@ -135,8 +138,8 @@ def test_long_equals_short_raises():
         build_quant_config(
             "bad",
             Binding("score", "BOUND", Evidence(column="score", note="x")),
-            long_group=Inherited(2, "STATED", Evidence(quote="two")),
-            short_group=Inherited(2, "STATED", Evidence(quote="two")),
+            long_group=Inherited(2, "STATED", Evidence(locator=_LOC, quote="two")),
+            short_group=Inherited(2, "STATED", Evidence(locator=_LOC, quote="two")),
         )
 
 
@@ -145,7 +148,7 @@ def test_holding_period_zero_raises():
         build_quant_config(
             "bad",
             Binding("score", "BOUND", Evidence(column="score", note="x")),
-            holding_period=Inherited(0, "STATED", Evidence(quote="zero")),
+            holding_period=Inherited(0, "STATED", Evidence(locator=_LOC, quote="zero")),
         )
 
 
@@ -154,7 +157,7 @@ def test_negative_signal_lag_raises():
         build_quant_config(
             "bad",
             Binding("score", "BOUND", Evidence(column="score", note="x")),
-            signal_lag=Inherited(-1, "STATED", Evidence(quote="minus one")),
+            signal_lag=Inherited(-1, "STATED", Evidence(locator=_LOC, quote="minus one")),
         )
 
 
@@ -164,7 +167,7 @@ def test_bool_is_not_accepted_as_int():
         build_quant_config(
             "bad",
             Binding("score", "BOUND", Evidence(column="score", note="x")),
-            signal_lag=Inherited(True, "STATED", Evidence(quote="bool")),
+            signal_lag=Inherited(True, "STATED", Evidence(locator=_LOC, quote="bool")),
         )
 
 
@@ -176,15 +179,15 @@ def _wrapped_config(**overrides):
     fields = dict(
         strategy_id="hb",
         score=Binding("score", "BOUND", Evidence(column="score", note="x")),
-        groups=Inherited(5, "STATED", Evidence(quote="q")),
+        groups=Inherited(5, "STATED", Evidence(locator=_LOC, quote="q")),
         weighting=Inherited("size", "DESIGN", Evidence(note="par")),
-        signal_lag=Inherited(0, "STATED", Evidence(quote="q")),
-        min_bonds=Inherited(5, "STATED", Evidence(quote="q")),
-        long_group=Inherited(4, "STATED", Evidence(quote="q")),
-        short_group=Inherited(0, "STATED", Evidence(quote="q")),
-        control_groups=Inherited(5, "STATED", Evidence(quote="q")),
+        signal_lag=Inherited(0, "STATED", Evidence(locator=_LOC, quote="q")),
+        min_bonds=Inherited(5, "STATED", Evidence(locator=_LOC, quote="q")),
+        long_group=Inherited(4, "STATED", Evidence(locator=_LOC, quote="q")),
+        short_group=Inherited(0, "STATED", Evidence(locator=_LOC, quote="q")),
+        control_groups=Inherited(5, "STATED", Evidence(locator=_LOC, quote="q")),
         trim_rule=Inherited(TrimRule(method="none"), "UNKNOWN", Evidence(note="none")),
-        holding_period=Inherited(1, "STATED", Evidence(quote="q")),
+        holding_period=Inherited(1, "STATED", Evidence(locator=_LOC, quote="q")),
         control=None,
     )
     fields.update(overrides)
@@ -204,24 +207,24 @@ def test_hand_built_missing_score_rejected():
 
 def test_hand_built_min_bonds_below_one_rejected():
     with pytest.raises(QuantConfigError):
-        _wrapped_config(min_bonds=Inherited(0, "STATED", Evidence(quote="q")))
+        _wrapped_config(min_bonds=Inherited(0, "STATED", Evidence(locator=_LOC, quote="q")))
 
 
 def test_hand_built_long_group_out_of_range_rejected():
     with pytest.raises(QuantConfigError):
-        _wrapped_config(long_group=Inherited(9, "STATED", Evidence(quote="q")))
+        _wrapped_config(long_group=Inherited(9, "STATED", Evidence(locator=_LOC, quote="q")))
 
 
 def test_hand_built_short_group_out_of_range_rejected():
     with pytest.raises(QuantConfigError):
-        _wrapped_config(short_group=Inherited(-1, "STATED", Evidence(quote="q")))
+        _wrapped_config(short_group=Inherited(-1, "STATED", Evidence(locator=_LOC, quote="q")))
 
 
 def test_hand_built_control_groups_below_two_rejected():
     with pytest.raises(QuantConfigError):
         _wrapped_config(
             control=Binding("rating", "BOUND", Evidence(column="rating", note="axis")),
-            control_groups=Inherited(1, "STATED", Evidence(quote="q")),
+            control_groups=Inherited(1, "STATED", Evidence(locator=_LOC, quote="q")),
         )
 
 

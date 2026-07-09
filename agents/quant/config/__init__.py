@@ -13,6 +13,7 @@ from .provenance import (
     Evidence,
     Inherited,
     InheritedTag,
+    Locator,
     ProvenanceError,
 )
 from .quant_config import QuantConfig, QuantConfigError, build_quant_config, to_rulebook
@@ -26,6 +27,7 @@ __all__ = [
     "Evidence",
     "Inherited",
     "InheritedTag",
+    "Locator",
     "ProvenanceError",
     "TrimMethod",
     "TrimRule",

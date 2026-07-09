@@ -1,0 +1,61 @@
+# Silence-policy table — v1
+# Per-field routing at adapter intake for UNKNOWN(not_stated) fields (D26, D32c).
+# Effective 2026-07-09. Consumed by the adapter (D26) via the
+# librarian silence-policy loader. Hash-stamped in docs/part2_schema_and_silence_policy_v1.md.
+#
+# policy ∈ {tag_and_proceed, refuse, flag, conditional_refuse}
+#   tag_and_proceed(default): paper silent -> adapter omits the field; factory fills+tags its default
+#   refuse:                   paper silent on a load-bearing field -> typed refusal naming the field
+#   flag:                     proceed on silence, but a STATED value the engine can't honour raises a review flag
+#   conditional_refuse:       policy depends on structural context (see sort_kind)
+# refuse_on_stated / flag_on_stated: values that, when STATED, override the silence default (D23 refuse-on-conflict)
+
+version: v1
+date: 2026-07-09
+basis: [D26, D32]
+markers: [sort_signal, n_groups]   # D32(b): the two sort-block marker fields (long_leg excluded)
+
+sort_block:
+  sort_signal:            {policy: refuse, reason: "the signal is the sort's identity"}
+  sort_kind:
+    policy: conditional_refuse
+    when_no_control:       {policy: tag_and_proceed, default: single}
+    when_control_present:  {policy: refuse}
+    reason: "independent-vs-conditional is composition-load-bearing (v2-10); refuse on silence only when a control axis is present, so a conditional double sort is never silently replicated as independent"
+  bucketing_method:       {policy: tag_and_proceed, default: equal_count}
+  n_groups:               {policy: tag_and_proceed, default: 5}
+  stripe_aggregation:     {policy: tag_and_proceed, default: equal}
+  control_missing_policy: {policy: tag_and_proceed, default: drop}
+  long_leg:               {policy: refuse, reason: "load-bearing direction (v2-39): a wrong direction flips the strategy's sign"}
+  signal_transform:       {policy: tag_and_proceed, default: none, note: "check-only; no engine transform hook (D32a)"}
+  combiner:               {policy: tag_and_proceed, default: single_leg, note: "'other' -> refuse; a multi-leg construction with a silent combiner -> refuse"}
+
+common:
+  eligibility_missing_policy: {policy: tag_and_proceed, default: drop}
+  return_availability_policy: {policy: tag_and_proceed, default: require_next_month_return, note: "split from eligibility (v2-3); survivorship/look-ahead lever, bias-relevant"}
+  signal_lag:                 {policy: tag_and_proceed, default: 0, note: "boundary resolved to common (D32a); registry has a covered_by pointer"}
+  lag_convention:             {policy: tag_and_proceed, default: month_end}
+  min_bonds:                  {policy: tag_and_proceed, default: n_groups}
+  min_bonds_granularity:      {policy: tag_and_proceed, default: total}
+  tie_break_policy:           {policy: tag_and_proceed, default: deterministic_id, note: "check-only; near-not-paper-facing"}
+  weighting_scheme:           {policy: tag_and_proceed, default: value}
+  weighting_base:             {policy: tag_and_proceed, default: par, note: "par-weighting is the project's DESIGN default"}
+  weight_timing:              {policy: tag_and_proceed, default: formation}
+  strategy_side:              {policy: tag_and_proceed, default: long_short, refuse_on_stated: [long_only, short_only], note: "LIMIT: refuse on a STATED non-representable value, not on silence"}
+  empty_leg_policy:           {policy: tag_and_proceed, default: skip}
+  transaction_cost_convention: {policy: tag_and_proceed, default: gross, flag_on_stated: [net_of_costs], note: "engine has no cost overlay -> RET-LVL gap"}
+  return_label:               {policy: tag_and_proceed, default: realisation}
+  rebalance_frequency:        {policy: tag_and_proceed, default: monthly, refuse_on_stated: [quarterly, weekly, daily], note: "LIMIT: refuse on a STATED non-monthly value, not on silence"}
+  holding_period:             {policy: tag_and_proceed, default: 1}
+  overlap_convention:         {policy: tag_and_proceed, default: overlapping}
+  cohort_weighting:           {policy: tag_and_proceed, default: equal}
+  burn_in_policy:             {policy: tag_and_proceed, default: keep}
+  missing_return_policy:      {policy: tag_and_proceed, default: drop_and_renormalise, note: "bias-relevant: drops corporate-bond default craters"}
+  realisation_min_survivors:  {policy: tag_and_proceed, default: 0}
+  return_compounding:         {policy: tag_and_proceed, default: arithmetic}
+  significance_convention:    {policy: tag_and_proceed, default: {t_stat: hac_t_of_mean, kernel: bartlett, hac_mode: caller_hac}, note: "merged v2-30/32/33; check-only"}
+  hac_lags:                   {policy: tag_and_proceed, default: auto, note: "detection-only; config layer never emits nw_lags"}
+  annualisation:              {policy: tag_and_proceed, default: arithmetic}
+  rf_convention:              {policy: tag_and_proceed, default: none}
+  benchmark_model:            {policy: tag_and_proceed, default: none, note: "which factor set the alpha is measured against; engine-fixed estimation internals are NOT fields"}
+  expost_trim:                {policy: tag_and_proceed, default: none, note: "Part 2 field owns the paper's stated policy; bias-toggle registry (lab_trim) owns the experimental switch (D32a)"}

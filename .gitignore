@@ -1,6 +1,10 @@
-# Licensed data — NEVER commit (FISD + TRACE, incl. holdout). Covers all of data/.
-# See docs/data_governance.md and scripts/check_no_licensed_data.sh.
-data/
+# Licensed data — NEVER commit (FISD + TRACE, incl. holdout). Covers the repo-root
+# /data/ tree only (development, fisd, holdout). Root-anchored so it does NOT catch
+# code-adjacent config under agents/**/data/ (registries, prompts, transform tables).
+# The licensed-data ban itself is enforced by scripts/check_no_licensed_data.sh
+# (root-anchored ^data/… over parquet/csv/fisd), not by this ignore.
+# See docs/data_governance.md.
+/data/
 
 # Python
 __pycache__/

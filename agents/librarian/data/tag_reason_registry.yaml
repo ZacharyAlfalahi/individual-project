@@ -1,0 +1,122 @@
+# Tag-reason registry (D24 part 1) -- v1
+#
+# The authoritative table: a tag may only ever be applied for a reason that
+# appears here as a row. Each row fixes:
+#   tag              -- the Inherited/Binding tag applied
+#   reason           -- the reason code (the second half of the tag's identity)
+#   namespace        -- reporting namespace: "" | inference | adapter | default
+#                       (adapter / inference / default are reported SEPARATELY
+#                        in every results table, D24)
+#   required_evidence-- the Evidence subfields a row of this kind must carry
+#   sole_producer    -- the ONE component allowed to emit this (tag, reason)
+#   downstream       -- how the consumer routes a value carrying this row
+#
+# A tag applied outside its row is a BUILD ERROR (assert_tag_in_registry).
+# Refusals are events on the run record, NEVER tags -- tags describe values
+# that exist, so there is no refusal row here.
+#
+# Version + hash of this file are stamped into every spec header
+# (registry_version / registry_hash on SpecHeader is the *signal* registry;
+# this tag-reason registry has its own version below).
+
+version: v1
+
+rows:
+  # --- STATED (Librarian after dual-model agreement + quote location; and human
+  #     gold authors). The one tag that carries a located quote. ---------------
+  - tag: STATED
+    reason: quoted
+    namespace: ""
+    required_evidence: [quote, locator]
+    sole_producer: librarian
+    downstream: consume_as_fact
+
+  # --- INFERRED / inference/... (Librarian convention rules -- switched OFF
+  #     until the rule library exists; the row is registered so the tag is legal
+  #     the day a rule lands). --------------------------------------------------
+  - tag: INFERRED
+    reason: inference
+    namespace: inference
+    required_evidence: [rule_id]
+    sole_producer: librarian
+    downstream: consume_as_fact_reported_in_inference_namespace
+
+  # --- INFERRED / adapter/... (deterministic translation on the Quant side). ---
+  - tag: INFERRED
+    reason: adapter
+    namespace: adapter
+    required_evidence: [rule_id]
+    sole_producer: adapter
+    downstream: consume_as_fact_reported_in_adapter_namespace
+
+  # --- INFERRED / default/<field> (paper silent; the factory filled its
+  #     documented default under the silence policy; D24 batch E2). Reported in
+  #     its own default/ namespace, separate from unknown. -----------------------
+  - tag: INFERRED
+    reason: default/<field>
+    namespace: default
+    required_evidence: [note]
+    sole_producer: factory_apply_defaults
+    downstream: consume_as_default_reported_in_default_namespace
+
+  # --- DESIGN (project decisions, config-side; NEVER from the Librarian -- D8).
+  #     Three reasons. -----------------------------------------------------------
+  - tag: DESIGN
+    reason: standing_substitution
+    namespace: ""
+    required_evidence: [note]
+    sole_producer: config
+    downstream: variant_flag_excluded_from_replication_aggregates
+
+  - tag: DESIGN
+    reason: override
+    namespace: ""
+    required_evidence: [note]
+    sole_producer: human_authorisation_record
+    downstream: variant_flag_excluded_from_replication_aggregates
+
+  - tag: DESIGN
+    reason: derived_from_design
+    namespace: ""
+    required_evidence: [note]
+    sole_producer: adapter
+    downstream: variant_flag_excluded_from_replication_aggregates
+
+  # --- UNKNOWN (blank is the safe state, P1). Five reasons: D11's three, the
+  #     2026-07-09 single_response amendment, and D24's adapter input_unknown. ---
+  - tag: UNKNOWN
+    reason: not_stated
+    namespace: ""
+    required_evidence: [note]
+    sole_producer: librarian
+    downstream: silence_policy_or_documented_default
+
+  - tag: UNKNOWN
+    reason: disagreement
+    namespace: ""
+    required_evidence: [note]
+    sole_producer: librarian
+    downstream: manual_review_lane
+
+  - tag: UNKNOWN
+    reason: quote_match_failure
+    namespace: ""
+    required_evidence: [note]
+    sole_producer: librarian
+    downstream: manual_review_lane
+
+  # single_response (D11 amendment 2026-07-09): one model answered, the other
+  # content-reported silence (value-vs-silence) -> review, NOT disagreement.
+  - tag: UNKNOWN
+    reason: single_response
+    namespace: ""
+    required_evidence: [note]
+    sole_producer: librarian
+    downstream: manual_review_lane
+
+  - tag: UNKNOWN
+    reason: input_unknown
+    namespace: ""
+    required_evidence: [note]
+    sole_producer: adapter
+    downstream: propagate_unknown

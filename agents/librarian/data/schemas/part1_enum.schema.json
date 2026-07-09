@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "librarian/field-type/part1_enum",
+  "title": "Part 1 enum field extraction answer",
+  "description": "Structured-decoding contract for the two Part-1 menu fields (formation_structure, asset_class). Same shape as a Part-2 enum answer; kept as its own field-type so Part 1 is extracted in an independent pass (D14) and its prompt can inject the D13 decision framing rather than a Part-2 menu.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["field", "answered"],
+  "properties": {
+    "field": {"type": "string", "minLength": 1},
+    "answered": {"type": "boolean"},
+    "value": {
+      "type": ["string", "null"],
+      "description": "The chosen menu token, or null when answered=false."
+    },
+    "quote": {
+      "type": ["string", "null"],
+      "description": "Verbatim span supporting the value; required when answered=true."
+    }
+  }
+}

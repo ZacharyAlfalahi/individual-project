@@ -1,0 +1,94 @@
+# Prompt/schema/decoding manifest (build brief §5.3, D10/D24).
+#
+# Parameterised prompt templates BY FIELD-TYPE (not one per field): the enum,
+# int, signal_ref, method_summary, and part1_enum families. Each field-type binds
+# one prompt template + one JSON schema (structured-decoding contract) + one
+# decoding config (temp 0, structured). Every template records its sha256 so a
+# silent edit to a frozen prompt is caught at load (the same freeze discipline as
+# the silence-policy byte-hash); the loader recomputes and asserts equality.
+#
+# The `fields` block maps every Part 1 field + every field already final in the
+# committed Part 2 inventory (ALREADY_FINAL_PART2) to its field-type. Scope note
+# (build brief §5.3): this is exactly the no-S3-dependency set; S3-adjudicated
+# fields' prompts land post-S3. sort_signal / control_axis are the signal_ref
+# type; method_summary is its own free-text type; the two Part-1 menus are
+# part1_enum; the ints are int; everything else is enum.
+
+version: v1
+
+# --- field-type template bindings (paths are relative to agents/librarian/data)
+field_types:
+  enum:
+    prompt: prompts/enum.prompt.txt
+    schema: schemas/enum.schema.json
+    decoding: decoding/enum.decoding.yaml
+    sha256: a115773c000f8c1588c3ae003bf870a3f34dfa18e47bcbab094a0ef5246d5522
+  int:
+    prompt: prompts/int.prompt.txt
+    schema: schemas/int.schema.json
+    decoding: decoding/int.decoding.yaml
+    sha256: 19572ee3fb9a0744246a9b96b94aa03b48d5d8a4f3f155228e5fe5ab6cbbfff0
+  signal_ref:
+    prompt: prompts/signal_ref.prompt.txt
+    schema: schemas/signal_ref.schema.json
+    decoding: decoding/signal_ref.decoding.yaml
+    sha256: 2a77f552c6af47c12f04fbd53773b6a8527652c75caf2bd7dccbb56ddfc30016
+  method_summary:
+    prompt: prompts/method_summary.prompt.txt
+    schema: schemas/method_summary.schema.json
+    decoding: decoding/method_summary.decoding.yaml
+    sha256: ab3c0b2abd0fe0574869ef7fa9b5e58eee8b6b5e394a0dd320523e15dcda90e6
+  part1_enum:
+    prompt: prompts/part1_enum.prompt.txt
+    schema: schemas/part1_enum.schema.json
+    decoding: decoding/part1_enum.decoding.yaml
+    sha256: 8331d8ee01c0b55ac873ae54977e021ea4ac75e6147a50f1a2c8459dccc4fb51
+
+# --- field -> field-type (Part 1 + ALREADY_FINAL_PART2) ---------------------
+fields:
+  # Part 1 (D13) -- method_summary is free text (D16), the two menus are part1_enum.
+  formation_structure: part1_enum
+  asset_class: part1_enum
+  method_summary: method_summary
+
+  # Part 2 sort block (D19/D32). sort_signal + control_axis are signal_ref.
+  sort_signal: signal_ref
+  control_axis: signal_ref
+  sort_kind: enum
+  bucketing_method: enum
+  n_groups: int
+  stripe_aggregation: enum
+  control_missing_policy: enum
+  long_leg: enum
+  signal_transform: enum
+  combiner: enum
+
+  # Part 2 common block (28 fields).
+  eligibility_missing_policy: enum
+  return_availability_policy: enum
+  signal_lag: int
+  lag_convention: enum
+  min_bonds: int
+  min_bonds_granularity: enum
+  tie_break_policy: enum
+  weighting_scheme: enum
+  weighting_base: enum
+  weight_timing: enum
+  strategy_side: enum
+  empty_leg_policy: enum
+  transaction_cost_convention: enum
+  return_label: enum
+  rebalance_frequency: enum
+  holding_period: int
+  overlap_convention: enum
+  cohort_weighting: enum
+  burn_in_policy: enum
+  missing_return_policy: enum
+  realisation_min_survivors: int
+  return_compounding: enum
+  significance_convention: enum
+  hac_lags: int
+  annualisation: enum
+  rf_convention: enum
+  benchmark_model: enum
+  expost_trim: enum

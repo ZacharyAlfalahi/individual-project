@@ -1,0 +1,12 @@
+# Decoding config for field-type: signal_ref (build brief §5.3, D10/D33).
+#
+# Temperature 0 + structured (JSON-schema-constrained) decoding, per D10/D33.
+# k=1 is the primary sampling protocol (D10); the k=3 / 2-of-3 ladder is
+# pre-registered but NOT built (trigger = gold STATED coverage < 80%).
+field_type: signal_ref
+temperature: 0
+top_p: 1
+structured: true
+schema: schemas/signal_ref.schema.json
+k: 1
+max_output_tokens: 512

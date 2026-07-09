@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "librarian/field-type/signal_ref",
+  "title": "SignalRef field extraction answer",
+  "description": "Structured-decoding contract for a signal reference (sort_signal, control_axis). The model picks ONE concept id from the injected Signal Concept Registry menu, or the first-class escape 'unrecognised' (D22: exact + binary, no similarity). It returns the paper's own label + at least one verbatim quote. Registry membership and the unrecognised escape invariant are enforced by validate_librarian_spec.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["field", "answered"],
+  "properties": {
+    "field": {"type": "string", "minLength": 1},
+    "answered": {"type": "boolean"},
+    "concept_id": {
+      "type": ["string", "null"],
+      "description": "A registry concept id, or 'unrecognised'; null when answered=false."
+    },
+    "label": {
+      "type": ["string", "null"],
+      "description": "The paper's own words for the signal (audit-only)."
+    },
+    "quote": {
+      "type": ["string", "null"],
+      "description": "Verbatim span supporting the pick; required when answered=true."
+    }
+  }
+}
