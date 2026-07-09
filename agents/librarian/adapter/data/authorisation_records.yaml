@@ -1,0 +1,28 @@
+# Authorisation records (D27) -- HUMAN-AUTHORED. Template: empty (no authorisations).
+#
+# Each record deliberately diverts a CORRECTLY EXTRACTED fact for one strategy and
+# flags that strategy a `variant` (excluded from replication-fidelity aggregates,
+# D23). The BRIGHT LINE (D27): a record may NEVER overwrite a fact believed WRONGLY
+# extracted -- extraction errors go to the manual-review lane, full stop. Patching
+# them here would launder RQ1 and mislabel the run as a variant.
+#
+# Two entry types (loaded by adapter/authorisation.py):
+#
+#   - type: binding_substitution      # bind a concept to a hand-chosen column
+#     paper_id: <str>
+#     strategy_label: <str>
+#     concept_id: <str>               # a Signal Concept Registry id
+#     column: <str>                   # the authorised panel column
+#     note: <str>                     # the recorded rationale (rides on Evidence.note)
+#
+#   - type: field_override            # override one Part 2 PAPER-LANGUAGE field
+#     paper_id: <str>
+#     strategy_label: <str>
+#     field: <str>                    # MUST be a Part 2 field, never an engine coordinate
+#     value: <paper-vocabulary value> # the deliberate project value
+#     note: <str>
+#
+# The loader treats an absent file, or an empty `records`, as NO authorisations.
+
+version: v1
+records: []

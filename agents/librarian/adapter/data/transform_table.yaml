@@ -1,0 +1,119 @@
+# Transform table (D25, build brief §6) -- v1
+#
+# The adapter's vocabulary + structure rulebook: every paper Part 2 field that has
+# an ENGINE HOOK (maps to a build_quant_config kwarg) is one row here. The 28
+# check-only Part 2 fields have NO row -- they never reach the factory; their
+# STATED-conflict handling is the silence table's job (refuse_on_stated /
+# flag_on_stated), NOT a transform.
+#
+# Each row: id, inputs (the spec fields it reads -- SINGLE HOP: spec fields only,
+# never another transform's output, D25), primary_input, output (the factory
+# kwarg), kind, and (for enum maps) lookup rows. The enum lookup values live HERE
+# (data, not code) so a rule is never hard-coded in the adapter.
+#
+# kind:
+#   identity        -- value + domain unchanged; the librarian's Inherited passes
+#                      through UNTOUCHED (STATED stays STATED, quote+locator kept).
+#   value_changing  -- value/vocabulary changes; the adapter PRODUCES a new value,
+#                      tagged INFERRED(adapter, rule_id=<id>) [the adapter may not
+#                      emit STATED -- tag-reason registry sole_producer=librarian],
+#                      carrying the paper's source quote in evidence for audit.
+#   signal          -- SignalRef -> Binding via the concept->column table (D27);
+#                      a miss rides a MISSING binding into the factory (MISSING_BINDING).
+#
+# Representability refusals for the ENGINE fields stay the FACTORY's job (D25):
+# weighting OUT_OF_ENUM_WEIGHTING, trim UNSUPPORTED_TRIM_VARIANT, binding
+# MISSING_BINDING, control+holding>1 UNSUPPORTED_COMBINATION. The adapter only
+# owns the two the factory has no concept of: long_leg='other' (no direction) and
+# combiner='other' (UNSUPPORTED_COMBINER).
+
+version: v1
+
+transforms:
+  sort_signal:
+    id: sort_signal_to_score
+    inputs: [sort_signal]
+    primary_input: sort_signal
+    output: score
+    kind: signal
+    note: "signal resolution (D27); a miss -> MISSING binding -> factory MISSING_BINDING"
+
+  control_axis:
+    id: control_axis_to_control
+    inputs: [control_axis]
+    primary_input: control_axis
+    output: control
+    kind: signal
+    note: "None -> no control; else signal resolution (D27)"
+
+  n_groups:
+    id: n_groups_to_groups
+    inputs: [n_groups]
+    primary_input: n_groups
+    output: groups
+    kind: identity
+    note: "int -> int, same value + domain (v2-7)"
+
+  long_leg:
+    id: long_leg_to_groups
+    inputs: [long_leg, n_groups]
+    primary_input: long_leg
+    output: [long_group, short_group]
+    kind: value_changing
+    lookup:
+      # endpoint semantics: bottom = score-group 0, top = score-group (n_groups - 1)
+      lowest_signal:  {long: bottom, short: top}
+      highest_signal: {long: top,    short: bottom}
+    note: "leg direction (v2-39); needs n_groups' value (top = g-1); 'other' -> adapter REVIEW_REQUIRED (no engine direction); silent n_groups -> REVIEW_REQUIRED (cannot place g-1 without the count, P5)"
+
+  signal_lag:
+    id: signal_lag_to_signal_lag
+    inputs: [signal_lag]
+    primary_input: signal_lag
+    output: signal_lag
+    kind: identity
+    note: "int -> int, same value + domain (v2-6)"
+
+  min_bonds:
+    id: min_bonds_to_min_bonds
+    inputs: [min_bonds]
+    primary_input: min_bonds
+    output: min_bonds
+    kind: identity
+    note: "int -> int (v2-5); silent -> factory default min_bonds=groups"
+
+  holding_period:
+    id: holding_period_to_holding_period
+    inputs: [holding_period]
+    primary_input: holding_period
+    output: holding_period
+    kind: identity
+    note: "int -> int (v2-21); factory refuses control + holding>1 (UNSUPPORTED_COMBINATION)"
+
+  weighting_scheme:
+    id: weighting_to_weighting
+    inputs: [weighting_scheme, weighting_base]
+    primary_input: weighting_scheme
+    output: weighting
+    kind: value_changing
+    lookup:
+      equal: equal            # scheme=equal -> "equal" (base ignored -- equal has no base)
+      value:                  # scheme=value -> read weighting_base:
+        par: size             #   value + par -> engine "size" (by_size = par via panel size col, ledger v2-13) -- TRUE match
+        market_value: market_value  # value + market_value -> engine can't; forwarded so factory refuses OUT_OF_ENUM_WEIGHTING
+    note: "composite of weighting_scheme + weighting_base; value+par is a faithful vocab match; scheme silent OR (scheme=value AND base silent) -> omit (factory par default); scheme/base 'other' or value+market_value -> forwarded, factory OUT_OF_ENUM_WEIGHTING"
+
+  expost_trim:
+    id: expost_trim_to_trim
+    inputs: [expost_trim]
+    primary_input: expost_trim
+    output: trim
+    kind: value_changing
+    note: "v1: 'none'/silent -> omit (factory default no-trim); truncate/winsorise/other -> REVIEW_REQUIRED (the v1 StrategySpec carries the trim METHOD only, no lo/hi bounds -- a stated trim cannot be faithfully built; a documented v1 schema seam, not a fabricated unbounded trim)"
+
+# The combiner is per-strategy, not a factory kwarg (D28). single_leg -> pass the
+# one leg through; equal_average -> mean over AVAILABLE legs (adaptive divisor,
+# ledger item 40); other -> UNSUPPORTED_COMBINER (adapter-owned).
+combiner:
+  single_leg:    {kind: single_leg}
+  equal_average: {kind: equal_average, divisor: available}

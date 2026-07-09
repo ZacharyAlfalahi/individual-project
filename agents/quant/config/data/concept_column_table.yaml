@@ -1,0 +1,57 @@
+# Concept -> Column table (D27) -- v1
+#
+# The Quant side of the D22/D27 wall. Maps a Signal Concept Registry concept id
+# (+ its canonical parameter tuple) to the panel COLUMN NAME the engine sorts on.
+# The Librarian never sees this file (it speaks concept ids only, D3); the adapter
+# reads it to turn a SignalRef into a Binding(BOUND, column=...).
+#
+# WALL-SPLIT (D27). The registry (agents/librarian/data/signal_concept_registry.yaml)
+# carries ids/definitions/aliases/params and NO columns; this table carries the
+# columns and mirrors that registry. `registry_version` below MUST equal the
+# registry version a spec was extracted under -- the adapter asserts the handshake
+# before any lookup (a version drift refuses the run upfront, D27(1)).
+#
+# MIRROR RULE (D27). Exactly one column per (concept_id, canonical parameter
+# tuple): the table is a FUNCTION, so a bind is never AMBIGUOUS (the adapter's
+# mirror rule -- the type admits AMBIGUOUS, the producer forbids it). A duplicate
+# (concept_id, params) key is a build error (the loader rejects it).
+#
+# GROUNDING (v1). Four concepts are grounded verbatim to the anchor factor panels
+# (agents/quant/library/bbw_factors.py + the anchor golden rulebooks): the column
+# name each concept resolves to is unambiguous everywhere it appears.
+#
+#   concept_id                 -> column     grounded from
+#   var_5pct                   -> var_5pct   drf score      (bbw_factors.py; test_bbw_factors.py)
+#   credit_rating              -> rating     drf control / crf score (bbw_factors.py)
+#   past_6m_cumulative_return  -> mom6       mom6 score     (build_mom6.py; test_mom6_factor.py)
+#   bpw_gamma                  -> gamma      lrf score      (bbw_factors.py)
+#
+# DEFERRED (v1 -- three registry concepts are intentionally ABSENT here, so a
+# SignalRef to one resolves MISSING -> the factory refuses MISSING_BINDING). This
+# is the conservative choice: inventing a column would be a "wrong-STATED is
+# poison" hazard.
+#   prior_1m_excess_return -- present in every panel (the raw `ret` renamed) but
+#       PANEL-DEPENDENTLY NAMED: `score` in factors/str.parquet (build_str.py:107),
+#       `rev` in factors/bbw_factors.parquet (build_bbw_factors.py:91, the BBW REV
+#       factor), `str_reversal` in the IPCA panel. There is no single canonical
+#       merged panel, so two valid canonical columns exist. Grounding it is a human
+#       decision that only bites at the str G2 round-trip (needs the str gold spec too).
+#   maturity, size -- no characteristic-sort anchor gold binds a column for these.
+# When a canonical column is chosen these land as versioned edits (v2).
+
+version: v1
+registry_version: v1
+
+rows:
+  - concept_id: var_5pct
+    params: {}
+    column: var_5pct
+  - concept_id: credit_rating
+    params: {}
+    column: rating
+  - concept_id: past_6m_cumulative_return
+    params: {}
+    column: mom6
+  - concept_id: bpw_gamma
+    params: {}
+    column: gamma

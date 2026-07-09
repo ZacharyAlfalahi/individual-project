@@ -21,8 +21,19 @@ class RefusalCode(str, Enum):
     OUT_OF_ENUM_WEIGHTING = "OUT_OF_ENUM_WEIGHTING"        # weighting the config cannot represent
     UNSUPPORTED_TRIM_VARIANT = "UNSUPPORTED_TRIM_VARIANT"  # trim the engine cannot express
     UNSUPPORTED_COMBINATION = "UNSUPPORTED_COMBINATION"    # e.g. control + holding_period > 1
-    # ASSUMPTION_MISMATCH is reserved for the future assumptions ledger (out of
-    # scope for this component).
+    # --- additive members (D29, 2026-07-08; landed with the adapter build). These
+    #     are ADAPTER-side refusal codes: the factory above never emits them (it
+    #     owns only the four engine-representability refusals). Adding them is an
+    #     explicit, bounded reopening of frozen code -- additive enum members only;
+    #     no existing code path, value, or refusal behaviour changes; guarded by
+    #     the factory suite passing unmodified plus test_refusal_code_additive.py
+    #     (existing refusal fixtures serialise byte-identically). -----------------
+    ASSUMPTION_MISMATCH = "ASSUMPTION_MISMATCH"    # promoted from comment (D29); reserved for the ledger check
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"            # adapter: a field needs the manual-review lane
+                                                   # (dual-model disagreement / quote-match failure /
+                                                   # single response / a flagged STATED value)
+    REFUSED_ON_SILENCE = "REFUSED_ON_SILENCE"      # adapter: paper silent on a load-bearing field (D26)
+    UNSUPPORTED_COMBINER = "UNSUPPORTED_COMBINER"  # adapter: combiner='other' (D28, adapter-owned)
 
 
 @dataclass(frozen=True)
