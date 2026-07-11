@@ -17,8 +17,15 @@ from .provenance import (
     ProvenanceError,
 )
 from .quant_config import QuantConfig, QuantConfigError, build_quant_config, to_rulebook
+from .ledger_check import (
+    LedgerCheckError,
+    LedgerCheckRow,
+    LedgerCheckTable,
+    check_assumptions,
+    load_ledger_check_table,
+)
 from .refusal import ConfigRefusal, RefusalCode
-from .runner import run_from_config
+from .runner import StrategyResult, run_from_config, run_strategy
 from .trim_rule import TrimMethod, TrimRule
 
 __all__ = [
@@ -38,4 +45,11 @@ __all__ = [
     "build_quant_config",
     "to_rulebook",
     "run_from_config",
+    "run_strategy",
+    "StrategyResult",
+    "check_assumptions",
+    "load_ledger_check_table",
+    "LedgerCheckTable",
+    "LedgerCheckRow",
+    "LedgerCheckError",
 ]

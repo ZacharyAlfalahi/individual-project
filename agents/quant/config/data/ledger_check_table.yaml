@@ -1,0 +1,202 @@
+# =============================================================================
+# Ledger check table (D29) -- the deterministic assumptions-mismatch screen.
+#
+#   *** FINALISED 2026-07-10 -- v1, 13 rows (frozen). ***
+#   content_hash (over rows, sorted by (ledger_item, block, part2_field)):
+#     1f0f583db67913115be6f8b1ccb03b7a29af9d2596f88794cd5d421bfb752635
+#   Pinned in tests/unit/test_ledger_check_table.py::test_content_hash_pinned.
+#   Do NOT edit a row without re-pinning that test (the hash guards a silent edit).
+#
+# One row per checkable STRUCT assumption: a Part 2 field the FROZEN engine
+# fixes SILENTLY (`engine_fixed`), and the stated values that contradict it
+# (`incompatible_stated`). If a paper STATES a contradicting value, the strategy
+# refuses (ASSUMPTION_MISMATCH) rather than run a different assumption and call it
+# a replication. Silent / INFERRED / UNKNOWN fields never mismatch here -- the
+# silence policy (config/silence_policy_v1.yaml) owns the engine-default case.
+#
+# SCOPE (finalised 2026-07-10: 13-row v1). Reviewed the two previously
+# borderline rows: item 10 `[conditional]` only (a stated `single` is
+# control-absent, which the engine runs natively -- a stated single-with-control
+# inconsistency is D18 cross-check territory, not this table's); item 13
+# `weight_timing` structural, with `weighting_base` (par-vs-MV) held as SEM (the
+# BBW "value-weighted"-means-par lesson). Both now borderline: false.
+#
+# Screened out, by design:
+#   * Item 39 (leg direction `long_leg`) -- COVERED-BY-ADAPTER: the adapter's
+#     apply_long_leg configures long_group/short_group, so the engine honours the
+#     stated direction (never silently wrong); silence is caught by
+#     silence_policy_v1 (`long_leg: refuse`). Not a silent assumption -> no row.
+#   * Item 40 (equal-leg-weighting combiner) -- COVERED-BY-REFUSAL: unequal leg
+#     weights => combiner=other => adapter UNSUPPORTED_COMBINER refusal. No row.
+#   * LIMIT items (strategy_side, rebalance_frequency, ...) -- already
+#     factory/adapter refusals; not double-handled here.
+#   * SEM / Category-D (prose) items -- out of deterministic scope.
+#   * realisation_min_survivors (27) -- int field, no closed incompatible set
+#     (loader bars an empty incompatible list); silence policy + a range check own it.
+#   * hac_lags (31) -- excluded for the SAME reason as 27: an int field with no
+#     closed incompatible set. The overlap path also emits no statistics (v2-30),
+#     so a stated hac_lags is detection-only; the silence policy + the fidelity
+#     harness own it, not an enum-membership check.
+#   * rf_convention (34) -- excluded, three-part reasoning:
+#       (1) The pasted leg-alignment worry does not bite. rf cancellation is
+#           within-month, within-leg: a leg-month contributes only when both sides
+#           exist, and the adaptive divisor averages same-month leg spreads, never
+#           mixing months. So an input-excess convention (rf subtracted on the
+#           inputs) is exactly a no-op -- no squiggle to screen.
+#       (2) "engine nets rf" is WRONG: the engine never touches rf; the long-short
+#           SPREAD CONSTRUCTION cancels it (the common rf drops out of long-short).
+#       (3) The genuine residual is a paper reporting spread-rf (strategy-LEVEL
+#           excess). It is rare, distinguishable only in PROSE (an enum would
+#           false-positive across ~half the corpus, since "excess return" almost
+#           always means over-rf inputs -- the no-op case), and any level error
+#           surfaces at the fidelity harness, not here. So: no deterministic row.
+#
+# CATEGORY (part2_field_inventory.md A/C re-sort):
+#   A = clean STRUCT (strong check; papers state it clearly).
+#   C = STRUCT-but-usually-UNKNOWN (rarely fires; the silence policy carries the
+#       load -- do NOT read a C row as a strong working check).
+#
+# `block` = where the field lives on the spec: `common` (Part2) or `sort` (per
+# Leg -- checked once per leg). `borderline: true` marks rows whose scope/tag is a
+# judgement call (none remain in v1).
+# =============================================================================
+version: v1
+status: final       # 2026-07-10 (loader ignores this key)
+
+rows:
+  # ---- eligibility ---------------------------------------------------------
+  - ledger_item: 3
+    block: common
+    part2_field: return_availability_policy
+    engine_fixed: require_next_month_return
+    incompatible_stated: [hold_to_recovery]
+    category: C
+    borderline: false
+    cite: "cs:390 / cs:505-508"
+    detail: "engine excludes any bond with no t+1 return at formation (forward-looking eligibility); paper states hold-to-recovery / last-return"
+
+  - ledger_item: 5
+    block: common
+    part2_field: min_bonds_granularity
+    engine_fixed: total
+    incompatible_stated: [per_group, per_leg]
+    category: C
+    borderline: false
+    cite: "cs:398-408"
+    detail: "engine gates on the TOTAL eligible count (whole month skipped if short); paper states a per-group / per-leg minimum"
+
+  - ledger_item: 6
+    block: common
+    part2_field: lag_convention
+    engine_fixed: month_end
+    incompatible_stated: [business_day, positional]
+    category: C
+    borderline: false
+    cite: "cs:211-244"
+    detail: "engine lags calendar-strict month-end (never day offsets); paper states a business-day or positional lag convention"
+
+  # ---- bucketing -----------------------------------------------------------
+  - ledger_item: 7
+    block: sort
+    part2_field: bucketing_method
+    engine_fixed: equal_count
+    incompatible_stated: [breakpoint]
+    category: A
+    borderline: false
+    cite: "cs:251-274"
+    detail: "engine uses equal-count rank buckets; paper states value-threshold / NYSE breakpoints"
+
+  # ---- sort structure ------------------------------------------------------
+  - ledger_item: 10
+    block: sort
+    part2_field: sort_kind
+    engine_fixed: independent
+    incompatible_stated: [conditional]
+    category: A
+    borderline: false         # confirmed: [conditional] only ('single' is control-absent, run natively)
+    cite: "cs:410-421"
+    detail: "engine runs an independent (fully-crossed) double sort; paper states a conditional / nested sort"
+
+  - ledger_item: 11
+    block: sort
+    part2_field: stripe_aggregation
+    engine_fixed: equal
+    incompatible_stated: [count, value]
+    category: C
+    borderline: false
+    cite: "cs:453-455"
+    detail: "engine equal-weights the mean over non-empty stripes; paper states count- or value-weighted cross-stripe aggregation"
+
+  - ledger_item: 12
+    block: sort
+    part2_field: control_missing_policy
+    engine_fixed: drop
+    incompatible_stated: [pool]
+    category: C
+    borderline: false
+    cite: "cs:391-395"
+    detail: "engine drops bonds with a NaN control value; paper states pooling into a residual stripe"
+
+  # ---- weighting (structural half of the split item) -----------------------
+  - ledger_item: 13
+    block: common
+    part2_field: weight_timing
+    engine_fixed: formation
+    incompatible_stated: [updated]
+    category: C
+    borderline: false         # confirmed: structural; weighting_base (par-vs-MV) held as SEM
+    cite: "cs:295,311-315 / ov:200-204"
+    detail: "engine weights at the formation-month value; paper states weights updated to the current (realisation-month) value"
+
+  # ---- return labelling ----------------------------------------------------
+  - ledger_item: 18
+    block: common
+    part2_field: return_label
+    engine_fixed: realisation
+    incompatible_stated: [formation]
+    category: C
+    borderline: false
+    cite: "cs:231,866-869"
+    detail: "engine stamps the return on the realisation month t+1; paper labels/aligns the return on the formation month"
+
+  # ---- overlap / cohort mechanics -----------------------------------------
+  - ledger_item: 21
+    block: common
+    part2_field: overlap_convention
+    engine_fixed: overlapping
+    incompatible_stated: [non_overlapping]
+    category: C
+    borderline: false
+    cite: "ov:107-125"
+    detail: "at H>1 the engine forms staggered overlapping JT cohorts (an average over H concurrent cohorts); paper states non-overlapping (disjoint) holding periods -- a genuinely different construction"
+
+  - ledger_item: 22
+    block: common
+    part2_field: cohort_weighting
+    engine_fixed: equal
+    incompatible_stated: [value]
+    category: C
+    borderline: false
+    cite: "ov:146-147,155"
+    detail: "engine equal-weights the mean across alive cohorts; paper states value-weighted cohort aggregation"
+
+  - ledger_item: 23
+    block: common
+    part2_field: burn_in_policy
+    engine_fixed: keep
+    incompatible_stated: [drop_ramp, scale]
+    category: C
+    borderline: false
+    cite: "ov:140-155"
+    detail: "engine keeps ramp-up/ramp-down months with an adaptive divisor; paper states dropping or H-scaling the sub-H-cohort months"
+
+  # ---- statistics (structural) --------------------------------------------
+  - ledger_item: 34
+    block: common
+    part2_field: annualisation
+    engine_fixed: arithmetic
+    incompatible_stated: [geometric]
+    category: C
+    borderline: false
+    cite: "cs:649,660-665"
+    detail: "engine annualises arithmetically (avg * months_per_year); paper states geometric annualisation"
