@@ -6,6 +6,16 @@
 # See docs/data_governance.md.
 /data/
 
+# Copyrighted source papers (publisher PDFs) — same class as /data/: held locally,
+# never committed. The parser bake-off consumes these; they are not redistributable.
+/papers/
+
+# Regenerable full-text canonical dumps (parser bake-off output). Rebuild from
+# /papers/ via scripts/parser_bakeoff; the freeze RECIPE lives in the committed
+# config/canonical_text.yaml, so nothing here needs to be in history. (Quote
+# fixtures under evaluation/quote_fixtures/ ARE committed — small excerpts.)
+/evaluation/canonical_texts/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -1,0 +1,23 @@
+# Machine-readable canonical-text freeze (parser brief §8 / PB-3).
+# The single source of truth for the parser + normalisation recipe. The
+# pipeline's canonical-text builder reads THIS file; it never re-hardcodes
+# the rules. Report and config disagreeing is a build error.
+# Frozen by the bake-off on 2026-07-10. ladder_version v2 amends brief §6
+# (see docs/parser_bakeoff_report.md 'Amendment to brief §6').
+parser:
+  name: pymupdf
+  version: 1.28.0
+normalisation:
+  ladder_level: L1
+  ladder_version: v2
+  rules:
+  - nfkc
+  - ligature_expansion
+  - curly_quote_unification
+  - dash_unification_word_flanked
+  - whitespace_collapse
+  - strip_space_before_punctuation
+page_canonicalisation:
+- strip_publisher_watermark_v3
+normalise_sha256: 3d846fef7d710af17c4a183b69353e705ed11e957d7df9390fcba35ac89eee95
+report: docs/parser_bakeoff_report.md

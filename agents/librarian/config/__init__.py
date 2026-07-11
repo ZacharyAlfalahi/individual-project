@@ -5,10 +5,14 @@ Librarian config -- the pipeline's read-side configuration objects.
                           ``load_canonical_text`` (loads any status) + the
                           ``require_frozen`` status gate (build brief §5.1): a
                           stub can never reach a real extraction. ``locate``
-                          does L0 exact-substring quote location into ``pages``.
+                          does cross-page-aware quote location into ``pages``.
+  * ``normalise``      -- the L0/L1/L2 canonical-text normalisation ladder (v2).
+  * ``locate``         -- the quote matcher (``locate_quote`` + ``MatchResult``)
+                          shared by the runtime locator and the parser bake-off.
 
-The real parser + L1-L3 normalisation ladder are a [P2] seam (gated on the
-parser bake-off); this package builds the interface against a stub config now.
+The PDF parser that produces ``pages`` (and the frozen recipe in
+``config/canonical_text.yaml``) is chosen by the parser bake-off; this package is
+parser-agnostic.
 """
 
 from __future__ import annotations
@@ -18,9 +22,17 @@ from .canonical_text import (
     CanonicalText,
     load_canonical_text,
 )
+from .locate import MatchResult, locate_quote, nearest_window
+from .normalise import LEVELS, RULES, normalise
 
 __all__ = [
     "CanonicalText",
     "load_canonical_text",
     "STATUSES",
+    "normalise",
+    "LEVELS",
+    "RULES",
+    "locate_quote",
+    "MatchResult",
+    "nearest_window",
 ]

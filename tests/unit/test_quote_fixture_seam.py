@@ -2,15 +2,15 @@
 The quote-fixture loading seam: graceful fallback whether or not the fixtures
 directory exists ([P1]).
 
-RQ1 scoring runs against human-authored quote fixtures (D34) that do not exist
-yet -- the bake-off has not run, and authoring them is out of code's scope. The
-seam (``load_quote_fixtures``) must therefore be green *today*: an absent fixture
-directory is the safe blank state (P1), returning ``[]``, never an error. And it
-must load fixtures the day a human lands them, with no code change at the seam.
+RQ1 scoring runs against human-authored quote fixtures (D34). These have now been
+authored and moved into the default dir (orientation A#1), so the seam
+(``load_quote_fixtures``) must load them from the default location with no code
+change. The blank-state guarantee still holds and still matters: an absent (or
+empty, or non-directory) fixture path returns ``[]``, never an error.
 
-These tests exercise both halves without authoring any real fixture in the repo:
-the absent-directory path against the real (absent) default location, and the
-present-directory path against a ``tmp_path`` we populate in-test only.
+These tests exercise both halves: the present-directory path against the REAL
+default location (the three corpus fixtures now on disk), and the absent/blank-state
+path against a ``tmp_path`` we populate in-test only.
 """
 
 from __future__ import annotations
@@ -29,21 +29,30 @@ from agents.librarian.evaluation import (
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
-# --- the absent-directory blank state (today) -----------------------------------
+# --- the present-directory state: real fixtures have landed ---------------------
+# Tripwire (flipped from the old absent-state premise, A#1): the three corpus quote
+# fixtures now live at the default location. This guards against their accidental
+# removal or an unexpected fixture set -- if it fires, confirm the change is intended.
 
-def test_default_fixture_dir_is_absent_today():
-    # premise of the seam: the bake-off has not run, so the real fixtures dir is
-    # absent. If a human lands it, this test flips -- a deliberate tripwire.
-    assert not (REPO_ROOT / DEFAULT_FIXTURE_DIR).exists(), (
-        f"{DEFAULT_FIXTURE_DIR} now exists -- the seam's absent-state premise no "
-        "longer holds; update the tripwire and confirm real fixtures are intended"
+def test_default_fixture_dir_has_the_three_corpus_papers():
+    d = REPO_ROOT / DEFAULT_FIXTURE_DIR
+    assert d.is_dir(), (
+        f"{DEFAULT_FIXTURE_DIR} is missing -- the real quote fixtures were removed; "
+        "the seam depends on them for RQ1 scoring"
+    )
+    names = sorted(p.name for p in d.glob("*.yaml"))
+    assert names == ["bbw_2019.yaml", "bpw_2011.yaml", "kpp_2023.yaml"], (
+        f"unexpected fixture set at {DEFAULT_FIXTURE_DIR}: {names}"
     )
 
 
-def test_load_from_absent_default_returns_empty(monkeypatch):
-    # run from repo root so the relative default path resolves to the (absent) dir
+def test_load_from_default_returns_the_three_papers(monkeypatch):
+    # run from repo root so the relative default path resolves to the fixtures dir
     monkeypatch.chdir(REPO_ROOT)
-    assert load_quote_fixtures() == []
+    fixtures = load_quote_fixtures()
+    assert all(isinstance(f, QuoteFixture) for f in fixtures)
+    papers = sorted(f.content["paper"] for f in fixtures)
+    assert papers == ["BBW_2019", "BPW_2011", "KPP_2023"]
 
 
 def test_load_from_explicitly_absent_dir_returns_empty(tmp_path):

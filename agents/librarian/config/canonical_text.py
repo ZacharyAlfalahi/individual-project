@@ -3,9 +3,12 @@ Canonical text + status gate (build brief §5.1; parser-brief §5 shape).
 
 The *canonical text* is the substrate every evidence check indexes into: model
 quotes are verified against it (D9), STATED locators point into it (D6/D7), and
-RQ1's audit trail rests on it. This module carries the loaded object and the L0
-locator; the real parser and the L1-L3 normalisation ladder are a [P2] seam
-(gated on the parser bake-off) -- see the ``locate`` TODO.
+RQ1's audit trail rests on it. This module carries the loaded object and the
+``locate`` entry point; the normalisation ladder (``normalise``) and the matcher
+(``locate.locate_quote``) live in sibling modules. The PDF parser that PRODUCES the
+pages (and the frozen recipe in ``config/canonical_text.yaml``) is chosen by the
+parser bake-off; this module is parser-agnostic -- it consumes ``pages`` however
+they were built.
 
 **Status gate (CRITICAL).** A canonical text carries a ``status`` in
 ``{"stub", "frozen"}``. ``load_canonical_text`` loads *any* status (tests and
@@ -17,11 +20,13 @@ fixture ships ``status: stub``, so any code path that reaches extraction through
 paper. Real quote fixtures are a separate human-only task; this module never
 authors them.
 
-**Locator discipline (parser-brief §5).** ``locate(quote)`` does an L0 exact
-substring search across ``pages`` and returns a ``Locator(page, char_start,
-char_end)`` into ``pages[page]``, or ``None``. It reuses the frozen
-``agents.quant.config.Locator`` (D6/D7): the same locator type STATED evidence
-carries, so a located quote and a STATED locator are byte-comparable.
+**Locator discipline (parser-brief §5).** ``locate(quote, level="L0")`` normalises
+both the page text and the quote at ``level`` and returns a ``Locator(page,
+char_start, char_end)`` for the first (cross-page-aware) match, or ``None``. It
+reuses the frozen ``agents.quant.config.Locator`` (D6/D7): the same locator type
+STATED evidence carries, so a located quote and a STATED locator are byte-
+comparable. The default ``L0`` is exact substring (identity ladder), preserving the
+original byte-into-``pages[page]`` semantics.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ import yaml
 from agents.quant.config import Locator
 
 from ..errors import CanonicalTextNotFrozenError, LibrarianSchemaError
+from .locate import locate_quote
 
 # The two legal statuses. "stub" = scaffolding text (offline tests); "frozen" =
 # a real, bake-off-parsed canonical text cleared to reach extraction.
@@ -108,25 +114,43 @@ class CanonicalText:
             )
         return self
 
-    def locate(self, quote: str) -> Locator | None:
-        """L0 exact-substring locate: return a ``Locator(page, char_start,
-        char_end)`` for the first page containing ``quote`` verbatim, else
-        ``None``.
+    def locate(self, quote: str, level: str = "L0") -> Locator | None:
+        """Locate ``quote`` in ``pages`` at ladder ``level``; return a
+        ``Locator(page, char_start, char_end)`` for the match, else ``None``.
 
-        [P2 SEAM] This is L0 only (exact byte substring, no transformation). The
-        L1-L3 normalisation ladder (NFKC + ligatures, de-hyphenation, whitespace
-        collapse) and the cross-page-pair fallback from the parser brief (§5/§6)
-        land with the parser bake-off -- do NOT implement them here. When they do,
-        ``locate`` gains a ``level`` argument and normalises both the page text and
-        the candidate quote before matching; the L0 path stays as the exact case.
+        Delegates to ``locate.locate_quote`` (the single matching source of truth,
+        shared with the parser bake-off): the same normalisation ladder is applied
+        to both the page text and the candidate quote before an exact-substring
+        compare. ``level`` defaults to ``"L0"`` (exact byte substring, the identity
+        ladder), so an L0 locator's offsets are byte-correct into the raw page. At a
+        higher level the offsets index ``normalise(page, level)`` -- callers interpret
+        them at the ``normalisation.ladder_level`` the canonical text records.
+
+        A quote that only matches via the adjacent page-pair fallback (straddling a
+        page boundary) returns ``None`` here: its offsets index the joined page-pair,
+        not a single page, so a faithful single-page ``Locator`` cannot be formed yet
+        (deferred to the cross-page-seam matcher). The bake-off calls ``locate_quote``
+        directly and still scores such matches.
         """
         if not isinstance(quote, str) or quote == "":
             raise LibrarianSchemaError("locate(quote) requires a non-empty string")
-        for page, text in enumerate(self.pages):
-            idx = text.find(quote)
-            if idx != -1:
-                return Locator(page=page, char_start=idx, char_end=idx + len(quote))
-        return None
+        result = locate_quote(self.pages, quote, level)
+        if not result.matched:
+            return None
+        if result.used_cross_page:
+            # A cross-page match's offsets index the JOINED page-pair string, not a
+            # single page, so they cannot form a faithful single-page Locator
+            # (char_end could exceed len(pages[page])). Rather than stamp a malformed
+            # locator into the STATED audit trail, decline -- the quote then routes to
+            # review (UNKNOWN) instead. Faithful cross-page locators are deferred to the
+            # cross-page-seam matcher work (see docs/parser_bakeoff_report.md). The
+            # bake-off uses locate_quote directly, so its cross-page scoring is unaffected.
+            return None
+        return Locator(
+            page=result.page,
+            char_start=result.char_start,
+            char_end=result.char_end,
+        )
 
     def to_dict(self) -> dict:
         return {

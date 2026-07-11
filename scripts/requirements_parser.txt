@@ -1,0 +1,7 @@
+# Parser bake-off dependency (parser brief §3).
+#
+# Pinned exactly: the bake-off's determinism claim ("two parse runs byte-identical")
+# and the frozen canonical-text recipe are only stable under a fixed parser version.
+# License note: PyMuPDF is AGPL-3.0 (or a commercial licence); recorded in the
+# bake-off report's footprint/license line.
+pymupdf==1.28.0

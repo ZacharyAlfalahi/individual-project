@@ -89,6 +89,38 @@ def test_locate_rejects_empty_quote(stub):
         stub.locate("")
 
 
+# --- locate with a ladder level (parser bake-off v2) ------------------------
+
+def test_locate_level_l1_normalises_whitespace():
+    ct = _frozen(pages=("the long short\nfactor series",))
+    # the default (L0) cannot bridge the newline...
+    assert ct.locate("long short factor series") is None
+    # ...but L1 collapses whitespace and locates.
+    loc = ct.locate("long short factor series", level="L1")
+    assert isinstance(loc, Locator)
+    assert loc.page == 0
+
+
+def test_locate_level_l2_dehyphenates_fold():
+    ct = _frozen(pages=("bonds sorted into quintiles at formation",))
+    # a fixture-style hyphen-space fold is bridged only at L2.
+    assert ct.locate("quin- tiles", level="L1") is None
+    assert ct.locate("quin- tiles", level="L2") is not None
+
+
+def test_locate_declines_cross_page_matches():
+    # A quote straddling a page boundary matches via the adjacent-pair fallback
+    # (locate_quote reports it), but CanonicalText.locate returns None rather than
+    # stamp a malformed single-page Locator (offsets index the joined pair). HIGH-1.
+    from agents.librarian.config.locate import locate_quote
+
+    ct = _frozen(pages=("the measure begins on this", "next page and finishes here"))
+    quote = "begins on this next page and finishes"
+    res = locate_quote(ct.pages, quote, "L1")
+    assert res.matched and res.used_cross_page          # the matcher primitive locates it
+    assert ct.locate(quote, level="L1") is None          # but locate() declines it
+
+
 # --- construction guards ----------------------------------------------------
 
 def test_bad_status_is_build_error():

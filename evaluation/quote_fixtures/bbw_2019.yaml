@@ -1,0 +1,130 @@
+paper: BBW_2019
+pdf: "papers/pdf/BBW (2019).pdf"
+quotes:
+  - id: bbw19_q01
+    category: body
+    page_hint: 2
+    text: "Although corporate bonds and stocks both reflect firm
+fundamentals, they differ in several key features."
+  - id: bbw19_q02
+    category: body
+    page_hint: 3
+    text: "Thus, the idea of a disas-
+ter exists and a risk averse, safety-first investor will seek to
+reduce the chance of such a catastrophe occurring insofar
+as possible."
+  - id: bbw19_q03
+    category: body
+    page_hint: 4
+    text: "Remove transaction records that are canceled and ad-
+just records that are subsequently corrected or re-
+versed."
+  - id: bbw19_q04
+    category: body
+    page_hint: 7
+    text: "We measure credit quality of corporate bonds via their
+credit ratings that capture information on bond default
+probability and the loss severity."
+  - id: bbw19_q05
+    category: number
+    page_hint: 7
+    text: "Our proxy
+for downside risk, 5% VaR, is based on the lower tail of
+the empirical return distribution, that is, the second low-
+est monthly return observation over the past 36 months."
+  - id: bbw19_q06
+    category: number
+    page_hint: 8
+    text: "For each bond in our sample from July 2004 to Decem-
+ber 2016, we compute the volatility, skewness, and kurto-
+sis of monthly returns."
+  - id: bbw19_q07
+    category: number
+    page_hint: 9
+    text: "This result also indi-
+cates that corporate bonds in the highest-VaR quintile gen-
+erate 11.88% per annum higher return than bonds in the
+lowest-VaR quintile."
+  - id: bbw19_q08
+    category: table
+    page_hint: 9
+    text: "Table reports the average VaR, the next-month average excess return, the five-factor alpha from stock market factors, the five-factor
+alpha from bond market factors, and the ten-factor alpha for each quintile."
+  - id: bbw19_q09
+    category: table
+    page_hint: 10
+    text: "The last row shows the differences in alphas with respect
+to the ten-factor model, which combines the five stock and five bond market factors."
+  - id: bbw19_q10
+    category: table
+    page_hint: 11
+    text: "Ratings are in conventional numerical scores, where 1 refers to
+an AAA rating and 21 refers to a C rating."
+  - id: bbw19_q11
+    category: footnote
+    page_hint: 12
+    text: "These findings are also consistent with the univariate portfolio results
+reported in Table A.2 of the online Internet Appendix."
+  - id: bbw19_q12
+    category: footnote
+    page_hint: 4
+    text: "Elton et al. (1995) study 20 bond indices across Trea-
+sury bonds, corporate bonds, mortgage securities from Ibbotson, Merrill
+Lynch, and Lehman Brothers."
+  - id: bbw19_q13
+    category: ligature
+    page_hint: 2
+    text: "First, we test the significance of a cross-sectional re-
+lation between downside risk and future returns on cor-
+porate bonds using portfolio-level analysis."
+  - id: bbw19_q14
+    category: ligature
+    page_hint: 3
+    text: "Among the control variables, only the short-
+term reversal effect is found to be strong and robust across
+different regression specifications."
+  - id: bbw19_q15
+    category: equation
+    page_hint: 3
+    text: "The monthly corporate bond return at time t is com-
+puted as"
+  - id: bbw19_q16
+    category: page_break
+    page_hint: 14
+    # trimmed 2026-07-10: dropped the "CRFILLIQ and CRFREV" tail (subscript glyphs
+    # rendered as CRF + subscript, not locatable as literal tokens). Retained prose
+    # up to "two additional credit risk factors", re-verified against the page.
+    text: "The above independent sorts used to
+construct LRF and REV produce two additional credit risk factors."
+corrupted:
+  - id: bbw19_x01
+    derived_from: bbw19_q04
+    mutation: reword
+    text: "Credit quality of corporate bonds is measured by their
+credit ratings which capture information on bond default
+probability and the loss severity."
+  - id: bbw19_x02
+    derived_from: bbw19_q05
+    mutation: number_swap
+    text: "Our proxy
+for downside risk, 10% VaR, is based on the lower tail of
+the empirical return distribution, that is, the second low-
+est monthly return observation over the past 24 months."
+  - id: bbw19_x03
+    derived_from: bbw19_q06
+    mutation: number_swap
+    text: "For each bond in our sample from July 2008 to Decem-
+ber 2012, we compute the volatility, skewness, and kurto-
+sis of monthly returns."
+  - id: bbw19_x04
+    derived_from: bbw19_q07
+    mutation: number_swap
+    text: "This result also indi-
+cates that corporate bonds in the highest-VaR quintile gen-
+erate 13.09% per annum higher return than bonds in the
+lowest-VaR quintile."
+  - id: bbw19_x05
+    derived_from: bbw19_q01
+    mutation: reword
+    text: "Although corporate bonds and stocks both reflect firm
+fundamentals, they are similar in several key features."

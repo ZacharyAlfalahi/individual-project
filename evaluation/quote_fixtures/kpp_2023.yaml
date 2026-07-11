@@ -1,0 +1,121 @@
+paper: KPP_2023
+pdf: "papers/pdf/KPP.pdf"
+quotes:
+  - id: kpp23_q01
+    category: body
+    page_hint: 1
+    text: "Despite the similarity in their size and im-
+portance to the economy, however, academic understanding of the risk-return
+trade-off is less developed in corporate bond markets than in equity markets."
+  - id: kpp23_q02
+    category: body
+    page_hint: 2
+    text: "Attempts to introduce time-variation in betas with
+rolling time-series regression lead to stale and noisy beta estimates."
+  - id: kpp23_q03
+    category: body
+    page_hint: 3
+    text: "It is here the IPCA model most clearly differentiates it-
+self from alternatives."
+  - id: kpp23_q04
+    category: body
+    page_hint: 9
+    text: "We also summarize IPCA model errors in terms of two commonly studied
+metrics in the cross-sectional asset pricing literature."
+  - id: kpp23_q05
+    category: number
+    page_hint: 3
+    text: "Its quintile spread portfolio earns an annualized out-of-
+sample Sharpe ratio of 3.5 prior to transaction costs, or 1.4 net of costs (based
+on transaction cost estimates from Choi and Huh (2019))."
+  - id: kpp23_q06
+    category: number
+    page_hint: 3
+    text: "When we use individual bonds as test assets, the out-
+of-sample relative pricing error in our five-factor IPCA model is 39%, versus
+76% for the FF model and 100% for the BBW model."
+  - id: kpp23_q07
+    category: number
+    page_hint: 12
+    text: "We discard bond-month observations with extreme bond spreads (less than
+50 bps or greater than 2,000 bps at the beginning of the period)."
+  - id: kpp23_q08
+    category: table
+    page_hint: 15
+    # trimmed 2026-07-10: dropped the "∗∗ denoting significance…" tail, which reaches
+    # into asterisk-operator glyphs / table-cell spacing the Librarian never needs to
+    # locate. Retained span is verbatim (matches at L1 via the ﬁ ligature in "firm").
+    text: "Standard errors are clustered by firm and month"
+  - id: kpp23_q09
+    category: table
+    page_hint: 17
+    text: "The first out-of-sample test observation is 36 months after the start
+of our sample."
+  - id: kpp23_q10
+    category: table
+    page_hint: 16
+    text: "Panel A reports results for individual corporate bond returns and Panel
+B reports results for characteristic-managed portfolios."
+  - id: kpp23_q11
+    category: footnote
+    page_hint: 14
+    text: "Leverage is an endogenous equilibrium outcome and more creditworthy firms often take on a
+larger debt burden, which is the likely driver of the negative average return for leverage portfolios."
+  - id: kpp23_q12
+    category: footnote
+    page_hint: 12
+    text: "In our data, DtS has a mean of 0.529, a median of 0.35, a minimum of 0.003, and a maximum
+of 8.9."
+  - id: kpp23_q13
+    category: ligature
+    page_hint: 3
+    text: "While this is helpful
+for identifying informative characteristics, it also helps solve the more difficult
+problem of how to aggregate information over a large collection of bond charac-
+teristics that are all likely to be informative, but also noisy and thus imperfect,
+determinants of a bond’s risk exposures."
+  - id: kpp23_q14
+    category: ligature
+    page_hint: 5
+    text: "Our empirical analysis centers around the IPCA model specification pro-
+posed by Kelly, Pruitt, and Su (2019) (2021)."
+  - id: kpp23_q15
+    category: equation
+    page_hint: 5
+    text: "Our IPCA specification
+for an excess bond return ri,t+1 is"
+  - id: kpp23_q16
+    category: page_break
+    page_hint: 2
+    text: "By estimating a model that jointly analyzes many characteristics at
+the same time, IPCA allows the data to dictate which characteristics are most
+informative for understanding the panel of bond returns."
+corrupted:
+  - id: kpp23_x01
+    derived_from: kpp23_q04
+    mutation: reword
+    text: "We also generalize IPCA model errors in terms of four commonly studied
+metrics in the cross-sectional asset pricing research."
+  - id: kpp23_x02
+    derived_from: kpp23_q05
+    mutation: number_swap
+    text: "Its quintile spread portfolio earns an annualized out-of-
+sample Sharpe ratio of 1.8 prior to transaction costs, or 0.6 net of costs (based
+on transaction cost estimates from Choi and Huh (2052))."
+  - id: kpp23_x03
+    derived_from: kpp23_q06
+    mutation: number_swap
+    text: "When we use individual bonds as test assets, the out-
+of-sample relative pricing error in our five-factor IPCA model is 19%, versus
+67% for the FF model and 150% for the BBW model."
+  - id: kpp23_x04
+    derived_from: kpp23_q07
+    mutation: number_swap
+    text: "We discard bond-month observations with extreme bond spreads (less than
+500 bps or greater than 20 bps at the beginning of the period)."
+  - id: kpp23_x05
+    derived_from: kpp23_q01
+    mutation: reword
+    text: "Despite the differences in their size and im-
+portance to the family, however, academic understanding of the risk-return
+trade-off is less devoted in corporate bond markets than in equity markets."

@@ -1,0 +1,129 @@
+paper: BPW_2011
+pdf: "papers/pdf/BPW.pdf"
+quotes:
+  - id: bpw11_q01
+    category: body
+    page_hint: 2
+    text: "Given that our sample
+focuses exclusively on investment grade bonds, this magnitude of economic sig-
+nificance is rather high."
+  - id: bpw11_q02
+    category: body
+    page_hint: 3
+    text: "In contrast, our paper
+uses a direct measure of illiquidity to examine the pricing impact of illiquidity
+in corporate bond spreads, both in aggregate and in the cross-section."
+  - id: bpw11_q03
+    category: body
+    page_hint: 4
+    text: "Finally, our paper also adds to the literature that examines the pricing impact
+of illiquidity on corporate bond yield spreads."
+  - id: bpw11_q04
+    category: body
+    page_hint: 7
+    text: "To
+calculate yield spreads for individual corporate bonds, we obtain Treasury bond
+yields from the Federal Reserve, which publishes constant maturity Treasury
+rates for a range of maturities."
+  - id: bpw11_q05
+    category: number
+    page_hint: 7
+    text: "For the whole sample in TRACE, the average monthly turnover is
+3.71%, the average number of trades in a month is 33, and the median trade
+size is $65,000."
+  - id: bpw11_q06
+    category: number
+    page_hint: 2
+    text: "This is especially true for AAA-rated bonds, whose
+connection to credit risk becomes insignificant when 2008 and 2009 data are
+included, whereas its connection to illiquidity increases significantly."
+  - id: bpw11_q07
+    category: number
+    page_hint: 20
+    text: " first column in Table VI shows that (controlling for calla-
+bility), the average yield spread of the Aaa and Aa bonds in our sample is 129
+bps, relative to which the A bonds are 61 bps higher and the Baa bonds are 176
+bps higher."
+  - id: bpw11_q08
+    category: table
+    page_hint: 17
+    text: "This table reports monthly changes in γ regressed on monthly changes in the bond index volatil-
+ity, VIX, CDS index, term spread, default spread, and lagged stock and bond excess returns.
+Newey–West t-statistics are reported in square brackets."
+  - id: bpw11_q09
+    category: table
+    page_hint: 12
+    text: " CDS Dummy
+is one if the bond has CDS traded on its issuer."
+  - id: bpw11_q10
+    category: table
+    page_hint: 25
+    text: "The EHP bid–ask spread estimates are from Table 4 of Edwards,
+Harris, and Piwowar (2007), and the EHP subperiod is Jan. 2003 to Jan. 2005."
+  - id: bpw11_q11
+    category: footnote
+    page_hint: 24
+    text: "The corporate bond market actually involves different trading platforms, which provide liq-
+uidity to different clienteles."
+  - id: bpw11_q12
+    category: footnote
+    page_hint: 15
+    text: " Because
+γ is positively related to age, it might introduce a slight overall upward trend in γ."
+  - id: bpw11_q13
+    category: ligature
+    page_hint: 1
+    text: "In the cross-section, the bond-level illiquidity measure
+explains individual bond yield spreads with large economic significance."
+  - id: bpw11_q14
+    category: ligature
+    page_hint: 8
+    # trimmed 2026-07-10: dropped the equation tail (γ=(1−ρ)σ2/…), which reaches into
+    # subscript/superscript/minus glyphs the Librarian never needs to locate. The
+    # retained span is verbatim prose, re-verified against the rendered page.
+    text: "First, we know little about the dynamics of ut, other than its transitory
+nature."
+  - id: bpw11_q15
+    category: equation
+    page_hint: 8
+    text: "We define γ by"
+  - id: bpw11_q16
+    category: page_break
+    page_hint: 8
+    text: "For the full sample period from 2003 through 2009, the illiquidity measure
+γ has a cross-sectional average of 0.63 with a robust t-statistic of 19.42 when 
+estimated using trade-by-trade data, and an average of 1.18 with a robust t-
+statistic of 16.53 using daily data.11"
+corrupted:
+  - id: bpw11_x01
+    derived_from: bpw11_q04
+    mutation: reword
+    text: "To
+calculate yield spreads for multiple corporate bonds, we obtain Treasury bond
+yields from the Federal House, which publishes many maturity Treasury
+rates for a range of maturities."
+  - id: bpw11_x02
+    derived_from: bpw11_q05
+    mutation: number_swap
+    text: "For the whole sample in TRACE, the average monthly turnover is
+4.86%, the average number of trades in a month is 89, and the median trade
+size is $42,500."
+  - id: bpw11_x03
+    derived_from: bpw11_q06
+    mutation: number_swap
+    text: "This is especially true for AAA-rated bonds, whose
+connection to credit risk becomes insignificant when 2002 and 2014 data are
+included, whereas its connection to illiquidity increases significantly."
+  - id: bpw11_x04
+    derived_from: bpw11_q07
+    mutation: number_swap
+    text: " first column in Table VI shows that (controlling for calla-
+bility), the average yield spread of the Aaa and Aa bonds in our sample is 129
+bps, relative to which the A bonds are 12 bps higher and the Baa bonds are 232
+bps higher."
+  - id: bpw11_x05
+    derived_from: bpw11_q01
+    mutation: reword
+    text: "Given that our sample
+focuses only on investment grape bonds, this magnitude of economic sig-
+nificance is rather low."
