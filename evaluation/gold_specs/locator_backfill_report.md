@@ -1,14 +1,14 @@
 # Locator Backfill Report — anchor gold specs
 
-_Generated 2026-07-11 by running every `quote:` field through the project's `locate_quote`
+_Re-generated 2026-07-12 by running every `quote:` field through the project's `locate_quote`
 (`agents/librarian/config/locate.py`) at ladder level **L1** (v2 ladder). 59/59 quotes located;
 zero cross-page fallbacks. Offsets are into `normalise(page, L1)` (store-L0 / normalise-on-read),
 pages 1-based._
 
-**Locator authority:** BBW offsets index the **frozen** canonical text
-(`evaluation/canonical_texts/bbw_2019.frozen.yaml`) — these are real D6 locators. DRR-2026 and
-JNPS-2013 offsets index a **pending-freeze** parse (PyMuPDF 1.28.0, frozen recipe, source hashes in
-each spec header) — re-run this backfill when those texts are frozen; offsets are then binding.
+**Locator authority:** BBW and DRR-2026 offsets index their **frozen** canonical texts
+(`bbw_2019.frozen.yaml`, `drr_2026.frozen.yaml`) — real, binding D6 locators. JNPS-2013 offsets
+index a **pending-freeze** parse (PyMuPDF 1.28.0, frozen recipe, source hash in the mom6 header) —
+re-run on freeze; offsets are then binding.
 
 | spec | page | char_start | char_end | quote (first 70 chars) |
 |---|---|---|---|---|

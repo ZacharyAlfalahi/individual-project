@@ -1,7 +1,9 @@
 # Gold Spec — mom6 (Jostova, Nikolova, Philipov & Stahel 2013, RFS)
 
 _Status: **AUTHORED 2026-07-11 under schema v1; ◇ (v1.1) fields pre-filled** (control axis trivially
-`none`; paper_facts filled). Re-stamp on v1.1 landing; expected diff = ◇ stamps only._
+`none`; paper_facts filled). v1.1 landed 2026-07-11 and str was instantiated under it 2026-07-12;
+this spec's instantiation/re-stamp pass is **blocked only on the JNPS canonical-text freeze**
+(locators here are provisional until then). Expected re-stamp diff = ◇ stamps only._
 _No frozen canonical text exists for this paper yet. Pages are 1-based PDF pages of
 `papers/pdf/Momentum in Corporate Bond Returns.pdf` parsed with the frozen recipe (PyMuPDF 1.28.0,
 L1/v2 ladder, watermark strip v3). Quotes verified as exact L1 substrings
@@ -14,7 +16,7 @@ paper:                   JNPS_2013
 strategy_label:          mom6
 strategy_quote:          "Specifically, each month t, bonds are sorted into decile portfolios, P1 to P10, based on their cumulative returns over months t −6 to t −1 (formation period)."   page: 9
 registry_version:        v1
-silence_policy_version:  v1
+silence_policy_version:  v1   # re-stamps to v1.1 at this spec's instantiation pass (cf. str, 2026-07-12)
 canonical_text_hash:     PENDING-FREEZE — recipe normalise_sha256 3d846fef7d710af17c4a183b69353e705ed11e957d7df9390fcba35ac89eee95; source_sha256 7e80f8cb919de4161822df63da1069310d8a113b0562ccd2d3d6420d4f707242
 ```
 

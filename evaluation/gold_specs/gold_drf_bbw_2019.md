@@ -1,8 +1,10 @@
 # Gold Spec — DRF (BBW 2019)
 
 _Status: **DRAFT — authored 2026-07-11 under schema v1 with ◇ (v1.1) fields pre-filled from the paper.**
-Schema v1.1 (control axis + paper_facts) has NOT landed (`code-brief_schema-v1.1_2026-07-09.md`: committed NO).
-Re-stamp against v1.1 on landing; expected diff = ◇ field stamps only, zero value changes._
+Schema v1.1 (control_axis governance + control_n_groups + paper_facts) landed in the working tree
+2026-07-11, and str was **instantiated under it 2026-07-12**. This spec awaits its own
+instantiation/re-stamp pass — nothing blocks it (BBW's canonical text is frozen; drf is the template's
+"author first once v1.1 lands" anchor). Expected re-stamp diff = ◇ field stamps only, zero value changes._
 _Pages are canonical-text page indices (1-based, = PDF pages) of `evaluation/canonical_texts/bbw_2019.frozen.yaml`.
 Every STATED quote is an exact substring of `normalise(page, L1)` — locator backfill results in
 `gold_specs/locator_backfill_report.md`._
@@ -14,7 +16,7 @@ paper:                   BBW_2019
 strategy_label:          DRF
 strategy_quote:          "To con- struct the downside risk factor for corporate bonds, for each month from July 2004 to December 2016, we form bivariate portfolios by independently sorting bonds into five quintiles based on their credit rating and five quin- tiles based on their downside risk (measured by 5% VaR)."   page: 14
 registry_version:        v1
-silence_policy_version:  v1
+silence_policy_version:  v1   # re-stamps to v1.1 at this spec's instantiation pass (cf. str, 2026-07-12)
 canonical_text_hash:     normalise_sha256 3d846fef7d710af17c4a183b69353e705ed11e957d7df9390fcba35ac89eee95 (config/canonical_text.yaml recipe, PyMuPDF 1.28.0 / L1 / v2 ladder); source_sha256 fcb58bf7bd433f82e722d284776da639e038f1bc5e0c919d8943f9a04cbde91a (frozen bbw_2019)
 ```
 
