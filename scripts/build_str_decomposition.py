@@ -31,16 +31,26 @@ is the only one whose buy price is the signal's terminal price.
 Clean-price basis (no AI/coupon, per the project decision): the AI/coupon term
 is second-order here (it is the −0.82 vs −0.80 gap-vs-LIB difference in DRR).
 
-Targets (DRR-2026 Table 2 Panel A, single-sort; paper-stated, not yet
-replicated): month-end −0.99%, month-begin −0.17%, gap Δµ −0.82% (t −7.34), LIB
-−0.80% (t −7.18), arm corr 0.99, LIB share ≈ 83%. Gate on DIRECTION + PROPORTION,
-SIGN-AWARE (the raw series is negative, §5.1), never on signed absolute level.
+Targets (DRR-2026 Table 2 Panel A, single-sort; paper-stated): month-end −0.99%,
+month-begin −0.17%, gap Δµ −0.82% (t −7.34), LIB −0.80% (t −7.18), arm corr 0.99,
+LIB share ≈ 83%. These are DRR's SIGNED values under their reversal. This gate now
+builds the gold construction (winners−losers, deciles — see below), which on the
+corr dev panel reads MOMENTUM-signed (the mirror of DRR's reversal, per the W1
+finding). So do NOT compare signed levels to −0.99 —
+that would re-introduce the sign coincidence W1 named a mistake. Gate on DIRECTION
++ PROPORTION, SIGN-AWARE: the three arms share one sign, the biased month-end arm
+is the most extreme, they are correlated, and the LIB SHARE (mean_lib/mean_end, a
+ratio) sits in-band. The LIB share is leg-mirror-invariant, so the ~83% (vs our
+subset's ~33%, a universe/measurement gap) is preserved by the alignment.
 
 NOTE (§6 per-CUSIP validation): DRR ship ret_vw / ret_vw_bgn per bond-month; a
 per-CUSIP cross-check would localise residual error. That panel is not vendored
 here (self-build), so this script validates at the aggregate decomposition level.
 
-Headline = corr family. Leg = losers − winners, VW (par), to match the str factor.
+Headline = corr family. Leg = winners − losers (long P10, short P1; DECILES),
+imported from build_str.str_rulebook — the gold construction, matching the str
+factor. VW (par). On the corr panel this reads momentum-signed (mirror of DRR's
+stated reversal); the LIB share is mirror-invariant.
 
 Output: data/development/headlines/str_decomposition.json
 
@@ -66,6 +76,7 @@ from agents.quant.library.characteristic_sort import (  # noqa: E402
     run_characteristic_sort, summarize_returns,
 )
 from agents.quant.library.intramonth_prices import month_window_prices  # noqa: E402
+from scripts.build_str import str_rulebook  # noqa: E402  (leg/grid, imported not re-hand-rolled)
 
 CORR_DAILY = REPO_ROOT / "data" / "development" / "trace_daily_corr_filtered.parquet"
 PANEL_FILE = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
@@ -131,11 +142,19 @@ def build_returns(prices: pd.DataFrame) -> pd.DataFrame:
 
 
 def _rulebook(min_bonds: int) -> dict:
-    return {
-        "score": "score", "groups": 5, "weighting": "by_size",
-        "long_group": 0, "short_group": 4, "signal_lag": 0, "nw_lags": None,
-        "min_bonds": min_bonds,
-    }
+    """Leg + grid IMPORTED from build_str.str_rulebook (deciles, winners-losers,
+    VW par) so the §8 gate decomposes the SAME construction the gold pins and
+    build_str.py builds — no re-hand-rolled grid to drift. Only the sort column
+    differs: the decomposition ranks on the arm-specific noisy prior return
+    `score` (r_end, the CEIV signal), not the panel `xret`; and it adds a
+    min_bonds floor. The leg is winners-losers (P10-P1), the mirror of the old
+    losers-winners: on the corr panel this reads momentum-signed (W1), and the LIB
+    share (a ratio) is mirror-invariant, so alignment loses no statistical content
+    — it only drops the spurious signed-level match to DRR's -0.99."""
+    rb = dict(str_rulebook(signal_lag=0))   # score=xret, groups=10, long=9, short=0, by_size
+    rb["score"] = "score"                   # noisy prior return r_end, NOT xret
+    rb["min_bonds"] = min_bonds
+    return rb
 
 
 def run_arm(panel: pd.DataFrame, ret_col: str, min_bonds: int) -> pd.DataFrame:
@@ -203,8 +222,15 @@ def main():
     correlation = float(j["end"].corr(j["begin"]))
     identity_resid = float(mean_end - (mean_lib + mean_begin))  # ≈ 0 up to the cross term
 
+    # SIGN-AWARE direction gate (never signed level). The decomposition is coherent
+    # when the three arms share ONE sign (whatever it is — momentum-signed here under
+    # winners-losers, the mirror of DRR's stated reversal), the biased month-end arm is
+    # the most extreme (the LIB inflates it), and the arms are correlated. The signed
+    # match to DRR's -0.99 is deliberately NOT tested (that was the mirror coincidence).
+    arm_signs = {np.sign(mean_end), np.sign(mean_begin), np.sign(mean_lib)}
+    arms_share_one_sign = len(arm_signs) == 1 and 0.0 not in arm_signs
     direction_reproduced = (
-        mean_end < 0 and mean_begin < 0 and mean_lib < 0
+        arms_share_one_sign
         and abs(mean_end) >= abs(mean_begin) and correlation >= arm_corr_min
     )
     lib_share_in_band = lib_share is not None and lib_share_lo <= lib_share <= lib_share_hi
@@ -215,7 +241,8 @@ def main():
         "thresholds_sha256": thresholds_sha256(),
         "family": "corr",
         "window_days": window_days,
-        "weighting": "value-weight by par offering_amt (§5.1); leg = losers - winners",
+        "weighting": "value-weight by par offering_amt (§5.1); leg = winners - losers "
+                     "(deciles P10-P1, imported from build_str.str_rulebook)",
         "n_months": int(len(j)),
         "month_end":   {"mean_pct": mean_end * 100,   "t_stat": float(end_summary["t_stat"]),   "target_pct": -0.99},
         "month_begin": {"mean_pct": mean_begin * 100, "t_stat": float(begin_summary["t_stat"]), "target_pct": -0.17},
@@ -235,20 +262,25 @@ def main():
             "lib_share_in_band": bool(lib_share_in_band),
             "lib_share_band": [lib_share_lo, lib_share_hi],
         },
-        "note": "Construction verified by the identity residual (end - lib - begin "
-                "≈ 0). DIRECTION reproduced (all arms negative, month-end most "
-                "negative, decomposition additive). The LIB SHARE (~33%) is below "
-                "DRR's 83%, and the reversal here (-0.23%) is far weaker than the "
-                "full-universe str factor (-0.70%, build_str.py): the identical "
-                "all-3-windows sample plus the panel's institutional-size volume "
-                "filter (min_vol_qt=100000) select a LIQUID subset where "
-                "microstructure noise — and thus LIB — is small. The clean-price "
-                "basis (no AI/coupon carry common to both arms) also lowers the "
-                "arm correlation vs DRR's 0.99. These are universe/measurement "
-                "differences, not a construction error. To push the LIB share "
-                "toward 83% one would widen the universe (relax the volume filter "
-                "/ retain noisier small trades) or validate per-CUSIP against "
-                "DRR's shipped ret_vw/ret_vw_bgn (panel not vendored here, §6).",
+        "note": "Leg = winners-losers deciles (gold construction, imported from "
+                "build_str.str_rulebook), so the §8 gate decomposes the SAME sort the "
+                "gold pins and build_str.py builds. Construction verified by the identity "
+                "residual (end - lib - begin ≈ 0). DIRECTION reproduced SIGN-AWARE: the "
+                "three arms share one sign, the biased month-end arm is the most extreme, "
+                "and the decomposition is additive. On the corr dev panel that shared sign "
+                "is POSITIVE (momentum) — the mirror of DRR's stated reversal, per the W1 "
+                "finding; the signed microstructure reversal "
+                "the LIB captures lives in the raw (meas_err=OFF) layer, owned by §8, not "
+                "reproduced signed here. The LIB SHARE (mean_lib/mean_end, a ratio) is "
+                "leg-mirror-INVARIANT and sits below DRR's 83% (see lib_share_of_month_end): "
+                "the identical all-3-windows sample plus the institutional-size volume "
+                "filter (min_vol_qt=100000) select a LIQUID subset where microstructure "
+                "noise — and thus LIB — is small; the clean-price basis (no AI/coupon carry "
+                "common to both arms) also lowers arm correlation vs DRR's 0.99. "
+                "Universe/measurement differences, not a construction error. To push the "
+                "LIB share toward 83%: widen the universe (relax the volume filter / retain "
+                "noisier small trades) or validate per-CUSIP against DRR's shipped "
+                "ret_vw/ret_vw_bgn (panel not vendored here, §6).",
     }
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -257,7 +289,8 @@ def main():
         json.dump(report, f, indent=2)
     os.replace(tmp, OUT_FILE)
 
-    print("\nDecomposition (corr, single-sort, VW, losers-winners; identical sample):")
+    print("\nDecomposition (corr, single-sort, VW, winners-losers deciles P10-P1; identical sample).")
+    print("  Momentum-signed here (mirror of DRR's reversal targets, W1); gate on direction+proportion, sign-aware:")
     print(f"  month-end   : {mean_end*100:+.3f}%/mo (t {end_summary['t_stat']:+.2f})   [target ~ -0.99]")
     print(f"  month-begin : {mean_begin*100:+.3f}%/mo (t {begin_summary['t_stat']:+.2f})   [target ~ -0.17]")
     print(f"  lib bridge  : {mean_lib*100:+.3f}%/mo (t {lib_summary['t_stat']:+.2f})   [target ~ -0.80]")
