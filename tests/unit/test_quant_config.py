@@ -31,14 +31,16 @@ _LOC = Locator(1, 0, 1)  # placeholder span for synthetic STATED fixtures (D7 ne
 # --- config builders mirroring the three anchors ---------------------------
 
 def _str_config():
+    # Gold-aligned (gold_str_drr_2026.md): deciles, long P10 winners − short P1 losers,
+    # sort on the grounded prior_1m_excess_return -> xret (D27 v2). Mirrors str_rulebook.
     return build_quant_config(
         "str",
-        Binding("score", "BOUND", Evidence(column="score", note="prior-month return")),
-        groups=Inherited(5, "STATED", Evidence(locator=_LOC, quote="quintile portfolios")),
+        Binding("xret", "BOUND", Evidence(column="xret", note="prior_1m_excess_return -> xret (D27 v2)")),
+        groups=Inherited(10, "STATED", Evidence(locator=_LOC, quote="we sort bonds into deciles each month")),
         weighting=Inherited("size", "DESIGN", Evidence(note="VW par (BBW §2.4)")),
-        long_group=Inherited(0, "STATED", Evidence(locator=_LOC, quote="long the losers")),
-        short_group=Inherited(4, "STATED", Evidence(locator=_LOC, quote="short the winners")),
-        signal_lag=Inherited(0, "STATED", Evidence(locator=_LOC, quote="as-published, contemporaneous")),
+        long_group=Inherited(9, "STATED", Evidence(locator=_LOC, quote="long the top decile P10")),
+        short_group=Inherited(0, "STATED", Evidence(locator=_LOC, quote="short the bottom decile P1")),
+        signal_lag=Inherited(0, "STATED", Evidence(locator=_LOC, quote="as-published, signal_lag=0")),
     )
 
 

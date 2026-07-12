@@ -4,12 +4,15 @@ provenance-carrying description of ONE runnable strategy (D20), in *paper
 language* (D3). Everything downstream (the Quant-side adapter, RQ1 scoring)
 consumes it.
 
-Shape (D13/D17/D19):
+Shape (D13/D17/D19; paper_facts added v1.1):
 
     StrategySpec
-      +- header:   SpecHeader   -- run provenance (ids, hashes, model, timestamp)
-      +- part1:    Part1        -- formation_structure, asset_class, method_summary
-      +- part2:    Part2        -- common spec-level fields + legs[] + combiner
+      +- header:      SpecHeader        -- run provenance (ids, hashes, model, timestamp)
+      +- part1:       Part1             -- formation_structure, asset_class, method_summary
+      +- part2:       Part2             -- common spec-level fields + legs[] + combiner
+      +- paper_facts: PaperFacts | None -- (v1.1) sample window + claimed metrics;
+                                           extraction output the analysis consumes,
+                                           NEVER read by the adapter (Guard 2, §5)
 
     Part2
       +- <28 common fields>     -- each Inherited[...]
@@ -17,9 +20,10 @@ Shape (D13/D17/D19):
       +- combiner: Combiner     -- how the legs combine
 
     Leg
-      +- sort_signal:  SignalRef        -- MARKER (D22)
-      +- control_axis: SignalRef | None -- the 2nd sort of a double sort
-      +- <7 per-leg sort fields>        -- each Inherited[...] (n_groups = MARKER)
+      +- sort_signal:      SignalRef        -- MARKER (D22)
+      +- control_axis:     SignalRef | None -- the 2nd sort of a double sort
+      +- <8 per-leg sort fields>            -- each Inherited[...] (n_groups = MARKER;
+                                               v1.1 adds control_n_groups)
 
 Every *fact-bearing* field is an ``Inherited[T]`` (D6 -- no parallel Fact[T]),
 reusing the frozen provenance layer. Each ``__post_init__`` type-guards that its
@@ -196,6 +200,7 @@ _LEG_INHERITED_FIELDS: tuple[str, ...] = (
     "control_missing_policy",
     "long_leg",
     "signal_transform",
+    "control_n_groups",
 )
 
 
@@ -204,7 +209,11 @@ class Leg:
     """One long-short construction from one grid (D19). Carries the per-leg sort
     fields; ``sort_signal`` is a SignalRef (MARKER, D22) and ``control_axis`` is
     a SignalRef or None (the 2nd axis of a double sort). The remaining fields are
-    ``Inherited[...]`` (``n_groups`` is the other MARKER)."""
+    ``Inherited[...]`` (``n_groups`` is the other MARKER; ``control_n_groups``,
+    v1.1, is the 2nd-axis group count -- sibling to ``control_axis``).
+
+    ``control_n_groups`` is declared before the defaulted ``control_axis`` so the
+    dataclass keeps all non-default fields ahead of the one field with a default."""
 
     sort_signal: SignalRef
     sort_kind: Inherited          # Inherited[str]
@@ -214,6 +223,7 @@ class Leg:
     control_missing_policy: Inherited  # Inherited[str]
     long_leg: Inherited           # Inherited[str]
     signal_transform: Inherited   # Inherited[str]
+    control_n_groups: Inherited   # Inherited[int] (v1.1) -- 2nd-axis group count
     control_axis: SignalRef | None = None
 
     def __post_init__(self) -> None:
@@ -359,16 +369,61 @@ class Part2:
 
 
 # ---------------------------------------------------------------------------
+# Part 2 (v1.1) -- paper_facts: a SEPARATE spec-level block (NOT a Part 2
+# execution field). Sample window + claimed metrics, quote-bearing and
+# RQ1-scorable; the *analysis* (fidelity harness, Reporter's numeric verifier)
+# consumes them, the adapter NEVER does (Guard 2, §5 -- structurally unreachable
+# because it lives on ``spec.paper_facts``, a sibling the leg/common walk never
+# touches). Anti-bloat rule (schema doc, verbatim): no fifth field without a
+# named consumer and a log amendment.
+# ---------------------------------------------------------------------------
+
+# The paper_facts Inherited fields, in to_dict order. claimed_headline_metric's
+# {mean, t_stat, unit} composite rides inside its single Inherited.value (a dict),
+# exactly as significance_convention carries a composite value.
+_PAPER_FACTS_INHERITED_FIELDS: tuple[str, ...] = (
+    "sample_start",
+    "sample_end",
+    "universe_filter",
+    "claimed_headline_metric",
+)
+
+
+@dataclass(frozen=True)
+class PaperFacts:
+    """(v1.1) The paper's own reported facts: sample window + universe + claimed
+    headline metric. Each field is an ``Inherited[...]`` with the same quote+locator
+    discipline as the rest of the spec (STATED or UNKNOWN(not_stated)). These are
+    extraction OUTPUT the analysis reads; they are never adapter inputs (Guard 2)."""
+
+    sample_start: Inherited            # Inherited[date-as-stated]
+    sample_end: Inherited              # Inherited[date-as-stated]
+    universe_filter: Inherited         # Inherited[str] (free text, weaker-checked)
+    claimed_headline_metric: Inherited  # Inherited[{mean, t_stat, unit}]
+
+    def __post_init__(self) -> None:
+        for name in _PAPER_FACTS_INHERITED_FIELDS:
+            _require_inherited(getattr(self, name), f"PaperFacts.{name}")
+
+    def to_dict(self) -> dict:
+        return {name: _inherited_to_dict(getattr(self, name)) for name in _PAPER_FACTS_INHERITED_FIELDS}
+
+
+# ---------------------------------------------------------------------------
 # The whole spec.
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class StrategySpec:
-    """One runnable strategy in paper language (D20). = header + Part1 + Part2."""
+    """One runnable strategy in paper language (D20). = header + Part1 + Part2,
+    plus (v1.1) an optional ``paper_facts`` block. ``paper_facts`` defaults to
+    ``None`` so v1 call sites keep working; when present it is analysis-only data
+    the adapter never reads (Guard 2, §5)."""
 
     header: SpecHeader
     part1: Part1
     part2: Part2
+    paper_facts: PaperFacts | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.header, SpecHeader):
@@ -383,10 +438,16 @@ class StrategySpec:
             raise LibrarianSchemaError(
                 f"StrategySpec.part2 must be a Part2; got {type(self.part2).__name__}"
             )
+        if self.paper_facts is not None and not isinstance(self.paper_facts, PaperFacts):
+            raise LibrarianSchemaError(
+                "StrategySpec.paper_facts must be a PaperFacts or None; "
+                f"got {type(self.paper_facts).__name__}"
+            )
 
     def to_dict(self) -> dict:
         return {
             "header": self.header.to_dict(),
             "part1": self.part1.to_dict(),
             "part2": self.part2.to_dict(),
+            "paper_facts": self.paper_facts.to_dict() if self.paper_facts is not None else None,
         }

@@ -1,7 +1,13 @@
-# Silence-policy table — v1
+# Silence-policy table — v1.1
 # Per-field routing at adapter intake for UNKNOWN(not_stated) fields (D26, D32c).
 # Effective 2026-07-09. Consumed by the adapter (D26) via the
 # librarian silence-policy loader. Hash-stamped in docs/part2_schema_and_silence_policy_v1.md.
+#
+# v1.1 (schema-v1.1 landing): +control_n_groups (sort_block, tag_and_proceed=n_groups).
+#   control_axis (a SignalRef, not a routable Inherited) and paper_facts (a separate
+#   analysis-only block the adapter never reads) carry NO routable row here -- their
+#   silence semantics are documented in the schema doc and enforced by Guard 1 / the
+#   harness respectively (a dead row nothing routes would only mislead).
 #
 # policy ∈ {tag_and_proceed, refuse, flag, conditional_refuse}
 #   tag_and_proceed(default): paper silent -> adapter omits the field; factory fills+tags its default
@@ -10,7 +16,7 @@
 #   conditional_refuse:       policy depends on structural context (see sort_kind)
 # refuse_on_stated / flag_on_stated: values that, when STATED, override the silence default (D23 refuse-on-conflict)
 
-version: v1
+version: v1.1
 date: 2026-07-09
 basis: [D26, D32]
 markers: [sort_signal, n_groups]   # D32(b): the two sort-block marker fields (long_leg excluded)
@@ -28,6 +34,7 @@ sort_block:
   control_missing_policy: {policy: tag_and_proceed, default: drop}
   long_leg:               {policy: refuse, reason: "load-bearing direction (v2-39): a wrong direction flips the strategy's sign"}
   signal_transform:       {policy: tag_and_proceed, default: none, note: "check-only; no engine transform hook (D32a)"}
+  control_n_groups:       {policy: tag_and_proceed, default: n_groups, note: "v1.1 2nd-axis group count; silent -> omit (factory default control_groups=groups); STATED -> the control_n_groups transform row carries it to control_groups (asymmetric double sorts preserved)"}
   combiner:               {policy: tag_and_proceed, default: single_leg, note: "'other' -> refuse; a multi-leg construction with a silent combiner -> refuse"}
 
 common:

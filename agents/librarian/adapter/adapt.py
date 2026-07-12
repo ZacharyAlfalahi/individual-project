@@ -114,6 +114,12 @@ def adapt_spec(
     # (2) Apply human authorisation field_overrides (-> DESIGN + variant).
     spec = _apply_field_overrides(spec, auth, batch)
 
+    # Guard 2 (schema-v1.1 §5): the adapter reads only header + part2 (transform-table
+    # inputs). ``spec.paper_facts`` -- the analysis-only sample-window/claimed-metric
+    # block -- is NEVER read here; it is not a transform input and lives on a sibling
+    # the leg/common walk never touches. Enforced by the permanent negative test
+    # ``test_g1_adapter_never_reads_paper_facts`` (all_inputs() ∩ PAPER_FACTS_FIELDS == ∅).
+
     # (3) The three translations, per leg + combiner (D25/D28).
     leg_calls, combiner = adapt_legs(
         spec,

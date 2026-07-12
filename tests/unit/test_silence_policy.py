@@ -18,9 +18,9 @@ from agents.librarian.registries import (
     load_silence_policy_table,
 )
 
-# The canonical sha256 of config/silence_policy_v1.yaml, recorded in
+# The canonical sha256 of config/silence_policy_v1.yaml (version v1.1), recorded in
 # docs/part2_schema_and_silence_policy_v1.md.
-_RECORDED_SHA256 = "4e8d97ad972ba27b05a812783d59e83845d3df44e00927219aafa92b09aee186"
+_RECORDED_SHA256 = "3bffb06d9ed58c50623a21272e0728483b90ce065c764c00372ede2f812a9978"
 
 
 @pytest.fixture(scope="module")
@@ -31,7 +31,7 @@ def table():
 # --- loads + version --------------------------------------------------------
 
 def test_table_loads_with_version(table):
-    assert table.version == "v1"
+    assert table.version == "v1.1"
     assert isinstance(table, SilencePolicyTable)
 
 
@@ -80,6 +80,27 @@ def test_sort_kind_unknown_context_raises(table):
     fp = table.policy_for("sort_block", "sort_kind")
     with pytest.raises(LibrarianSchemaError):
         fp.resolve("when_unicorn")
+
+
+def test_control_n_groups_tag_and_proceed(table):
+    # v1.1: the 2nd-axis group count omits on silence (factory defaults control_groups=groups).
+    fp = table.policy_for("sort_block", "control_n_groups")
+    assert fp.policy == "tag_and_proceed"
+    assert fp.default == "n_groups"
+
+
+def test_paper_facts_not_routable(table):
+    # v1.1: paper_facts is an analysis-only block, NOT a routable silence field (the
+    # loader's routable blocks are sort_block/common only) -- the adapter can never
+    # reach it (Guard 2, structural). control_axis likewise has no routable row.
+    from agents.librarian.schema.fields import PAPER_FACTS_FIELDS
+    for field in PAPER_FACTS_FIELDS:
+        with pytest.raises(LibrarianSchemaError):
+            table.policy_for("common", field)
+        with pytest.raises(LibrarianSchemaError):
+            table.policy_for("sort_block", field)
+    with pytest.raises(LibrarianSchemaError):
+        table.policy_for("sort_block", "control_axis")
 
 
 def test_weighting_scheme_tag_and_proceed(table):

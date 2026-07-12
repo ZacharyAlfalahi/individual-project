@@ -1,15 +1,18 @@
 # Gold Spec — str (Dickerson, Robotti & Rossetti 2026)
 
-_Status: **DRAFT — authored 2026-07-11 under schema v1 with ◇ (v1.1) fields pre-filled.** Extraction
-is complete; the spec remains **BLOCKED-ON-RENAME** for instantiation until the reversal column
-(score/rev/str_reversal) is reconciled to one canonical name on the Quant side. Re-stamp on schema
-v1.1 landing._
+_Status: **INSTANTIATED 2026-07-12 (schema v1.1).** Extraction complete. Both 2026-07-11 unblocks
+landed: (1) the sort_signal `prior_1m_excess_return` is GROUNDED in the D27 concept→column table
+(→ `xret`, table v2 — a governed table ROW, not a column rename: the table is a function, cf.
+past_6m_cumulative_return→mom6); (2) DRR-2026's canonical text is FROZEN
+(`evaluation/canonical_texts/drr_2026.frozen.yaml`). Sign note: DRR's as-published −0.99 is a
+REVERSAL; build_str's gold-aligned construction earns MOMENTUM on the corr dev panel — a raw/LIB
+result owned by the §8 bias-toggle decomposition, not reconciled here (see self-check 2)._
 _Target construction: the paper's **unadjusted single-sort** factor (Table 1 Panel A, column (1)) —
 the standard-practice construction whose bias the project studies, not the signal-/return-adjusted
 variants._
-_No frozen canonical text exists for this paper yet. Pages are 1-based PDF pages of
-`papers/pdf/DRR (2026).pdf` parsed with the frozen recipe (PyMuPDF 1.28.0, L1/v2 ladder). Quotes
-verified as exact L1 substrings (`locator_backfill_report.md`)._
+_Frozen canonical text: `evaluation/canonical_texts/drr_2026.frozen.yaml` (63 pages, PyMuPDF 1.28.0,
+L1/v2 ladder). Pages are 1-based PDF pages of `papers/pdf/DRR (2026).pdf`. Quotes verified as exact L1
+substrings of the frozen text (2026-07-12)._
 
 ## Header
 
@@ -18,8 +21,8 @@ paper:                   DRR_2026
 strategy_label:          str
 strategy_quote:          "In Panel A, we sort bonds into deciles each month and form value-weighted portfolios (using bond market capitalization) that are long the top decile and short the bottom decile."   page: 17
 registry_version:        v1
-silence_policy_version:  v1
-canonical_text_hash:     PENDING-FREEZE — recipe normalise_sha256 3d846fef7d710af17c4a183b69353e705ed11e957d7df9390fcba35ac89eee95; source_sha256 d481c99e38fbb012a87f33ecedbcba6614a35e0c28555e39ad459246edf42b58
+silence_policy_version:  v1.1
+canonical_text_hash:     normalise_sha256 3d846fef7d710af17c4a183b69353e705ed11e957d7df9390fcba35ac89eee95 (config/canonical_text.yaml recipe, PyMuPDF 1.28.0 / L1 / v2 ladder); source_sha256 d481c99e38fbb012a87f33ecedbcba6614a35e0c28555e39ad459246edf42b58 (frozen drr_2026)
 ```
 
 ## Part 1 — three fields (all CORE)
@@ -50,6 +53,8 @@ method_summary:       Each month bonds are ranked on the short-term reversal sig
                                        quote: "For example, cs denotes credit spread, str denotes short-term reversal, and mom6_1 denotes six-month momentum.",
                                        page: 10}
                         # Concept resolution: registry v1 alias 'short-term reversal' → prior_1m_excess_return.
+                        # Confirmed by the 2026-07-11 rename ruling: the engine's reversal column takes
+                        # exactly this concept id as its canonical name.
                         # The main text never prints an explicit formula for str; the one-month structure is
                         # corroborated by the theory section's reversal-signal treatment
                         # ("for rever- sal signals where ηi,t = δi,t −δi,t−1", page 61) and by Approach 1's
@@ -61,8 +66,9 @@ method_summary:       Each month bonds are ranked on the short-term reversal sig
                         # The paper's own label for this construction. Panel B's within-firm variant is a
                         # different construction (issuer-demeaned), deliberately NOT this anchor.
 
-◇        control_signal: none
-                        # Single sort; consistency pair holds (single ⇔ control none).
+◇        control_axis:  none
+                        # Single sort; consistency pair holds (single ⇔ control_axis none).
+                        # Field name per the 2026-07-11 brief amendment (shipped name kept).
 
 ◇        control_n_groups: value: UNKNOWN   reason: not_stated
                         searched_note: "No control axis exists; field vacuous for this spec."
@@ -229,5 +235,18 @@ claimed_headline_metric: value: {mean: -0.99, t_stat: -4.46, unit: pct_per_month
    losers−winners mirror is +0.99. The gold records the paper. Engine team: re-verify §5.1's sign
    note against the stored DRR series before locking the target; (iii) sample end 2024-12 vs any
    engine window assumption.** Divergences are data, not errors in the gold.
-3. **Locator backfill.** Quotes verified as exact L1 substrings of the parsed PDF
-   (`locator_backfill_report.md`); re-run when a frozen canonical text exists (PENDING-FREEZE).
+
+   **RESOLVED 2026-07-12 (divergence ii).** `scripts/build_str.py` `str_rulebook` is now aligned to
+   this gold: deciles (n_groups=10), long-P10 winners − short-P1 losers, score = the grounded
+   `prior_1m_excess_return`→`xret`. The old 'Construction A' losers−winners/quintiles builder is gone.
+   Re-verification verdict (the "re-verify §5.1's sign note" ask): the DRR series is NOT vendored, so it
+   was checked against the paper's stated construction + reversal economics + engine wiring
+   (`test_mom6_factor.py:40-59`). This construction earns robust **momentum** (winners−losers ≈
+   +0.95%/mo, t +5.1) on the corr dev panel, NOT DRR's −0.99 reversal — a raw/LIB microstructure result
+   (DRR's own clean estimate is only −0.17) owned by the §8 bias-toggle decomposition, not a leg bug.
+   Divergences (i) weighting base and (iii) sample window remain
+   documented, unfixed.
+3. **Locator backfill.** Quotes RE-VERIFIED 2026-07-12 as exact L1 substrings of the FROZEN canonical
+   text (`evaluation/canonical_texts/drr_2026.frozen.yaml`, `.locate(quote, level="L1")`), not just the
+   ad-hoc parse — representative quotes across the header, sort block, common block, and paper_facts all
+   located. Freeze reproduces the recorded `source_sha256 d481c99e…` and recipe `normalise_sha256 3d846fef…`.

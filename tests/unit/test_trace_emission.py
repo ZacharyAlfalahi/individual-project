@@ -43,7 +43,7 @@ def _trace(paper_id="SYNTH-0001", label="Synthetic Momentum"):
         strategy_label=label,
         registry_version="sig-v1",
         registry_hash="deadbeef",
-        silence_table_version="v1",
+        silence_table_version="v1.1",
         canonical_text_hash="cafef00d",
         model_a_id="fake-a",
         model_b_id="fake-b",

@@ -11,9 +11,11 @@ from __future__ import annotations
 from .fields import (
     ALREADY_FINAL_PART2,
     COMMON_FIELDS,
+    CONTROL_N_GROUPS,
     INT_FIELDS,
     LEG_FIELDS,
     MARKERS,
+    PAPER_FACTS_FIELDS,
     PART1_FIELDS,
     SORT_BLOCK_FIELDS,
 )
@@ -27,6 +29,7 @@ from .strategy_spec import (
     Combiner,
     Leg,
     MethodSummary,
+    PaperFacts,
     Part1,
     Part2,
     SpecHeader,
@@ -46,6 +49,7 @@ __all__ = [
     "Leg",
     "Combiner",
     "Part2",
+    "PaperFacts",
     "StrategySpec",
     # field-name / menu constants
     "PART1_FIELDS",
@@ -55,4 +59,6 @@ __all__ = [
     "ALREADY_FINAL_PART2",
     "MARKERS",
     "INT_FIELDS",
+    "CONTROL_N_GROUPS",
+    "PAPER_FACTS_FIELDS",
 ]

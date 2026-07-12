@@ -105,8 +105,9 @@ def test_g1_signal_resolution_over_all_concepts():
         "credit_rating": "rating",
         "past_6m_cumulative_return": "mom6",
         "bpw_gamma": "gamma",
+        "prior_1m_excess_return": "xret",  # grounded in v2 (resolved 2026-07-12)
     }
-    deferred = ("prior_1m_excess_return", "maturity", "size")
+    deferred = ("maturity", "size")
     for concept, column in grounded.items():
         b = resolve_signal(signal_ref(concept), CT)
         assert b.tag == "BOUND" and b.value == column
@@ -151,9 +152,20 @@ def test_g1_every_part2_field_has_a_home():
         assert field in homed, f"Part 2 field {field!r} has no transform and no silence policy"
 
 
-def test_g1_engine_fields_are_the_expected_nine():
-    # The transform table's engine hooks are exactly the nine documented fields.
+def test_g1_engine_fields_are_the_expected_ten():
+    # The transform table's engine hooks are exactly the ten documented fields.
+    # v1.1 added control_n_groups -> control_groups (identity) so a STATED 2nd-axis
+    # bucket count reaches the factory instead of being silently defaulted.
     assert set(TT.engine_fields()) == {
-        "sort_signal", "control_axis", "n_groups", "long_leg", "signal_lag",
-        "min_bonds", "holding_period", "weighting_scheme", "expost_trim",
+        "sort_signal", "control_axis", "n_groups", "control_n_groups", "long_leg",
+        "signal_lag", "min_bonds", "holding_period", "weighting_scheme", "expost_trim",
     }
+
+
+def test_g1_adapter_never_reads_paper_facts():
+    # Guard 2 (schema-v1.1 §5): no paper_facts field is a transform input, so the
+    # adapter can never reach the analysis-only block. A future rule that references
+    # paper_facts fails this test unless someone deliberately changes it -- then it is
+    # a visible, reviewable diff, not a silent drift.
+    from agents.librarian.schema.fields import PAPER_FACTS_FIELDS
+    assert TT.all_inputs() & PAPER_FACTS_FIELDS == frozenset()

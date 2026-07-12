@@ -1,10 +1,15 @@
-# Transform table (D25, build brief §6) -- v1
+# Transform table (D25, build brief §6) -- v1.1
 #
 # The adapter's vocabulary + structure rulebook: every paper Part 2 field that has
-# an ENGINE HOOK (maps to a build_quant_config kwarg) is one row here. The 28
-# check-only Part 2 fields have NO row -- they never reach the factory; their
-# STATED-conflict handling is the silence table's job (refuse_on_stated /
-# flag_on_stated), NOT a transform.
+# an ENGINE HOOK (maps to a build_quant_config kwarg) is one row here (10 rows as of
+# v1.1: +control_n_groups). The check-only Part 2 fields have NO row -- they never
+# reach the factory; their STATED-conflict handling is the silence table's job
+# (refuse_on_stated / flag_on_stated), NOT a transform.
+#
+# v1.1 (schema-v1.1 landing): +control_n_groups -> control_groups (identity). Without
+# this row a STATED control_n_groups would be silently dropped (the adapter walks
+# transform inputs only; the factory would default control_groups=groups), breaking
+# transform-table totality for any ASYMMETRIC double sort (e.g. 5x3).
 #
 # Each row: id, inputs (the spec fields it reads -- SINGLE HOP: spec fields only,
 # never another transform's output, D25), primary_input, output (the factory
@@ -27,7 +32,7 @@
 # owns the two the factory has no concept of: long_leg='other' (no direction) and
 # combiner='other' (UNSUPPORTED_COMBINER).
 
-version: v1
+version: v1.1
 
 transforms:
   sort_signal:
@@ -53,6 +58,14 @@ transforms:
     output: groups
     kind: identity
     note: "int -> int, same value + domain (v2-7)"
+
+  control_n_groups:
+    id: control_n_groups_to_control_groups
+    inputs: [control_n_groups]
+    primary_input: control_n_groups
+    output: control_groups
+    kind: identity
+    note: "int -> int (v1.1); the 2nd-axis bucket count. Silent -> omit (factory default control_groups=groups); STATED -> passed so an asymmetric double sort (e.g. 5x3) is not silently symmetrised. Only meaningful when a control_axis is present (to_rulebook emits control_groups only then)."
 
   long_leg:
     id: long_leg_to_groups

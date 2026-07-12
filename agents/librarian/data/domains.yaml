@@ -3,12 +3,12 @@
 # Every variable declares its full value set (enum) or range (numeric). Enforced
 # at the form-validator gate (this file's Librarian-side consumer). Two families:
 #
-#   part2   -- the 37 paper-facing Part 2 fields (source:
-#              docs/part2_schema_and_silence_policy_v1.md). Every enum carries
-#              "other" (P3). Signal identity (sort_signal / control_axis) is a
-#              SignalRef, not a scalar domain -- its concept_id domain is the
-#              Signal Concept Registry (checked in validate_librarian_spec), so
-#              it has no row here.
+#   part2   -- the 38 paper-facing Part 2 fields (source:
+#              docs/part2_schema_and_silence_policy_v1.md; v1.1 adds
+#              control_n_groups). Every enum carries "other" (P3). Signal identity
+#              (sort_signal / control_axis) is a SignalRef, not a scalar domain --
+#              its concept_id domain is the Signal Concept Registry (checked in
+#              validate_librarian_spec), so it has no row here.
 #
 #   engine  -- the engine-side field domains (source:
 #              docs/engine_truth_table.md). Carried here so the transform-table
@@ -38,6 +38,9 @@ part2:
   control_missing_policy: {kind: enum, values: [drop, pool, other]}
   long_leg:             {kind: enum, values: [lowest_signal, highest_signal, other]}
   signal_transform:     {kind: enum, values: [none, winsorize, standardize, other]}
+  # control_n_groups (v1.1): 2nd-axis bucket count, >= 2 (mirrors n_groups / the
+  # engine's control_groups). Silence default = n_groups (engine _apply_defaults).
+  control_n_groups:     {kind: int, min: 2, max: null}
   combiner:             {kind: enum, values: [single_leg, equal_average, other]}
 
   # --- common block (spec-level) ---------------------------------------------

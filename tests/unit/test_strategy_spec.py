@@ -81,7 +81,9 @@ def test_multi_leg_spec_constructs():
 def test_to_dict_round_trips():
     spec = build_spec()
     d = spec.to_dict()
-    assert set(d.keys()) == {"header", "part1", "part2"}
+    # v1.1: paper_facts is a top-level key (None when absent).
+    assert set(d.keys()) == {"header", "part1", "part2", "paper_facts"}
+    assert d["paper_facts"] is None
     # header carries the provenance-wrapped strategy_label
     assert d["header"]["strategy_label"]["value"] == "Synthetic Momentum"
     assert d["header"]["strategy_label"]["tag"] == "STATED"
@@ -95,7 +97,49 @@ def test_to_dict_round_trips():
     leg = p2["legs"][0]
     assert leg["sort_signal"]["concept_id"]["value"] == "mom6"
     assert leg["n_groups"]["value"] == 5
+    assert leg["control_n_groups"]["value"] == 5  # v1.1 per-leg int
     assert p2["combiner"]["kind"]["value"] == "single_leg"
+
+
+# --- v1.1: control_n_groups + paper_facts ----------------------------------
+
+def test_raw_control_n_groups_rejected():
+    with pytest.raises(LibrarianSchemaError):
+        build_leg(control_n_groups=5)  # bare int, not Inherited
+
+
+def test_paper_facts_constructs_and_round_trips():
+    from agents.librarian.schema import PaperFacts, StrategySpec
+    pf = PaperFacts(
+        sample_start=stated("2002-01"),
+        sample_end=stated("2021-12"),
+        universe_filter=stated("IG+HY, USD"),
+        claimed_headline_metric=stated({"mean": 0.5, "t_stat": 3.1, "unit": "pct_per_month"}),
+    )
+    d = pf.to_dict()
+    assert set(d.keys()) == {"sample_start", "sample_end", "universe_filter", "claimed_headline_metric"}
+    assert d["claimed_headline_metric"]["value"]["t_stat"] == 3.1
+    spec = build_spec()
+    spec2 = StrategySpec(header=spec.header, part1=spec.part1, part2=spec.part2, paper_facts=pf)
+    assert spec2.to_dict()["paper_facts"]["sample_start"]["value"] == "2002-01"
+
+
+def test_paper_facts_raw_field_rejected():
+    from agents.librarian.schema import PaperFacts
+    with pytest.raises(LibrarianSchemaError):
+        PaperFacts(
+            sample_start="2002-01",  # bare str, not Inherited
+            sample_end=stated("2021-12"),
+            universe_filter=stated("x"),
+            claimed_headline_metric=stated({"mean": 0.0, "t_stat": 0.0, "unit": "x"}),
+        )
+
+
+def test_paper_facts_wrong_type_on_spec_rejected():
+    from agents.librarian.schema import StrategySpec
+    spec = build_spec()
+    with pytest.raises(LibrarianSchemaError):
+        StrategySpec(header=spec.header, part1=spec.part1, part2=spec.part2, paper_facts="nope")
 
 
 def test_bad_top_level_parts_rejected():

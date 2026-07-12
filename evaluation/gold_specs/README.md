@@ -10,7 +10,11 @@ STATED value carries a verbatim quote located at L1 by the project's own `locate
 |---|---|---|---|
 | `gold_drf_bbw_2019.md` | DRF | BBW (2019), JFE | DRAFT — ◇ fields pre-filled; **re-stamp when schema v1.1 lands** (v1.1 committed: NO as of 2026-07-11) |
 | `gold_mom6_jnps_2013.md` | mom6 | Jostova et al. (2013), RFS | AUTHORED under v1 — ◇ trivial; re-stamp on v1.1 is mechanical |
-| `gold_str_drr_2026.md` | str | Dickerson, Robotti & Rossetti (2026) | DRAFT — extraction complete; **BLOCKED-ON-RENAME** (reversal column) for instantiation |
+| `gold_str_drr_2026.md` | str | Dickerson, Robotti & Rossetti (2026) | DRAFT — extraction complete; instantiates after the decided Code task lands (column rename to `prior_1m_excess_return` + DRR canonical-text freeze, resolved 2026-07-11) |
+
+Gold set = str, drf, mom6 — **final** (project decision 2026-07-11; CRF considered and excluded — combiner
+path deferred to the corpus BBW extraction). ◇ control field is named `control_axis` per the
+2026-07-11 brief amendment (shipped code name kept; `control_signal` rejected).
 
 ## Canonical-text status
 
@@ -32,5 +36,8 @@ with the frozen recipe (PyMuPDF 1.28.0 / L1 / v2 ladder; source sha256 in each h
 ## Outstanding (not in scope of this pass)
 
 - D20 enumeration golds (recipe-list per paper) — separate artifact, still to author.
-- Freeze DRR-2026 + JNPS-2013 canonical texts; re-run backfill.
+- Freeze DRR-2026 (bundled into the decided rename Code task) + JNPS-2013 canonical texts; re-run
+  backfill. NB the template note "Jostova PDF still to be sourced" is stale — the PDF is in
+  `papers/pdf/Momentum in Corporate Bond Returns.pdf` (source sha256 in the mom6 header) and this
+  gold was authored from it; only the freeze is outstanding.
 - Re-stamp all three on schema v1.1 landing (expected diff: ◇ stamps only).

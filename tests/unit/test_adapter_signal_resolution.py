@@ -29,6 +29,23 @@ def test_grounded_hit_binds_bound_with_column():
     assert b.evidence.column == "var_5pct"
 
 
+def test_str_signal_binds_to_xret():
+    # prior_1m_excess_return grounded to the engine-contract excess return in v2
+    # (resolved 2026-07-12); the str gold's sort_signal now resolves BOUND, not MISSING.
+    b = resolve_signal(signal_ref("prior_1m_excess_return"), CT)
+    assert b.tag == "BOUND"
+    assert b.value == "xret"
+    assert b.evidence.column == "xret"
+
+
+def test_str_grounding_matches_build_str_score_column():
+    # End-to-end drift guard: the column the gold's sort_signal concept resolves to
+    # IS the column the standalone builder sorts on, so the two cannot silently diverge.
+    from scripts.build_str import str_rulebook
+    b = resolve_signal(signal_ref("prior_1m_excess_return"), CT)
+    assert b.value == str_rulebook()["score"] == "xret"
+
+
 def test_unrecognised_escape_is_missing():
     escape = SignalRef(
         concept_id=signal_ref("unrecognised").concept_id,

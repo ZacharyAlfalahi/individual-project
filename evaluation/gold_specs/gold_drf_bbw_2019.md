@@ -59,7 +59,9 @@ method_summary:       Each month, all sample bonds are independently sorted into
                         # is stated independent (this quote + Table 6 caption, page 15). An extraction that
                         # answers "conditional" has read Table 3 instead of §5.1.
 
-◇        control_signal: concept_id: credit_rating   params: {}
+◇        control_axis:  concept_id: credit_rating   params: {}
+                        # Field name per the 2026-07-11 brief amendment: keeps the shipped code name
+                        # `control_axis` (control_signal was a brief-coined alias, rejected).
                         as_described: {label: "credit rating as the first sorting variable",
                                        quote: "it is natural to use credit risk (proxied by credit rating) as the first sorting variable in the construction of these new bond market factors",
                                        page: 14}

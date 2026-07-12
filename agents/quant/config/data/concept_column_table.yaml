@@ -1,4 +1,4 @@
-# Concept -> Column table (D27) -- v1
+# Concept -> Column table (D27) -- v2
 #
 # The Quant side of the D22/D27 wall. Maps a Signal Concept Registry concept id
 # (+ its canonical parameter tuple) to the panel COLUMN NAME the engine sorts on.
@@ -16,7 +16,7 @@
 # mirror rule -- the type admits AMBIGUOUS, the producer forbids it). A duplicate
 # (concept_id, params) key is a build error (the loader rejects it).
 #
-# GROUNDING (v1). Four concepts are grounded verbatim to the anchor factor panels
+# GROUNDING (v2). Five concepts are grounded verbatim to the anchor factor panels
 # (agents/quant/library/bbw_factors.py + the anchor golden rulebooks): the column
 # name each concept resolves to is unambiguous everywhere it appears.
 #
@@ -25,21 +25,26 @@
 #   credit_rating              -> rating     drf control / crf score (bbw_factors.py)
 #   past_6m_cumulative_return  -> mom6       mom6 score     (build_mom6.py; test_mom6_factor.py)
 #   bpw_gamma                  -> gamma      lrf score      (bbw_factors.py)
+#   prior_1m_excess_return     -> xret       str score      (gold_str_drr_2026.md; build_str.py)
 #
-# DEFERRED (v1 -- three registry concepts are intentionally ABSENT here, so a
-# SignalRef to one resolves MISSING -> the factory refuses MISSING_BINDING). This
-# is the conservative choice: inventing a column would be a "wrong-STATED is
-# poison" hazard.
-#   prior_1m_excess_return -- present in every panel (the raw `ret` renamed) but
-#       PANEL-DEPENDENTLY NAMED: `score` in factors/str.parquet (build_str.py:107),
-#       `rev` in factors/bbw_factors.parquet (build_bbw_factors.py:91, the BBW REV
-#       factor), `str_reversal` in the IPCA panel. There is no single canonical
-#       merged panel, so two valid canonical columns exist. Grounding it is a human
-#       decision that only bites at the str G2 round-trip (needs the str gold spec too).
+# prior_1m_excess_return GROUNDED in v2 (resolved 2026-07-12). Canonical column =
+# `xret` -- the engine-contract EXCESS return already present in every view() panel
+# (views.py), matching the concept's definition ("excess return over the prior
+# month") and the IPCA precedent (str_reversal <- xret, build_ipca_panel.py:76).
+# `xret` is not reserved and needs no materialisation, so a SignalRef resolves BOUND
+# with zero new column. NOTE: the column NAME (`xret`) != the concept id -- the D27
+# table is a function, not a naming convention (cf. past_6m_cumulative_return->mom6,
+# credit_rating->rating), so no rename of the shared `ret`/`xret` columns is made.
+# The ranking is identical to sorting on raw `ret` (rf nets out cross-sectionally
+# each month), so this grounding leaves the str factor unchanged.
+#
+# DEFERRED (v2 -- two registry concepts intentionally ABSENT here, so a SignalRef to
+# one resolves MISSING -> the factory refuses MISSING_BINDING). Conservative: inventing
+# a column would be a "wrong-STATED is poison" hazard.
 #   maturity, size -- no characteristic-sort anchor gold binds a column for these.
-# When a canonical column is chosen these land as versioned edits (v2).
+# When a canonical column is chosen these land as versioned edits (v3).
 
-version: v1
+version: v2
 registry_version: v1
 
 rows:
@@ -55,3 +60,6 @@ rows:
   - concept_id: bpw_gamma
     params: {}
     column: gamma
+  - concept_id: prior_1m_excess_return
+    params: {}
+    column: xret

@@ -273,6 +273,49 @@ def _check_tag_reason(
     return errors
 
 
+# The two double-sort kinds: a declared double sort must name its control axis.
+_DOUBLE_SORT_KINDS: frozenset[str] = frozenset({"independent", "conditional"})
+
+
+def _check_sort_structure(spec: StrategySpec) -> list[LibrarianValidationError]:
+    """Guard 1 (schema-v1.1 §3): per-leg sort-structure consistency between
+    ``sort_kind`` and the presence of a ``control_axis``. A deterministic
+    intra-spec check (D18 family); NEVER auto-repaired (D14) -- a violation is a
+    typed outcome (two extracted fields contradicting), not a fix-up.
+
+    Enforced in ``control_axis`` terms (the two implications; the brief's XOR
+    shorthand is imprecise for ``other``/UNKNOWN, which these handle correctly):
+      * ``sort_kind ∈ {independent, conditional}`` ⇒ ``control_axis is not None``
+        -- a declared double sort with no named 2nd axis is identity-missing;
+      * ``control_axis is not None`` ⇒ ``sort_kind != "single"``
+        -- a single sort cannot carry a 2nd axis.
+    ``other`` / UNKNOWN ``sort_kind`` are neither ``single`` nor a declared double
+    sort, so they trigger neither rule: a *silent* sort_kind is the silence
+    policy's job (conditional_refuse when a control axis is present), not this
+    structural check, which fires only on a STATED contradiction."""
+    errors: list[LibrarianValidationError] = []
+    for i, leg in enumerate(spec.part2.legs):
+        sort_kind = leg.sort_kind.value
+        control_present = leg.control_axis is not None
+        if sort_kind in _DOUBLE_SORT_KINDS and not control_present:
+            errors.append(
+                LibrarianValidationError(
+                    f"part2.legs[{i}].control_axis",
+                    f"sort_kind={sort_kind!r} is a double sort but control_axis is absent -- "
+                    "a declared double sort must name its 2nd axis (Guard 1, schema-v1.1 §3)",
+                )
+            )
+        if control_present and sort_kind == "single":
+            errors.append(
+                LibrarianValidationError(
+                    f"part2.legs[{i}].sort_kind",
+                    "sort_kind='single' but a control_axis is present -- a single sort "
+                    "cannot carry a 2nd axis (Guard 1, schema-v1.1 §3)",
+                )
+            )
+    return errors
+
+
 def validate_librarian_spec(
     spec: StrategySpec,
     registry: SignalRegistryLike | None = None,
@@ -293,5 +336,6 @@ def validate_librarian_spec(
     errors += _check_stated_has_locator(spec)              # (2) D7
     errors += _check_signal_registry(spec, registry)       # (3) D22
     errors += _check_no_ambiguous(spec)                    # (4) adapter-never-AMBIGUOUS
+    errors += _check_sort_structure(spec)                  # Guard 1 (schema-v1.1 §3)
     errors += _check_tag_reason(spec, tag_reason_registry)  # D24 (optional)
     return errors

@@ -60,6 +60,7 @@ def build_leg(**overrides):
         control_missing_policy=stated("drop"),
         long_leg=stated("highest_signal"),
         signal_transform=stated("none"),
+        control_n_groups=stated(5),
     )
     base.update(overrides)
     return Leg(**base)
@@ -123,7 +124,7 @@ def build_header(**overrides):
         strategy_label=stated("Synthetic Momentum"),
         registry_version="sig-v1",
         registry_hash="deadbeef",
-        silence_table_version="v1",
+        silence_table_version="v1.1",
         canonical_text_hash="cafef00d",
     )
     base.update(overrides)

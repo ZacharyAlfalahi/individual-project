@@ -3,12 +3,18 @@ Part 1 + Part 2 field names, enum menus, markers, and the ``ALREADY_FINAL_PART2`
 set -- the single source of truth for *which* fields exist and *what values*
 each menu admits.
 
-Source of record: ``docs/part2_schema_and_silence_policy_v1.md``. 37 Part 2 fields = 9 sort-block + 28 common. Every enum
-menu carries the ``"other"`` escape (P3: menus over prose, with a first-class
-"none of the above"). Markers (D18/D32b) = ``sort_signal`` + ``n_groups`` only.
+Source of record: ``docs/part2_schema_and_silence_policy_v1.md`` (the
+final bulk pass; v1.1 adds ``control_n_groups``). 38 Part 2 fields = 10
+sort-block + 28 common. Every enum menu carries the ``"other"`` escape (P3: menus
+over prose, with a first-class "none of the above"). Markers (D18/D32b) =
+``sort_signal`` + ``n_groups`` only.
 
-``ALREADY_FINAL_PART2`` = all 37 fields: nothing was deferred, so the
+``ALREADY_FINAL_PART2`` = all 38 fields: nothing was deferred, so the
 schema covers the complete Part 2 list.
+
+``PAPER_FACTS_FIELDS`` (v1.1) is a SEPARATE spec-level block (sample window +
+claimed metrics) -- extraction output the analysis consumes, never Part 2
+execution fields, so it is deliberately NOT in ``ALREADY_FINAL_PART2``.
 
 These constants are consumed by:
   * ``strategy_spec.py`` -- the field slots on ``Part2``/``Leg``/``Combiner``.
@@ -48,7 +54,7 @@ ASSET_CLASS_MENU: tuple[str, ...] = (
 )
 
 # ---------------------------------------------------------------------------
-# Part 2 -- sort block (9 fields). Per-leg unless noted (D19: legs + combiner).
+# Part 2 -- sort block (10 fields, v1.1). Per-leg unless noted (D19: legs + combiner).
 # ---------------------------------------------------------------------------
 
 SORT_SIGNAL = "sort_signal"                     # SignalRef (per-leg) -- MARKER
@@ -59,6 +65,7 @@ STRIPE_AGGREGATION = "stripe_aggregation"       # per-leg
 CONTROL_MISSING_POLICY = "control_missing_policy"  # per-leg
 LONG_LEG = "long_leg"                           # per-leg
 SIGNAL_TRANSFORM = "signal_transform"           # per-leg (check-only)
+CONTROL_N_GROUPS = "control_n_groups"           # per-leg int (v1.1) -- 2nd-axis group count
 COMBINER = "combiner"                           # spec-level
 
 # The per-leg fields that live on a Leg (sort_signal + control_axis are
@@ -72,6 +79,7 @@ LEG_FIELDS: tuple[str, ...] = (
     CONTROL_MISSING_POLICY,
     LONG_LEG,
     SIGNAL_TRANSFORM,
+    CONTROL_N_GROUPS,
 )
 
 SORT_BLOCK_FIELDS: tuple[str, ...] = LEG_FIELDS + (COMBINER,)
@@ -191,7 +199,8 @@ SIGNIFICANCE_TSTAT_MENU: tuple[str, ...] = ("hac_t_of_mean", "se_over_sqrt_t", "
 # The authoritative set + markers.
 # ---------------------------------------------------------------------------
 
-# ALREADY_FINAL_PART2 = ALL 37 Part 2 fields (nothing deferred).
+# ALREADY_FINAL_PART2 = ALL 38 Part 2 fields (v1.1: +control_n_groups; nothing
+# deferred). paper_facts is a SEPARATE block, not counted here.
 ALREADY_FINAL_PART2: frozenset[str] = frozenset(SORT_BLOCK_FIELDS + COMMON_FIELDS)
 
 # Markers (D18/D32b): the two sort-block fields a sort paper cannot fail to state.
@@ -200,6 +209,7 @@ MARKERS: frozenset[str] = frozenset({SORT_SIGNAL, N_GROUPS})
 # Integer-valued Part 2 fields (no enum menu; range domain in domains.yaml).
 INT_FIELDS: frozenset[str] = frozenset({
     N_GROUPS,
+    CONTROL_N_GROUPS,
     SIGNAL_LAG,
     MIN_BONDS,
     HOLDING_PERIOD,
@@ -207,7 +217,28 @@ INT_FIELDS: frozenset[str] = frozenset({
     HAC_LAGS,
 })
 
-# Sanity: the counts the schema doc asserts.
-assert len(SORT_BLOCK_FIELDS) == 9, "sort block must have 9 fields (D32)"
+# ---------------------------------------------------------------------------
+# Part 2 (v1.1) -- paper_facts: a SEPARATE spec-level block, NOT part of the
+# Part 2 execution fields. Extraction output (quote-bearing, RQ1-scorable) the
+# *analysis* consumes; the adapter never reads it (Guard 2, §5). Kept out of
+# ALREADY_FINAL_PART2 so no adapter/domain machinery ever iterates it.
+# ---------------------------------------------------------------------------
+
+SAMPLE_START = "sample_start"
+SAMPLE_END = "sample_end"
+UNIVERSE_FILTER = "universe_filter"
+CLAIMED_HEADLINE_METRIC = "claimed_headline_metric"
+
+PAPER_FACTS_FIELDS: frozenset[str] = frozenset({
+    SAMPLE_START,
+    SAMPLE_END,
+    UNIVERSE_FILTER,
+    CLAIMED_HEADLINE_METRIC,
+})
+
+# Sanity: the counts the schema doc asserts (v1.1).
+assert len(SORT_BLOCK_FIELDS) == 10, "sort block must have 10 fields (v1.1: +control_n_groups)"
 assert len(COMMON_FIELDS) == 28, "common block must have 28 fields"
-assert len(ALREADY_FINAL_PART2) == 37, "Part 2 must have 37 fields total"
+assert len(ALREADY_FINAL_PART2) == 38, "Part 2 must have 38 fields total (v1.1)"
+# paper_facts is a separate block, disjoint from the Part 2 execution fields.
+assert PAPER_FACTS_FIELDS.isdisjoint(ALREADY_FINAL_PART2), "paper_facts must not overlap Part 2"

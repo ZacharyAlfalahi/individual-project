@@ -224,6 +224,21 @@ def _adapt_one_leg(
     control_present = leg.control_axis is not None
     leg_refused_before_factory = False
 
+    # --- Guard 1 belt (schema-v1.1 §3): re-assert the validator's sort-structure
+    # consistency at intake, so a spec that somehow bypassed validation still cannot
+    # configure a contradictory run. A STATED contradiction is disagreement-shaped ->
+    # the manual-review lane (REVIEW_REQUIRED), never a silent proceed.
+    sort_kind_value = leg.sort_kind.value
+    if (sort_kind_value in ("independent", "conditional") and not control_present) or (
+        control_present and sort_kind_value == "single"
+    ):
+        batch.refuse(_refusal(
+            strategy_id, RefusalCode.REVIEW_REQUIRED, "sort_kind",
+            f"sort-structure contradiction: sort_kind={sort_kind_value!r} vs "
+            f"control_axis={'present' if control_present else 'absent'} (Guard 1 belt, §3)",
+        ))
+        leg_refused_before_factory = True
+
     # --- sort_signal -> score (Binding). Silence: refuse (the signal is identity).
     sig_routed = route_field(
         silence.policy_for("sort_block", "sort_signal"), leg.sort_signal.concept_id,
@@ -256,6 +271,24 @@ def _adapt_one_leg(
         _handle_refuse_or_flag(n_groups_routed, strategy_id, "n_groups", batch)
         leg_refused_before_factory = True
 
+    # --- control_n_groups -> control_groups (identity, v1.1). A STATED value MUST
+    # reach the factory (D24 totality): silent -> omit (factory default
+    # control_groups=groups); STATED -> passed, so an asymmetric double sort (e.g.
+    # 5x3) is not silently symmetrised. to_rulebook emits control_groups only when a
+    # control axis is present, so a stray value on a single sort is harmless.
+    cng_routed = route_field(
+        silence.policy_for("sort_block", "control_n_groups"), leg.control_n_groups,
+        control_present=control_present,
+    )
+    control_groups: Inherited | None = None
+    if isinstance(cng_routed, Proceed):
+        control_groups = cng_routed.inherited
+    elif isinstance(cng_routed, OmitField):
+        control_groups = None  # factory default control_groups=groups
+    else:
+        _handle_refuse_or_flag(cng_routed, strategy_id, "control_n_groups", batch)
+        leg_refused_before_factory = True
+
     # --- long_leg -> long_group / short_group (value_changing). Silence: refuse.
     long_group: Inherited | None = None
     short_group: Inherited | None = None
@@ -283,7 +316,7 @@ def _adapt_one_leg(
 
     # --- per-leg check-only fields: refuse_on_stated / flag_on_stated only.
     for field in _LEG_INHERITED_FIELDS:
-        if field in ("n_groups", "long_leg"):
+        if field in ("n_groups", "long_leg", "control_n_groups"):
             continue  # engine-hook, handled above
         routed = route_field(
             silence.policy_for("sort_block", field), getattr(leg, field), control_present=control_present
@@ -295,6 +328,7 @@ def _adapt_one_leg(
         "score": score,
         "control": control,
         "groups": groups,
+        "control_groups": control_groups,  # v1.1: STATED -> passed; silent -> None (factory default = groups)
         "long_group": long_group,
         "short_group": short_group,
         "weighting": shared.get("weighting"),
@@ -302,7 +336,6 @@ def _adapt_one_leg(
         "min_bonds": shared.get("min_bonds"),
         "holding_period": shared.get("holding_period"),
         "trim": shared.get("trim"),
-        # control_groups is NOT a Part 2 field -- the factory defaults it to groups (R6).
     }
 
     # --- forward the call, UNLESS the adapter already refused this leg before the
@@ -315,6 +348,7 @@ def _adapt_one_leg(
         score,
         control=control,
         groups=groups,
+        control_groups=control_groups,
         weighting=kwargs["weighting"],  # type: ignore[arg-type]
         signal_lag=kwargs["signal_lag"],  # type: ignore[arg-type]
         min_bonds=kwargs["min_bonds"],  # type: ignore[arg-type]

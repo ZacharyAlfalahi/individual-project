@@ -59,15 +59,41 @@ def test_combiner_other_refuses():
 
 
 def test_grounded_double_sort_rulebook():
-    # A var_5pct sort with a credit_rating control -> the drf-shaped rulebook.
-    leg = grounded_leg("var_5pct", control_axis=grounded_leg("credit_rating").sort_signal)
+    # A var_5pct sort with a credit_rating control -> the drf-shaped rulebook. A
+    # declared double sort names its axis via sort_kind=independent (Guard 1, §3:
+    # a control axis with sort_kind=single is a structural contradiction).
+    leg = grounded_leg(
+        "var_5pct",
+        control_axis=grounded_leg("credit_rating").sort_signal,
+        sort_kind=stated("independent"),
+    )
     r = adapt_spec(adapter_spec(legs=(leg,)))
     lc = r.leg_calls[0]
     assert isinstance(lc.result, QuantConfig)
     rb = to_rulebook(lc.result)
     assert rb["score"] == "var_5pct"
     assert rb["control"] == "rating"
-    assert rb["control_groups"] == rb["groups"]  # factory defaults control_groups=groups (R6)
+    assert rb["control_groups"] == rb["groups"]  # symmetric 5x5: stated control_n_groups(=5) == groups
+
+
+def test_asymmetric_double_sort_control_groups_flows():
+    # v1.1 tenth transform row: a STATED control_n_groups reaches the factory as
+    # control_groups, so an ASYMMETRIC double sort (5x3) is NOT silently symmetrised
+    # to 5x5. This is exactly the case Guard 2 cannot catch (symmetric 5x5 hides the
+    # drop because the defaulted control_groups coincidentally equals groups).
+    leg = grounded_leg(
+        "var_5pct",
+        control_axis=grounded_leg("credit_rating").sort_signal,
+        sort_kind=stated("independent"),
+        n_groups=stated(5),
+        control_n_groups=stated(3),
+    )
+    r = adapt_spec(adapter_spec(legs=(leg,)))
+    lc = r.leg_calls[0]
+    assert isinstance(lc.result, QuantConfig)
+    rb = to_rulebook(lc.result)
+    assert rb["groups"] == 5
+    assert rb["control_groups"] == 3  # STATED 2nd-axis count flows through, not defaulted to groups
 
 
 def test_run_to_completion_collects_all_adapter_refusals():
@@ -86,3 +112,17 @@ def test_any_leg_refused_makes_strategy_refused():
     r = adapt_spec(adapter_spec(legs=(grounded_leg("var_5pct"), grounded_leg("maturity"))))
     assert r.refused
     assert any(lc.refused for lc in r.leg_calls)
+
+
+def test_guard1_belt_refuses_contradictory_leg():
+    # A control axis with sort_kind=single is a structural contradiction (Guard 1, §3);
+    # the adapter belt refuses it REVIEW_REQUIRED at intake, before the factory (§3 belt).
+    leg = grounded_leg(
+        "var_5pct",
+        control_axis=grounded_leg("credit_rating").sort_signal,
+        sort_kind=stated("single"),
+    )
+    r = adapt_spec(adapter_spec(legs=(leg,)))
+    assert r.refused
+    assert any(x.code is RefusalCode.REVIEW_REQUIRED and x.field == "sort_kind" for x in r.refusals)
+    assert r.leg_calls[0].result is None  # never reached the factory

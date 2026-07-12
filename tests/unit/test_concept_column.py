@@ -16,20 +16,22 @@ from agents.quant.config.concept_column import (
 )
 from agents.quant.library.characteristic_sort import _RESERVED_COLUMNS
 
-# The four v1 grounded rows (from the anchor factor panels).
+# The five v2 grounded rows (from the anchor factor panels). prior_1m_excess_return
+# grounded to xret in v2 (resolved 2026-07-12; the engine-contract excess return).
 _GROUNDED = {
     "var_5pct": "var_5pct",
     "credit_rating": "rating",
     "past_6m_cumulative_return": "mom6",
     "bpw_gamma": "gamma",
+    "prior_1m_excess_return": "xret",
 }
-# The three concepts deliberately absent from v1 (resolve MISSING).
-_DEFERRED = ("prior_1m_excess_return", "maturity", "size")
+# The two concepts deliberately absent from v2 (resolve MISSING).
+_DEFERRED = ("maturity", "size")
 
 
 def test_loads_default_table():
     t = load_concept_column_table()
-    assert t.version == "v1"
+    assert t.version == "v2"
     assert t.registry_version == "v1"  # the handshake attribute (D27(1))
     assert set(t.concept_ids()) == set(_GROUNDED)
 

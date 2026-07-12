@@ -52,8 +52,9 @@ method_summary:       Each month t, bonds are ranked on their cumulative return 
                         # One sort axis described; no control axis anywhere in §2. The quote states a
                         # plain single decile sort.
 
-◇        control_signal: none
-                        # Single sort; consistency pair holds (single ⇔ control none).
+◇        control_axis:  none
+                        # Single sort; consistency pair holds (single ⇔ control_axis none).
+                        # Field name per the 2026-07-11 brief amendment (shipped name kept).
 
 ◇        control_n_groups: value: UNKNOWN   reason: not_stated
                         searched_note: "No control axis exists; field vacuous for this spec. Default

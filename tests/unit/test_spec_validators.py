@@ -125,6 +125,54 @@ def test_no_ambiguous_check_clean_on_valid_spec():
     assert _check_no_ambiguous(build_spec()) == []
 
 
+# --- Guard 1 (schema-v1.1 §3): sort-structure consistency ------------------
+
+def _spec_with(sort_kind, control_axis):
+    leg = build_leg(sort_kind=stated(sort_kind), control_axis=control_axis)
+    return build_spec(part2=build_part2(legs=[leg]))
+
+
+def test_guard1_single_no_control_passes():
+    errs = validate_librarian_spec(_spec_with("single", None), registry=FakeSignalRegistry())
+    assert errs == []
+
+
+def test_guard1_independent_with_control_passes():
+    errs = validate_librarian_spec(
+        _spec_with("independent", signal_ref("var5pct")), registry=FakeSignalRegistry()
+    )
+    assert errs == []
+
+
+def test_guard1_independent_without_control_fails():
+    errs = validate_librarian_spec(_spec_with("independent", None), registry=FakeSignalRegistry())
+    assert any("Guard 1" in e.reason for e in errs)
+    assert any(e.field == "part2.legs[0].control_axis" for e in errs)
+
+
+def test_guard1_single_with_control_fails():
+    errs = validate_librarian_spec(
+        _spec_with("single", signal_ref("var5pct")), registry=FakeSignalRegistry()
+    )
+    assert any("Guard 1" in e.reason for e in errs)
+    assert any(e.field == "part2.legs[0].sort_kind" for e in errs)
+
+
+def test_guard1_conditional_without_control_fails():
+    errs = validate_librarian_spec(_spec_with("conditional", None), registry=FakeSignalRegistry())
+    assert any("Guard 1" in e.reason for e in errs)
+
+
+def test_guard1_other_and_unknown_sort_kind_do_not_fire():
+    # 'other' + no control and an UNKNOWN sort_kind are legal (a silent sort_kind is
+    # the silence policy's job, not a structural contradiction).
+    from _librarian_fixtures import unknown
+    assert validate_librarian_spec(_spec_with("other", None), registry=FakeSignalRegistry()) == []
+    leg = build_leg(sort_kind=unknown(), control_axis=None)
+    errs = validate_librarian_spec(build_spec(part2=build_part2(legs=[leg])), registry=FakeSignalRegistry())
+    assert errs == []
+
+
 # --- caller-contract guard -------------------------------------------------
 
 def test_validate_rejects_non_spec():
