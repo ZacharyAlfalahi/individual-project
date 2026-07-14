@@ -62,6 +62,8 @@ class RunProvenance:
     prompt_template_hashes: str | None = None
     run_id: str | None = None
     timestamp: str | None = None
+    standing_substitutions_version: str | None = None
+    standing_substitutions_hash: str | None = None
 
     @property
     def model_ids(self) -> str:
@@ -116,6 +118,8 @@ def emit_spec_and_trace(
         run_id=prov.run_id,
         timestamp=prov.timestamp,
         trace_sha256=trace.sha256(),
+        standing_substitutions_version=prov.standing_substitutions_version,
+        standing_substitutions_hash=prov.standing_substitutions_hash,
     )
     spec = StrategySpec(header=header, part1=part1, part2=part2)
 

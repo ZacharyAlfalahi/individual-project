@@ -42,9 +42,10 @@ from agents.quant.config import (
 from agents.quant.config.concept_column import ConceptColumnTable
 
 from ..registries.silence_policy import SilencePolicyTable
+from ..registries.standing_substitutions import NO_STANDING_SUBS, StandingSubstitutionTable
 from ..schema.strategy_spec import Leg, StrategySpec
 from .authorisation import AuthorisationRecords, NO_AUTHORISATIONS
-from .result import CombinerInstruction, LegCall, _Batch
+from .result import AppliedStandingSub, CombinerInstruction, LegCall, _Batch
 from .signal_resolution import resolve_signal
 from .silence_routing import FlagField, OmitField, Proceed, RefuseField, route_field
 from .transform_table import Omit, Produced, Review, TransformTable
@@ -90,6 +91,15 @@ def _wrap_inferred(value: object, rule_id: str, source: Inherited, note: str) ->
     )
 
 
+def _wrap_design(value: object, note: str) -> Inherited:
+    """A standing-substitution transform output (contract §6): DESIGN carrying a note
+    (the decision), never a paper quote (the value is a project convention, not a paper
+    fact). Per D24 weakest-input derivation, a value derived from a DESIGN input is
+    DESIGN(derived_from_design) -- so a standing-substituted weighting is DESIGN, not
+    INFERRED. No locator (DESIGN needs a note, not a quote; D7 locators are STATED-only)."""
+    return Inherited(value, "DESIGN", Evidence(note=note))
+
+
 def _resolve_with_auth(signal_ref, concept_table, auth, paper_id, strategy_label, batch) -> Binding:
     """Resolve a SignalRef, honouring an authorisation binding_substitution (D27):
     a matching substitution binds the hand-chosen column and flags the run a
@@ -111,6 +121,7 @@ def _adapt_common(
     tt: TransformTable,
     silence: SilencePolicyTable,
     batch: _Batch,
+    standing_subs: StandingSubstitutionTable = NO_STANDING_SUBS,
 ) -> dict[str, object]:
     """Translate the 28 common fields once. Engine-hook fields (signal_lag,
     min_bonds, holding_period, weighting, expost_trim) produce shared kwargs;
@@ -134,7 +145,7 @@ def _adapt_common(
             shared[kwarg] = None
 
     # weighting: composite of weighting_scheme (+ weighting_base).
-    shared["weighting"] = _adapt_weighting(part2, tt, silence, sid, batch)
+    shared["weighting"] = _adapt_weighting(part2, tt, silence, sid, batch, standing_subs)
 
     # expost_trim: v1 -> none/silent omit; else Review.
     shared["trim"] = _adapt_trim(part2, tt, silence, sid, batch)
@@ -154,7 +165,7 @@ def _adapt_common(
     return shared
 
 
-def _adapt_weighting(part2, tt, silence, sid, batch) -> Inherited | None:
+def _adapt_weighting(part2, tt, silence, sid, batch, standing_subs=NO_STANDING_SUBS) -> Inherited | None:
     scheme_routed = route_field(
         silence.policy_for("common", "weighting_scheme"), part2.weighting_scheme, control_present=False
     )
@@ -169,12 +180,39 @@ def _adapt_weighting(part2, tt, silence, sid, batch) -> Inherited | None:
     )
     base_value = base_routed.inherited.value if isinstance(base_routed, Proceed) else None
 
+    # Standing substitution (contract §6): a project-wide convention may divert a STATED
+    # weighting_base (e.g. market_value -> par) to a DESIGN value BEFORE the vocab lookup,
+    # WITHOUT flagging the strategy a variant. Bright line (D27): only over a Proceed
+    # (STATED/INFERRED) base -- never a silent/UNKNOWN one (that is an extraction gap, not a
+    # divergence to authorise). The output is then DESIGN (D24: DESIGN input -> DESIGN).
+    design_sub = None
+    paper_base = base_value
+    if isinstance(base_routed, Proceed):
+        design_sub = standing_subs.substitution_for("weighting_base", base_value)
+        if design_sub is not None:
+            batch.standing_subs_applied.append(
+                AppliedStandingSub(
+                    field="weighting_base",
+                    paper_value=paper_base,
+                    engine_value=design_sub.replacement,
+                    substitution_id=design_sub.id,
+                )
+            )
+            base_value = design_sub.replacement
+
     outcome = tt.apply_weighting(scheme_routed.inherited.value, base_value)
     if isinstance(outcome, Omit):
         return None
     if isinstance(outcome, Review):
         batch.refuse(_refusal(sid, RefusalCode.REVIEW_REQUIRED, "weighting_scheme", outcome.detail))
         return None
+    if design_sub is not None:
+        # Value derived from a DESIGN-substituted base -> DESIGN(derived_from_design), D24.
+        return _wrap_design(
+            outcome.value,
+            note=(f"standing substitution {design_sub.id!r}: weighting_base {paper_base!r} -> "
+                  f"{design_sub.replacement!r} -> weighting={outcome.value!r} ({design_sub.source_decision})"),
+        )
     # Produced: value_changing -> INFERRED(adapter). market_value/other ride through
     # to the factory, which refuses OUT_OF_ENUM_WEIGHTING (representability is its job).
     return _wrap_inferred(
@@ -407,10 +445,11 @@ def adapt_legs(
     silence_table: SilencePolicyTable,
     batch: _Batch,
     auth: AuthorisationRecords = NO_AUTHORISATIONS,
+    standing_subs: StandingSubstitutionTable = NO_STANDING_SUBS,
 ) -> tuple[tuple[LegCall, ...], CombinerInstruction | None]:
     """Translate a spec's Part 2 into per-leg factory calls + a combiner
     instruction, collecting adapter refusals/flags into ``batch``."""
-    shared = _adapt_common(spec, transform_table, silence_table, batch)
+    shared = _adapt_common(spec, transform_table, silence_table, batch, standing_subs)
     leg_calls = tuple(
         _adapt_one_leg(spec, leg, i, shared, transform_table, concept_table, silence_table, auth, batch)
         for i, leg in enumerate(spec.part2.legs)

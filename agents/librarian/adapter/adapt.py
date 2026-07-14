@@ -30,6 +30,7 @@ from agents.quant.config.concept_column import ConceptColumnTable, load_concept_
 
 from ..errors import LibrarianSchemaError
 from ..registries.silence_policy import SilencePolicyTable, load_silence_policy_table
+from ..registries.standing_substitutions import NO_STANDING_SUBS, StandingSubstitutionTable
 from ..schema.fields import COMMON_FIELDS
 from ..schema.strategy_spec import StrategySpec
 from .authorisation import AuthorisationRecords, load_authorisation_records
@@ -86,6 +87,7 @@ def adapt_spec(
     silence_table: SilencePolicyTable | None = None,
     transform_table: TransformTable | None = None,
     auth: AuthorisationRecords | None = None,
+    standing_subs: StandingSubstitutionTable | None = None,
     data_root: str | Path | None = None,
 ) -> AdaptResult:
     """Adapt one ``StrategySpec`` to its per-leg factory calls + combiner (D25)."""
@@ -93,6 +95,9 @@ def adapt_spec(
     silence_table = silence_table if silence_table is not None else load_silence_policy_table()
     transform_table = transform_table if transform_table is not None else load_transform_table()
     auth = auth if auth is not None else load_authorisation_records()
+    # Ordinary calls use the EMPTY standing table (byte-identical to pre-standing-subs);
+    # the G2 harness passes an explicit, hash-verified table (contract §6 temporal rule).
+    standing_subs = standing_subs if standing_subs is not None else NO_STANDING_SUBS
 
     batch = _Batch()
     label = spec.header.strategy_label.value
@@ -128,6 +133,7 @@ def adapt_spec(
         silence_table=silence_table,
         batch=batch,
         auth=auth,
+        standing_subs=standing_subs,
     )
 
     return AdaptResult(
@@ -137,4 +143,5 @@ def adapt_spec(
         refusals=tuple(batch.refusals),
         flags=tuple(batch.flags),
         variant=batch.variant,
+        standing_subs_applied=tuple(batch.standing_subs_applied),
     )

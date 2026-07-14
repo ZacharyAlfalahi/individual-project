@@ -65,6 +65,19 @@ class LegCall:
 
 
 @dataclass(frozen=True)
+class AppliedStandingSub:
+    """One standing substitution the adapter applied to this strategy (contract §6):
+    a STATED paper value diverted to a DESIGN engine value by a project-wide convention
+    (e.g. weighting_base market_value -> par). Recorded so the G2 register can emit its
+    row; carries NO variant effect (standing subs stay IN fidelity aggregates, D23)."""
+
+    field: str
+    paper_value: object
+    engine_value: object
+    substitution_id: str
+
+
+@dataclass(frozen=True)
 class AdaptResult:
     """The adapter's whole-strategy output (D25/D28)."""
 
@@ -74,6 +87,9 @@ class AdaptResult:
     refusals: tuple[ConfigRefusal, ...] = ()   # HARD -> strategy refused
     flags: tuple[ConfigRefusal, ...] = ()       # SOFT review flags -> proceed
     variant: bool = False
+    # Standing substitutions applied (contract §6): DESIGN, non-variant. Read by the
+    # G2 register; deliberately NOT emitted by to_dict (keeps the wall artifact stable).
+    standing_subs_applied: tuple[AppliedStandingSub, ...] = ()
 
     @property
     def refused(self) -> bool:
@@ -103,6 +119,7 @@ class _Batch:
     refusals: list = field(default_factory=list)
     flags: list = field(default_factory=list)
     variant: bool = False
+    standing_subs_applied: list = field(default_factory=list)
 
     def refuse(self, refusal: ConfigRefusal) -> None:
         self.refusals.append(refusal)

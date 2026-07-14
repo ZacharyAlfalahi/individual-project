@@ -84,6 +84,11 @@ class SpecHeader:
     run_id: str | None = None
     timestamp: str | None = None
     trace_sha256: str | None = None
+    # Additive (contract §6): the standing-substitutions file this run cited + its byte
+    # hash, so the "hash predates run" temporal rule is mechanically checkable. None when
+    # no standing table was in force (ordinary calls) -> omitted from to_dict.
+    standing_substitutions_version: str | None = None
+    standing_substitutions_hash: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.paper_id, str) or self.paper_id.strip() == "":
@@ -103,12 +108,14 @@ class SpecHeader:
             ("run_id", self.run_id),
             ("timestamp", self.timestamp),
             ("trace_sha256", self.trace_sha256),
+            ("standing_substitutions_version", self.standing_substitutions_version),
+            ("standing_substitutions_hash", self.standing_substitutions_hash),
         ):
             if val is not None and not isinstance(val, str):
                 raise LibrarianSchemaError(f"SpecHeader.{name} must be a str or None")
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "paper_id": self.paper_id,
             "strategy_label": _inherited_to_dict(self.strategy_label),
             "registry_version": self.registry_version,
@@ -121,6 +128,13 @@ class SpecHeader:
             "timestamp": self.timestamp,
             "trace_sha256": self.trace_sha256,
         }
+        # Additive (contract §6): emit the standing-substitutions stamps only when present,
+        # so headers without them serialise byte-identically to pre-standing-subs.
+        if self.standing_substitutions_version is not None:
+            out["standing_substitutions_version"] = self.standing_substitutions_version
+        if self.standing_substitutions_hash is not None:
+            out["standing_substitutions_hash"] = self.standing_substitutions_hash
+        return out
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,40 @@
+# Standing-substitutions table — v1
+# Project-wide, pre-registered execution conventions (evaluation contract §6).
+#
+# A STANDING substitution replaces a STATED paper-language field value with a DESIGN
+# value by a fixed predicate — WITHOUT flagging the strategy a variant. Contrast the
+# per-strategy override channel (agents/librarian/adapter/data/authorisation_records.yaml),
+# which DOES set variant=true and is EXCLUDED from replication-fidelity aggregates (D23).
+# The canonical example is par-weighting: the panel's authoritative size field is par
+# (offering_amt), so a paper that value-weights by market value is compiled with the par
+# proxy — a project-wide convention applied to every value-weighted anchor, not a
+# per-paper divergence.
+#
+# Properties (contract §6, enforced structurally by the loader):
+#   provenance: DESIGN                — a deliberate project decision
+#   changes_variant_status: false     — INCLUDED in replication-fidelity aggregates
+#
+# Temporal bright line (contract §6/§9): this file's sha256 must PREDATE any run it
+# authorises. The run records the file hash in its provenance; the G2 harness asserts
+# verify_hash() against the recorded constant (registries/standing_substitutions.py:
+# STANDING_SUBS_V1_SHA256) so an absent/edited file is caught. The recorded hash lives
+# OUTSIDE this file (a hash embedded in the file it hashes would be self-referential).
+#
+# This is a SEPARATE artifact from the per-strategy authorisation records — do not fold
+# the two channels together.
+
+version: v1
+basis: ["evaluation_contract_v1 §6", "D23"]
+
+substitutions:
+  - id: par_weighting_v1
+    field: weighting_base
+    when_stated_in: [market_value]
+    replacement: par
+    provenance: DESIGN
+    changes_variant_status: false
+    note: >-
+      The panel's authoritative size field is par (offering_amt), not the market value
+      of amount outstanding; a project-wide value-weighting convention applied to every
+      value-weighted anchor.
+    source_decision: "docs/quant/specs/BBW_anchor_implementation_spec.md §2.4"
