@@ -1,7 +1,7 @@
 """
 Build the mom6 (6-month momentum) formation signal — the trailing cumulative
 return that the mom6_1 anchor sorts on (Jostova et al. 2013;
-BBW_anchor_implementation_spec.md §5.2).
+docs/quant/specs/BBW_anchor_implementation_spec.md §5.2).
 
 Family-indexed per A9: emits `mom6_raw` (from `ret_raw`) and `mom6_corr` (from
 `ret_corr`).

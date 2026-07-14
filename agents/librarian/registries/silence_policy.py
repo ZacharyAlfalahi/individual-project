@@ -26,7 +26,7 @@ flips to a flag).
 
 **Versioning + hashing.** The table exposes ``version`` (from the file) and
 ``content_hash`` = sha256 of the *file bytes* (the recorded canonical hash in
-``docs/part2_schema_and_silence_policy_v1.md`` is the byte hash of exactly this
+``docs/librarian/specs/part2_schema_and_silence_policy_v1_1.md`` is the byte hash of exactly this
 file). ``verify_hash(expected)`` lets a caller/test assert against it. Note the
 byte-hash covers formatting + comments -- it is the artifact-freeze check, not a
 semantic hash (contrast the signal registry's canonical-content hash).

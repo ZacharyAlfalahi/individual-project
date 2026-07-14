@@ -10,8 +10,8 @@ effect beyond ordering.
 
 This test PINS that behaviour; it does NOT assert the behaviour is correct. The
 "days vs observations" question is a source-fidelity item tracked in
-docs/citations_verified.md §1c/I1 against DRR 2026 Appendix A.3, and the current
-implementation is described in docs/distressed_filters_spec.md §3.
+docs/data/registers/citations_verified.md §1c/I1 against DRR 2026 Appendix A.3, and the current
+implementation is described in docs/data/specs/distressed_filters_spec.md §3.
 
 Once A.3 is verified, exactly one of:
   - the spec wording is corrected "days" -> "observations" (these tests stay

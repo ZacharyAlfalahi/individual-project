@@ -201,7 +201,7 @@ def asof_monthly_rating(
 ) -> pd.DataFrame:
     """Average per-agency as-of ratings onto a (cusip, date) grid.
 
-    BBW/DRR convention (BBW_anchor_implementation_spec.md §2.3): rating_numeric
+    BBW/DRR convention (docs/quant/specs/BBW_anchor_implementation_spec.md §2.3): rating_numeric
     is the numeric MEAN of the available agency ratings in `agencies` (S&P
     'SPR' and Moody's 'MR'), with single-agency fallback when only one is
     available and NaN when neither is. Any agency not in `agencies` (Fitch

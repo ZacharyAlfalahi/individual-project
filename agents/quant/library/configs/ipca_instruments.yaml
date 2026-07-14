@@ -1,5 +1,5 @@
 # Machine-readable instrument registry for the IPCA Workstream B feed (the buildable FISD+TRACE
-# subset). Consumed by scripts/build_ipca_panel.py. Spec: docs/characteristic_registry_spec.md §1.
+# subset). Consumed by scripts/build_ipca_panel.py. Spec: docs/quant/specs/characteristic_registry_spec.md §1.
 #
 # Family policy (A9): price-derived instruments carry _raw/_corr; rating & maturity are agnostic.
 # All instruments are dated month m-1 (KPP next-return convention); the build sets
@@ -48,7 +48,7 @@ instruments:
     column: {raw: time_to_maturity, corr: time_to_maturity}
     family_indexed: false
     provenance: DESIGN
-    evidence: "[POLICY: maturity characteristic; par-duration-from-coupon deferred (needs a yield; DtS use blocked) — docs/characteristic_registry_spec.md §1]"
+    evidence: "[POLICY: maturity characteristic; par-duration-from-coupon deferred (needs a yield; DtS use blocked) — docs/quant/specs/characteristic_registry_spec.md §1]"
   - name: bond_vol
     source: signals/bond_vol.parquet
     column: {raw: bond_vol_raw, corr: bond_vol_corr}

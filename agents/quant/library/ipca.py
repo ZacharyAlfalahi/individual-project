@@ -1,6 +1,6 @@
 """
 IPCA estimator — faithful replication of Kelly–Palhares–Pruitt (KPP) Instrumented
-PCA for corporate bonds. Spec: ``docs/ipca_spec.md`` (register-closed v1.0).
+PCA for corporate bonds. Spec: ``docs/quant/specs/ipca_spec.md`` (register-closed v1.0).
 
 This is a PURE, DETERMINISTIC library: the Quant agent *configures* it via YAML; nothing
 here is authored at run time. It consumes per-month sufficient statistics or raw matrices
@@ -15,7 +15,7 @@ convention), already rank-transformed, with the constant as the LAST column. ``R
 vector of scaled excess returns for month ``m``. The module asserts ``characteristic_asof ==
 m-1`` so a second lag cannot be applied accidentally.
 
-Adjudicated ambiguities (see ``docs/ipca_adjudications.md``):
+Adjudicated ambiguities (see ``docs/quant/registers/ipca_adjudications.md``):
 - R1: the rank-transform receipt check is lane-aware (strict ``max==+0.5`` only on the
   faithful lane; on the demeaned lane verify ``mean≈0`` + bounded, non-zero spread).
 - R2: identification is made a deterministic function of the subspace — orthonormalise via
@@ -934,7 +934,7 @@ def smoothing_cost_curve(
     For each γ: smooth the weight path, realise ``w̃_t·f_t``, subtract the per-period 19 bp turnover
     drag, report the net Sharpe. ``weights_path`` is (J, K); ``factor_path`` is (K, J). At γ=0 the
     net return is gross minus the un-smoothed turnover cost. (The spread leg emits no weight path —
-    that path is the deferred item; see docs/ipca_adjudications.md.)
+    that path is the deferred item; see docs/quant/registers/ipca_adjudications.md.)
     """
     wp = np.asarray(weights_path, dtype=np.float64)
     fp = np.asarray(factor_path, dtype=np.float64)

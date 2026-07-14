@@ -1,6 +1,6 @@
 """
 Ex-post vs ex-ante return winsorization — the mom6 look-ahead (LAB) toggle
-(BBW_anchor_implementation_spec.md §7.1).
+(docs/quant/specs/BBW_anchor_implementation_spec.md §7.1).
 
 This is the bias DRR-2026 identify: the +0.30%/mo momentum premium is entirely
 an artefact of asymmetric EX-POST winsorization — a one-sided right-tail clip

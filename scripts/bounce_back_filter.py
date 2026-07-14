@@ -17,7 +17,7 @@ anchor is dropped only if at least one of the next `lookahead` trades shows a
 recovery to within (back_to_anchor_tol + candidate_slack_abs) of the median.
 A par-snap heuristic redirects the flagging anchor to par for near-par bonds;
 cooldown applies only after a par-block drop (matching DRR Table A.2's "rows
-skipped after flagging par blocks"). See docs/bounce_back_filter_spec.md.
+skipped after flagging par blocks"). See docs/data/specs/bounce_back_filter_spec.md.
 
 All parameters live in docs/thresholds.yaml under the `bounce_back_filter` key.
 This script never hard-codes thresholds.
@@ -102,7 +102,7 @@ def load_bounce_back_config() -> dict:
     if "bounce_back_filter" not in cfg:
         raise KeyError(
             f"`bounce_back_filter` section missing from {THRESHOLDS_FILE}. "
-            "See docs/bounce_back_filter_spec.md Section 5."
+            "See docs/data/specs/bounce_back_filter_spec.md Section 5."
         )
     params = cfg["bounce_back_filter"]
     missing = [k for k in REQUIRED_PARAM_KEYS if k not in params]
@@ -133,7 +133,7 @@ def _near_par_run(dq: deque, par_level: float, par_band: float, par_min_run: int
 def _apply_bounce_back_loop(prices, params: dict):
     """Sequential per-bond bounce-back filter (DRR Table A.2).
 
-    Returns (keep_mask, n_dropped). See bounce_back_filter_spec.md Section 3.
+    Returns (keep_mask, n_dropped). See docs/data/specs/bounce_back_filter_spec.md Section 3.
     """
     threshold_abs = float(params["threshold_abs"])
     lookahead = int(params["lookahead"])

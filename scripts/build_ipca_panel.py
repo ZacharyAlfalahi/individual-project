@@ -1,6 +1,6 @@
 """
 Build the IPCA Workstream B characteristic-panel feed (the buildable FISD+TRACE 7-instrument
-subset) for the ipca module. Spec: docs/characteristic_registry_spec.md. Instruments + family
+subset) for the ipca module. Spec: docs/quant/specs/characteristic_registry_spec.md. Instruments + family
 policy: agents/quant/library/configs/ipca_instruments.yaml.
 
 Pipeline (family-parameterised, corr default per D6):
@@ -15,7 +15,7 @@ Pipeline (family-parameterised, corr default per D6):
   6. Emit data/development/ipca_panel_<family>.parquet (long) + an audit JSON, wall-enforced.
 
 This is INTERFACE-VALIDATION data — NON-COMPARABLE to KPP (7-instrument bond-only, VOL-scaled,
-no equity, no DtS). See docs/characteristic_registry_spec.md §7.
+no equity, no DtS). See docs/quant/specs/characteristic_registry_spec.md §7.
 
 Usage:  python scripts/build_ipca_panel.py [--family corr|raw]
 Requires: monthly_panel_maximal.parquet; signals/{mom6,var_5pct,gamma_illiq,bond_vol}.parquet
@@ -222,7 +222,7 @@ def main() -> None:
             "Interface-validation feed (NON-COMPARABLE to KPP). Complete-case is on the 7 buildable "
             "instruments — a LARGER, DIFFERENT universe than KPP's complete-on-29; when the equity "
             "side lands and the set grows the universe will SHRINK (expected, not data loss). "
-            "See docs/characteristic_registry_spec.md §2."
+            "See docs/quant/specs/characteristic_registry_spec.md §2."
         ),
     }
     report_file = DEV / f"ipca_panel_{family}_report.json"

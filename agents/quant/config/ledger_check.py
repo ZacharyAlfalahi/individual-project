@@ -2,7 +2,7 @@
 Ledger check -- the deterministic assumptions-mismatch screen (D29).
 
 The frozen engine (``agents/quant/library``) applies exactly 40 baked-in
-assumptions (``assumptions_ledger_v2.md``). Some the adapter configures to match
+assumptions (``docs/quant/registers/assumptions_ledger_v2.md``). Some the adapter configures to match
 the paper; some the engine applies *silently* regardless of what the paper says.
 This module catches the second class: it reads a strategy's Part 2 fields and,
 where the paper *explicitly states* something the engine cannot honour, emits an
@@ -24,7 +24,7 @@ Two pieces:
     silence policy). Run-to-completion: collect ALL mismatches.
 
 **Scope (which rows exist) is committed in the YAML, not here.** The table is the
-A/C re-sort of the STRUCT ledger items (``part2_field_inventory.md``); LIMIT items
+A/C re-sort of the STRUCT ledger items (``docs/quant/registers/part2_field_inventory.md``); LIMIT items
 are already factory/adapter refusals (not double-handled), and SEM items are out
 of deterministic scope. ``check_assumptions`` is scope-agnostic: it runs whatever
 rows the finalised table carries.
@@ -56,7 +56,7 @@ _DEFAULT_TABLE_PATH = Path(__file__).resolve().parent / "data" / "ledger_check_t
 # Where each checkable field lives on the spec: common fields hang off Part2;
 # sort fields hang off each Leg (checked per-leg).
 _BLOCKS: frozenset[str] = frozenset(("common", "sort"))
-# The A/C re-sort tags (part2_field_inventory.md). A = clean STRUCT (strong check);
+# The A/C re-sort tags (docs/quant/registers/part2_field_inventory.md). A = clean STRUCT (strong check);
 # C = STRUCT-but-usually-UNKNOWN (rarely fires; the silence policy carries the load).
 _CATEGORIES: frozenset[str] = frozenset(("A", "C"))
 

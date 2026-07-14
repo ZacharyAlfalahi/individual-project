@@ -51,7 +51,7 @@
 #           always means over-rf inputs -- the no-op case), and any level error
 #           surfaces at the fidelity harness, not here. So: no deterministic row.
 #
-# CATEGORY (part2_field_inventory.md A/C re-sort):
+# CATEGORY (docs/quant/registers/part2_field_inventory.md A/C re-sort):
 #   A = clean STRUCT (strong check; papers state it clearly).
 #   C = STRUCT-but-usually-UNKNOWN (rarely fires; the silence policy carries the
 #       load -- do NOT read a C row as a strong working check).

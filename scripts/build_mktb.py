@@ -1,6 +1,6 @@
 """
 Build the BBW MKTB market factor: the value-weighted (par) average EXCESS
-return of all eligible bonds each month (spec BBW_anchor_implementation_spec.md
+return of all eligible bonds each month (spec docs/quant/specs/BBW_anchor_implementation_spec.md
 §3.6). No sort — this is the market basket the four BBW long-short factors price
 against, and the simplest end-to-end check of the VW-excess plumbing before any
 sort exists (build order §10 step 3).

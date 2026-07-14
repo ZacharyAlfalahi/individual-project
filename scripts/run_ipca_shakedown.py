@@ -10,7 +10,7 @@ NON-COMPARABLE TO KPP: a 7-instrument bond-only, VOL-scaled model is structurall
 KPP's 29-instrument DtS model. It CANNOT speak to RQ1/RQ2/RQ3. Every artifact carries the
 comparability stamp. KPP's published VOL-lane numbers (Table CI-B OOS total R² 54.4% individual;
 Table CII vol-scaled tangency 4.94 gross) are the FULL model's and are NOT a target.
-See docs/characteristic_registry_spec.md §7.
+See docs/quant/specs/characteristic_registry_spec.md §7.
 
 Usage:  python scripts/run_ipca_shakedown.py [--family corr|raw] [--k-recursive 4]
 """

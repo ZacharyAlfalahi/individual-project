@@ -6,7 +6,7 @@ property, buy the top group, sell the bottom group" strategy earned over
 history. One run measures one factor. The engine never computes the property
 being ranked on -- it sorts on a column that is already present in the panel.
 
-Spec: docs/characteristic_sort_engine_spec.md.
+Spec: docs/quant/specs/characteristic_sort_engine_spec.md.
 
 Design conventions, deliberately fixed:
 

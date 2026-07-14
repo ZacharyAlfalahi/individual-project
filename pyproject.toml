@@ -11,7 +11,7 @@
 # unrelated to the code. PEP 440 specifier (a bare "0.15.20" is ambiguous).
 required-version = "==0.15.20"
 
-# docs/ledger_validation_artifacts/flip_checks.py is FROZEN validation evidence.
+# docs/quant/validation/ledger_validation_artifacts/flip_checks.py is FROZEN validation evidence.
 # Linting it would invite edits to files that document past validation runs, so
 # the whole docs/ tree is out of lint scope by design.
 extend-exclude = ["docs/"]

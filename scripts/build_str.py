@@ -1,6 +1,6 @@
 """
 Build the standalone short-term-reversal (`str`) anchor factor (spec
-BBW_anchor_implementation_spec.md §5.1): a single-sort, value-weighted (par),
+docs/quant/specs/BBW_anchor_implementation_spec.md §5.1): a single-sort, value-weighted (par),
 monthly-rebalanced, one-month-holding long-short on the prior-month return.
 
 Construction (per gold_str_drr_2026.md, DRR-2026 Table 1 Panel A — the paper's

@@ -3,8 +3,7 @@ Part 1 + Part 2 field names, enum menus, markers, and the ``ALREADY_FINAL_PART2`
 set -- the single source of truth for *which* fields exist and *what values*
 each menu admits.
 
-Source of record: ``docs/part2_schema_and_silence_policy_v1.md`` (the
-final bulk pass; v1.1 adds ``control_n_groups``). 38 Part 2 fields = 10
+Source of record: ``docs/librarian/specs/part2_schema_and_silence_policy_v1_1.md`` (v1.1 adds ``control_n_groups``). 38 Part 2 fields = 10
 sort-block + 28 common. Every enum menu carries the ``"other"`` escape (P3: menus
 over prose, with a first-class "none of the above"). Markers (D18/D32b) =
 ``sort_signal`` + ``n_groups`` only.

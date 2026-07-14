@@ -1,6 +1,6 @@
 """
 Build the BBW (2019) four-factor harness: DRF, LRF, REV, the three CRF
-components, and the CRF composite (BBW_anchor_implementation_spec.md §3, §4).
+components, and the CRF composite (docs/quant/specs/BBW_anchor_implementation_spec.md §3, §4).
 MKTB is built separately (build_mktb.py); together they are the four BBW model
 factors (MKTB, DRF, LRF, CRF) plus the standalone REV.
 

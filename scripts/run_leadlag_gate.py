@@ -1,6 +1,6 @@
 """
 BBW lead/lag gate — the §8 lead/lag bias-gap reproduction
-(BBW_anchor_implementation_spec.md §7 toggle 1, §8).
+(docs/quant/specs/BBW_anchor_implementation_spec.md §7 toggle 1, §8).
 
 Takes the correctly-aligned BBW factors (build_bbw_factors.py) and injects the
 as-published lead/lag error over its documented window — DRF/CRF lead (t←t+1)

@@ -15,7 +15,7 @@ path (``extract_monthly_selections`` + ``_leg_return_at``) at holding_period=1 *
 short-circuit, and asserts it reproduces the MAIN path element-wise — so divergence between the
 two inline regions fails here.
 
-Context: ``docs/assumptions_ledger_v2.md`` §3 (two-path divergence) + the anchor-validation
+Context: ``docs/quant/registers/assumptions_ledger_v2.md`` §3 (two-path divergence) + the anchor-validation
 report. The one KNOWN current divergence — the ``by_size`` non-positive-size guard, present in
 ``_form_legs`` (MAIN) but not at formation in ``extract_monthly_selections`` (OVERLAP) — is
 pinned by ``test_bysize_zero_formation_size_divergence_is_pinned``. It is DORMANT: par (``size``)

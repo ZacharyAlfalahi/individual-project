@@ -1,5 +1,5 @@
 """
-§8 anchor validation summary (BBW_anchor_implementation_spec.md §8).
+§8 anchor validation summary (docs/quant/specs/BBW_anchor_implementation_spec.md §8).
 
 Aggregates the three within-pipeline bias-gap gates into one verdict and records
 the validation principle (bias-attribution, NOT absolute level) and the critical

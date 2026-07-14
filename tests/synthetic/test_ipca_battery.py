@@ -1,5 +1,5 @@
 """
-Synthetic certification battery for the KPP IPCA module (``docs/ipca_spec.md`` §9).
+Synthetic certification battery for the KPP IPCA module (``docs/quant/specs/ipca_spec.md`` §9).
 
 All tests draw from one parameterised DGP (``make_ipca_panel``) with fixed seeds; thresholds
 are certification gates. No real-data run is permitted until the full battery (1–14) is green.
@@ -326,7 +326,7 @@ def test_oracle_total_r2_agreement() -> None:
 # Test 6 (closed form) — K=L saturated model reproduces the data exactly
 # Note: the spec's "single-instrument pooled-OLS" closed form is under-specified to reproduce
 # to 1e-10 without the reference; substituted here with the unambiguous saturation identity
-# (managed total R² == 1 when K == L). Recorded in docs/ipca_adjudications.md.
+# (managed total R² == 1 when K == L). Recorded in docs/quant/registers/ipca_adjudications.md.
 # ---------------------------------------------------------------------------
 
 
@@ -644,7 +644,7 @@ def test_alpha_test_conservatism_direction() -> None:
     assert faithful <= unit + 1e-9, f"faithful {faithful} > unit {unit} (conservatism direction)"
     # Unit-arm size is finite-sample-inflated here (the documented unrestricted-residual
     # deviation, §3); the spec's [3%,7%] gate is at 200×499 on a T≈264 panel (see diagnostic
-    # in docs/ipca_adjudications.md). Sanity bound only:
+    # in docs/quant/registers/ipca_adjudications.md). Sanity bound only:
     assert unit < 0.16
 
 

@@ -19,7 +19,7 @@ from agents.librarian.registries import (
 )
 
 # The canonical sha256 of config/silence_policy_v1.yaml (version v1.1), recorded in
-# docs/part2_schema_and_silence_policy_v1.md.
+# docs/librarian/specs/part2_schema_and_silence_policy_v1_1.md.
 _RECORDED_SHA256 = "3bffb06d9ed58c50623a21272e0728483b90ce065c764c00372ede2f812a9978"
 
 

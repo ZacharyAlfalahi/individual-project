@@ -1,4 +1,4 @@
-# Gold spec for the KPP IPCA module — fields exactly per docs/ipca_spec.md §8.
+# Gold spec for the KPP IPCA module — fields exactly per docs/quant/specs/ipca_spec.md §8.
 # Each field carries its value; evidence (tier + citation) is the inline comment, with
 # `UNVERIFIED→Kxx` noted where an open micro-item remains. This is a MODULE CONFIGURATION
 # (the Quant agent configures the library via this file); it is distinct from the Auditor's
@@ -20,7 +20,7 @@ estimation:
     descending_factor_moments: true
     nonneg_factor_means: true
     applied_per_iteration: true                       # [CODE num_IPCA_estimate_ALS.m:91–103]
-    sign_eigvec_rule: largest_abs_component_positive  # [R2 adjudication — determinism; see docs/ipca_adjudications.md]
+    sign_eigvec_rule: largest_abs_component_positive  # [R2 adjudication — determinism; see docs/quant/registers/ipca_adjudications.md]
     sign_fallback_mean_eps: 1.0e-8                    # [R2 adjudication — near-zero-mean sign fallback]
     near_tie_moment_eps: 1.0e-8                       # [R2 adjudication — near-tie warning threshold]
 bootstrap:

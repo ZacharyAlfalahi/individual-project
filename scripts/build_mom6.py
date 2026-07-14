@@ -1,6 +1,6 @@
 """
 Build the mom6 (6-month momentum) anchor factor (Jostova et al. 2013;
-BBW_anchor_implementation_spec.md §5.2). The mom6_1 mnemonic = formation 6 /
+docs/quant/specs/BBW_anchor_implementation_spec.md §5.2). The mom6_1 mnemonic = formation 6 /
 skip 1; holding is H=6 staggered (Jostova; confirmed for DRR-2026 mom6_1).
 
 Construction (all params from thresholds.yaml signals.mom6):

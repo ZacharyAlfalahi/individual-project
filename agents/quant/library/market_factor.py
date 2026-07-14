@@ -3,7 +3,7 @@ Market-factor (MKTB) builder.
 
 The bond-market excess return the BBW factors price against: the value-weighted
 average excess return of all eligible bonds in a month. No sort, no long-short
-(spec BBW_anchor_implementation_spec.md §3.6). Par-weighted by default
+(spec docs/quant/specs/BBW_anchor_implementation_spec.md §3.6). Par-weighted by default
 (weight = FISD `offering_amt`, surfaced as the panel `size` column, §2.4).
 
 Kept correction-agnostic and family-agnostic: the caller passes the excess-return

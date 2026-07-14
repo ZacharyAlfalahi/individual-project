@@ -20,7 +20,7 @@ Usage:
   python scripts/build_bond_vol.py
 
 Requires: data/development/monthly_panel_maximal.parquet (build_monthly_panel.py)
-Source: [CODE JF2_pubdata.m:151 (TOTAL_VOL #27); PAPER fn.32]; docs/characteristic_registry_spec.md §1.
+Source: [CODE JF2_pubdata.m:151 (TOTAL_VOL #27); PAPER fn.32]; docs/quant/specs/characteristic_registry_spec.md §1.
 """
 
 import hashlib

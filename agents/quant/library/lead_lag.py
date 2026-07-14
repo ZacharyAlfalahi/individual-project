@@ -1,6 +1,6 @@
 """
 Lead/lag (look-ahead) error injector — the BBW factor lead/lag toggle
-(BBW_anchor_implementation_spec.md §7 toggle 1).
+(docs/quant/specs/BBW_anchor_implementation_spec.md §7 toggle 1).
 
 DRR-2023 document that the as-published BBW factor series carry a date-alignment
 error over specific windows: DRF and CRF for month t are actually month t+1's

@@ -2,7 +2,7 @@
 Intra-month price windows for the str LIB decomposition.
 
 DRR-2026's month-end vs month-begin reversal decomposition (Table 2 Panel A;
-BBW_anchor_implementation_spec.md §5.1, §8) needs two price samplings per
+docs/quant/specs/BBW_anchor_implementation_spec.md §5.1, §8) needs two price samplings per
 (cusip, month) that the whole-month VWAP panel does not carry:
 
   * price_end   = volume-weighted price over the LAST  `window_days` business

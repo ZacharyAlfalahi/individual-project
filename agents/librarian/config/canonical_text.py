@@ -143,7 +143,7 @@ class CanonicalText:
             # (char_end could exceed len(pages[page])). Rather than stamp a malformed
             # locator into the STATED audit trail, decline -- the quote then routes to
             # review (UNKNOWN) instead. Faithful cross-page locators are deferred to the
-            # cross-page-seam matcher work (see docs/parser_bakeoff_report.md). The
+            # cross-page-seam matcher work (see docs/librarian/validation/parser_bakeoff_report.md). The
             # bake-off uses locate_quote directly, so its cross-page scoring is unaffected.
             return None
         return Locator(

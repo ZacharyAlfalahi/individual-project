@@ -76,7 +76,7 @@ signals:
     source: "registry amendments v1.1 A3.3 (default); final value from 01_trace_explore"
 
   # mom6 — 6-month momentum, Jostova et al. (2013), the mom6_1 anchor
-  # (BBW_anchor_implementation_spec.md §5.2). The SIGNAL is the trailing
+  # (docs/quant/specs/BBW_anchor_implementation_spec.md §5.2). The SIGNAL is the trailing
   # cumulative return over `formation_months` consecutive months ending at the
   # row's month; the factor runner then applies signal_lag=`skip_months` (the
   # Jostova skip) and a staggered `holding_months` hold. Deciles, equal-weighted,
@@ -90,14 +90,14 @@ signals:
     n_groups: 10            # deciles P1..P10
     weighting: "equal"      # equal-weighted within decile (Jostova; NOT value-weighted)
 
-  # str LIB decomposition (BBW_anchor_implementation_spec.md §5.1/§8) — the
+  # str LIB decomposition (docs/quant/specs/BBW_anchor_implementation_spec.md §5.1/§8) — the
   # intra-month price-window length for the month-end vs month-begin reversal
   # decomposition. "first/last 5 business days of the following month" (§5.1).
   # CONFIRM-ON-READ exact length vs DRR-2026 code (§9/§11).
   str_lib:
     window_days: 5
 
-  # gamma / ILLIQ (BPW 2011 eq.2; BBW_anchor_implementation_spec.md §1) — the one
+  # gamma / ILLIQ (BPW 2011 eq.2; docs/quant/specs/BBW_anchor_implementation_spec.md §1) — the one
   # new characteristic. gamma = sign_multiplier * Cov(Δp_d, Δp_{d+1}) over
   # consecutive within-month daily log-price changes (daily price = within-day VW
   # clean price). Higher gamma = more illiquid. Screen = DRR-2023 RELAXED (default),
@@ -119,12 +119,12 @@ signals:
   # gate (a DESIGN choice — enough history for a stable std). Decimal monthly units. The vol floor
   # (0.01) used when scaling lives in agents/quant/library/configs/kpp_ipca.yaml:scaling.vol_floor.
   # Source: [CODE JF2_pubdata.m:151 (TOTAL_VOL #27); PAPER fn.32]; consumed by Workstream B
-  # (scripts/build_bond_vol.py + scripts/build_ipca_panel.py), per docs/characteristic_registry_spec.md.
+  # (scripts/build_bond_vol.py + scripts/build_ipca_panel.py), per docs/quant/specs/characteristic_registry_spec.md.
   bond_vol:
     window: 24
     min_obs: 18
 
-# RQ2/RQ3 bias toggles (BBW_anchor_implementation_spec.md §7). Each reproduces a
+# RQ2/RQ3 bias toggles (docs/quant/specs/BBW_anchor_implementation_spec.md §7). Each reproduces a
 # published defect on demand; both OFF (as-published) and ON (corrected) states
 # are produced and the gap is the measured bias.
 bias_toggles:
@@ -149,7 +149,7 @@ bias_toggles:
   # only, NOT the price-measurement window (signals.str_lib.window_days).
   trade_recognition_window_n: [1, 3, 5, 7, 10]
 
-# Anchor validation principle (BBW_anchor_implementation_spec.md §8) — recorded
+# Anchor validation principle (docs/quant/specs/BBW_anchor_implementation_spec.md §8) — recorded
 # here to supersede the ±15% absolute-level criterion FOR THE ANCHORS and to
 # justify on the merits. The pipeline has many deliberate divergences from every
 # external reference (par-weighting not mcap_e, a wider universe, relaxed BPW
@@ -178,7 +178,7 @@ validation:
   # run_mom6_lab_gate.py, run_accrual_validation.py, diagnose_crf_lrf.py and
   # build_str_decomposition.py read these instead of hard-coding, so the
   # thresholds_sha256 each gate records now covers them. Source: the bias
-  # signatures in BBW_anchor_implementation_spec.md §8 (DRR-2023/2026).
+  # signatures in docs/quant/specs/BBW_anchor_implementation_spec.md §8 (DRR-2023/2026).
   gate_thresholds:
     lead_lag:
       collapse_max: 0.7      # corrupted-vs-correct corr must drop BELOW this (the lead/lag collapse signature)
@@ -201,7 +201,7 @@ validation:
 # Applied by scripts/bounce_back_filter.py as a post-processing step after
 # preprocess_trace.py. Input and output are both trace_clean.parquet.
 # Provenance and explicit divergences are documented in
-# docs/bounce_back_filter_spec.md §0.
+# docs/data/specs/bounce_back_filter_spec.md §0.
 bounce_back_filter:
   # Core spike detection (DRR Table A.2)
   threshold_abs: 35.0        # Flag a trade if |price - anchor| exceeds this (price points)
@@ -303,7 +303,7 @@ fisd:
     # Agency codes in reference_fisd_ratings.rating_type: SPR=S&P, MR=Moody's,
     # FR=Fitch, DPR=DBRS.
     #
-    # BBW/DRR convention (BBW_anchor_implementation_spec.md §2.3): the monthly
+    # BBW/DRR convention (docs/quant/specs/BBW_anchor_implementation_spec.md §2.3): the monthly
     # numeric rating is the AVERAGE of the agencies in `average_agencies` when
     # more than one is available, with single-agency fallback when only one is.
     # Fitch (FR) and DBRS (DPR) are excluded by omission — BBW averages S&P and

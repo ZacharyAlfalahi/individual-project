@@ -1,6 +1,6 @@
 """
 mom6 look-ahead (LAB) gate — the §8 mom6 bias-gap reproduction
-(BBW_anchor_implementation_spec.md §7.1, §8).
+(docs/quant/specs/BBW_anchor_implementation_spec.md §7.1, §8).
 
 Runs mom6 three ways on the corr family, differing only in how the realised
 holding return is winsorized:

@@ -2,7 +2,7 @@
 Unit tests for the characteristic-sort engine.
 
 Covers all six correctness tests from
-docs/characteristic_sort_engine_spec.md section 7 plus targeted
+docs/quant/specs/characteristic_sort_engine_spec.md section 7 plus targeted
 tests for internal helpers and edge cases. Synthetic data only --
 the engine never touches /data/holdout/ (guarded in tests/conftest.py
 regardless).

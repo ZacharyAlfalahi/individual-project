@@ -31,7 +31,6 @@ bash scripts/install_hooks.sh
 This installs pre-commit and pre-push hooks that refuse any FISD/TRACE data
 (`data/fisd/**`, raw `data/trace_enhanced_*`, and any `.parquet`/`.csv`/`.csv.gz`
 under `data/`). The `data-governance` CI workflow is the un-bypassable backstop.
-Full policy and branch-protection setup: `docs/data_governance.md`.
 
 ### Input data (licensed — supply your own)
 
@@ -54,7 +53,7 @@ python scripts/preprocess_trace.py        # Dick-Nielsen (2009/2014) + dev/holdo
 python scripts/apply_decimal_shift.py      # WRDS-MMN decimal-shift (corrected family)
 python scripts/bounce_back_filter.py       # DRR (2026) Table A.2 bounce-back  → trace_clean_corr
 ```
-`raw` carries the as-published junk (no corrections); `corr` adds decimal-shift + bounce-back. Holdout (2022-01..2025-09, 45 months) is written once and **never read during development**. See `docs/trace_preprocessing.md`, `docs/bounce_back_filter_spec.md`.
+`raw` carries the as-published junk (no corrections); `corr` adds decimal-shift + bounce-back. Holdout (2022-01..2025-09, 45 months) is written once and **never read during development**.
 
 ### 2. Daily layer + distressed filters
 ```bash
@@ -96,7 +95,7 @@ python scripts/export_endpoint_views.py
 A `RunConfig` drives `agents/quant/library/views.py` to select a price family and apply the view-level toggles — meas_err (family), stale-price mask, **universe restriction**, **survivorship** (terminal-row drop), signal lag, ex-post trim — materialising `monthly_panel_uncorrected.parquet` (all-OFF / as-published) and `monthly_panel_corrected.parquet` (all-ON / corrected).
 
 ### 8. Characteristic-sort engine
-Signal-agnostic quintile long-short engine (equal/size-weighted legs, single and independent double sorts, monthly rebalancing, Newey–West HAC inference). Lives at `agents/quant/library/characteristic_sort.py`; configured by the Quant agent, never modified (per ARCHITECTURE.md). See `docs/characteristic_sort_engine_spec.md` and `…_implementation.md`.
+Signal-agnostic quintile long-short engine (equal/size-weighted legs, single and independent double sorts, monthly rebalancing, Newey–West HAC inference). Lives at `agents/quant/library/characteristic_sort.py`; configured by the Quant agent; modifications require review.
 
 ### 9. Total-return upgrade (accrued interest + coupon)
 ```bash
@@ -128,7 +127,7 @@ Anchors are validated by reproducing published **bias verdicts** (direction + ma
 python -m pytest tests/synthetic/test_ipca_battery.py -q   # 33-test certification battery (§9)
 python -m mypy --strict agents/quant/library/ipca.py       # + ruff check — clean
 ```
-`agents/quant/library/ipca.py` is the hand-built, **numpy-only** IPCA estimator (Kelly–Palhares–Pruitt): rank-transform + per-month sufficient statistics, the ALS estimator with per-iteration identification, the two wild-bootstrap tests (Γ_α and per-characteristic), recursive out-of-sample estimation, tangency (recursive + in-sample) and spread strategies with costs/turnover and the smoothing-γ cost curve, the fit metrics, and the §10 `context_table` acceptance harness — all **configured, never authored**, at run time via the gold spec `agents/quant/library/configs/kpp_ipca.yaml`. It consumes per-month matrices, enforces a hard `train_end` wall, and raises `ContractViolation` on contract violations (never imputes). Acceptance is the synthetic battery (`tests/synthetic/test_ipca_battery.py`, §9 tests 1–14: subspace/factor recovery, alpha-test size/power, rotation-invariance, idempotency, determinism, …) plus `mypy --strict` + `ruff` clean and a zero-side-effect import. Spec: `docs/ipca_spec.md`; build adjudications + known deviations: `docs/ipca_adjudications.md`.
+`agents/quant/library/ipca.py` is the hand-built, **numpy-only** IPCA estimator (Kelly–Palhares–Pruitt): rank-transform + per-month sufficient statistics, the ALS estimator with per-iteration identification, the two wild-bootstrap tests (Γ_α and per-characteristic), recursive out-of-sample estimation, tangency (recursive + in-sample) and spread strategies with costs/turnover and the smoothing-γ cost curve, the fit metrics, and the §10 `context_table` acceptance harness — all **configured, never authored**, at run time via the gold spec `agents/quant/library/configs/kpp_ipca.yaml`. It consumes per-month matrices, enforces a hard `train_end` wall, and raises `ContractViolation` on contract violations (never imputes). Acceptance is the synthetic battery (`tests/synthetic/test_ipca_battery.py`, §9 tests 1–14: subspace/factor recovery, alpha-test size/power, rotation-invariance, idempotency, determinism, …) plus `mypy --strict` + `ruff` clean and a zero-side-effect import.
 
 ### 13. IPCA characteristic panel + bond-centric shakedown (Workstream B)
 ```bash
@@ -136,7 +135,7 @@ python scripts/build_bond_vol.py      # 24m return-vol (instrument #7 + the VOL 
 python scripts/build_ipca_panel.py    # assemble the 7-instrument feed → ipca_panel_corr.parquet
 python scripts/run_ipca_shakedown.py  # in-sample K-sweep + recursive OOS → run-log + context-table
 ```
-The buildable FISD+TRACE instrument subset — short-term reversal, mom6, VaR, γ-illiquidity, rating, time-to-maturity, 24m return-vol (+ constant) — assembled with the **next-return lag** (instruments at m−1, return at m; adjacent months only), complete-case selection, and **VOLScaled010** returns, emitted as the module's per-month `(Z, R)` feed (which passes the module's own `validate_panel` + wall by construction; 209 months, ~1,700 bonds/month). The shakedown runs the estimator end-to-end on this real feed. **Interface-validation only — NON-COMPARABLE to KPP**: a 7-instrument bond-only, VOL-scaled model is structurally different from KPP's 29-instrument DtS model, so every artifact carries that stamp and it **cannot be cited for RQ1/RQ2/RQ3**. The 15 equity/accounting characteristics and the DtS lane remain blocked (CRSP/Compustat access; spread/yield/OAS). Spec: `docs/characteristic_registry_spec.md`; workstream scaffolding: `docs/ipca_dnn_scaffolding.md`.
+The buildable FISD+TRACE instrument subset — short-term reversal, mom6, VaR, γ-illiquidity, rating, time-to-maturity, 24m return-vol (+ constant) — assembled with the **next-return lag** (instruments at m−1, return at m; adjacent months only), complete-case selection, and **VOLScaled010** returns, emitted as the module's per-month `(Z, R)` feed (which passes the module's own `validate_panel` + wall by construction; 209 months, ~1,700 bonds/month). The shakedown runs the estimator end-to-end on this real feed. **Interface-validation only — NON-COMPARABLE to KPP**: a 7-instrument bond-only, VOL-scaled model is structurally different from KPP's 29-instrument DtS model, so every artifact carries that stamp and it **cannot be cited for RQ1/RQ2/RQ3**. The 15 equity/accounting characteristics and the DtS lane remain blocked (CRSP/Compustat access; spread/yield/OAS).
 
 ---
 

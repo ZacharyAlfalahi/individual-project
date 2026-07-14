@@ -3,7 +3,7 @@ Parser bake-off grid + §2 decision + report + freeze (parser brief §7-§8).
 
 Runs the fixture grid (3 papers x {L0,L1,L2}), scores true-match rate (pooled +
 per-paper + per-category), corrupted-match count, and cross-page usage, applies the
-pre-registered §2 decision rule, writes ``docs/parser_bakeoff_report.md``, and -- if
+pre-registered §2 decision rule, writes ``docs/librarian/validation/parser_bakeoff_report.md``, and -- if
 a cell passes -- freezes ``config/canonical_text.yaml`` (PB-3) and the winning-cell
 per-paper canonical texts (``status: frozen``).
 
@@ -54,7 +54,7 @@ RUN_DATE = "2026-07-10"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FIXTURE_DIR = _REPO_ROOT / "evaluation" / "quote_fixtures"
 _CANON_DIR = _REPO_ROOT / "evaluation" / "canonical_texts"
-_REPORT = _REPO_ROOT / "docs" / "parser_bakeoff_report.md"
+_REPORT = _REPO_ROOT / "docs" / "librarian" / "validation" / "parser_bakeoff_report.md"
 _CONFIG = _REPO_ROOT / "config" / "canonical_text.yaml"
 _NORMALISE_PY = _REPO_ROOT / "agents" / "librarian" / "config" / "normalise.py"
 
@@ -405,7 +405,7 @@ def freeze_config(level: str, parser: dict, normalise_sha: str) -> None:
         },
         "page_canonicalisation": ["strip_publisher_watermark_v3"],
         "normalise_sha256": normalise_sha,
-        "report": "docs/parser_bakeoff_report.md",
+        "report": "docs/librarian/validation/parser_bakeoff_report.md",
     }
     header = (
         "# Machine-readable canonical-text freeze (parser brief §8 / PB-3).\n"
@@ -413,7 +413,7 @@ def freeze_config(level: str, parser: dict, normalise_sha: str) -> None:
         "# pipeline's canonical-text builder reads THIS file; it never re-hardcodes\n"
         "# the rules. Report and config disagreeing is a build error.\n"
         f"# Frozen by the bake-off on {RUN_DATE}. ladder_version v2 amends brief §6\n"
-        "# (see docs/parser_bakeoff_report.md 'Amendment to brief §6').\n"
+        "# (see docs/librarian/validation/parser_bakeoff_report.md 'Amendment to brief §6').\n"
     )
     _CONFIG.write_text(header + yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 

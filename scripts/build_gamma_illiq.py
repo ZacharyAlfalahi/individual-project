@@ -1,6 +1,6 @@
 """
 Build the gamma / ILLIQ signal — the one new BBW characteristic (Bao, Pan &
-Wang 2011 eq.2; BBW_anchor_implementation_spec.md §1).
+Wang 2011 eq.2; docs/quant/specs/BBW_anchor_implementation_spec.md §1).
 
 gamma = sign_multiplier * Cov(Δp_{d}, Δp_{d+1})
 

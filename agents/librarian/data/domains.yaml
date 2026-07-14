@@ -4,14 +4,14 @@
 # at the form-validator gate (this file's Librarian-side consumer). Two families:
 #
 #   part2   -- the 38 paper-facing Part 2 fields (source:
-#              docs/part2_schema_and_silence_policy_v1.md; v1.1 adds
+#              docs/librarian/specs/part2_schema_and_silence_policy_v1_1.md; v1.1 adds
 #              control_n_groups). Every enum carries "other" (P3). Signal identity
 #              (sort_signal / control_axis) is a SignalRef, not a scalar domain --
 #              its concept_id domain is the Signal Concept Registry (checked in
 #              validate_librarian_spec), so it has no row here.
 #
 #   engine  -- the engine-side field domains (source:
-#              docs/engine_truth_table.md). Carried here so the transform-table
+#              docs/quant/registers/engine_truth_table.md). Carried here so the transform-table
 #              gate and engine-config gate share ONE domain source. These are
 #              engine coordinates and live BEHIND the wall (D3) -- the Librarian
 #              never writes them; they are here for the adapter/engine gates and
@@ -76,7 +76,7 @@ part2:
   # expost_trim: method component (bounds carried separately in the schema).
   expost_trim:          {kind: enum, values: [none, truncate, winsorise, other]}
 
-# --- engine-side domains (behind the wall; docs/engine_truth_table.md) --------
+# --- engine-side domains (behind the wall; docs/quant/registers/engine_truth_table.md) --------
 engine:
   # weighting enum ceiling (v2-38): {equal, by_size}; anything else -> refusal.
   weighting:            {kind: enum, values: [equal, by_size]}

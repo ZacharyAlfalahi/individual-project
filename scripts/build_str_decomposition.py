@@ -1,5 +1,5 @@
 """
-str LIB decomposition — the §8 headline gate (BBW_anchor_implementation_spec.md
+str LIB decomposition — the §8 headline gate (docs/quant/specs/BBW_anchor_implementation_spec.md
 §5.1, §7 toggle 3, §8). Reproduces DRR-2026 Table 2 Panel A's month-end vs
 month-begin reversal decomposition from intra-month daily prices.
 
