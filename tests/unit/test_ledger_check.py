@@ -7,6 +7,7 @@ check runs to completion (collects ALL mismatches).
 
 import pytest
 
+from _anchor_gold_fixtures import anchor_gold_spec
 from _librarian_fixtures import build_leg, build_part2, build_spec, stated, unknown
 
 from agents.quant.config import (
@@ -35,15 +36,16 @@ def test_clean_synthetic_spec_no_mismatch(table):
     assert check_assumptions(build_spec(), table) == ()
 
 
-@pytest.mark.skip(
-    reason="decisive anchor test -- blocked on the 3 anchor gold specs (str, drf, "
-    "mom6) per brief section 3. Unskip and load the golds when they land: each "
-    "anchor's methodology matches every engine assumption, so check_assumptions "
-    "must return zero mismatches (over-firing on a known-good anchor = broken)."
-)
-def test_anchor_specs_no_false_positives(table):  # pragma: no cover
+def test_anchor_specs_no_false_positives(table):
+    """Decisive test: the three real anchor golds (str, drf, mom6) produce ZERO
+    mismatches on the finalised 13 ledger rows -- the deterministic ledger-check
+    raises no false positive on a known-good anchor. This is NOT a claim of
+    universal paper<->engine equivalence: divergences deliberately outside the
+    13-row table (e.g. weighting_base par-vs-market-value, the SEM half) are not
+    asserted here. Fixtures transcribe each gold's ledger-checked fields from
+    evaluation/gold_specs/ (see _anchor_gold_fixtures.py)."""
     for anchor_id in ("str", "drf", "mom6"):
-        spec = _load_anchor_gold(anchor_id)  # noqa: F821 -- lands with the golds
+        spec = anchor_gold_spec(anchor_id)
         assert check_assumptions(spec, table) == (), anchor_id
 
 
