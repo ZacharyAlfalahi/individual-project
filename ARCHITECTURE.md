@@ -4,7 +4,7 @@ Every implementation is validated and verifiable.
 
 ## Research Questions
 RQ1 — Librarian extraction fidelity on the gold-standard set (BBW, KPP, DG): field-level per-field accuracy, multi-model agreement rate, failure taxonomy (field-level reconstruction, NOT strategy-class routing).
-RQ2 — Quant implementation fidelity + coverage: reproduce as-published numbers within ±15% on the data-matched anchors; ReAct iteration distribution; fraction of the DRR zoo implementable via the 3 audited families vs gracefully refused.
+RQ2 — Quant compilation fidelity + coverage: anchor fidelity per the hierarchical gates (evaluation contract §7); layered coverage C_semantic / C_binding / C_execution / C_end-to-end over the frozen candidate set; FIR (headline safety) beside FRR; fraction of the corpus implementable via audited families vs correctly refused (typed refusal taxonomy).
 RQ3 — Bias prevalence (Auditor), differential: each strategy run uncorrected (as-published) vs corrected, bias = the gap; effect sizes with CIs (survival counts secondary); conservative lower bound on artefact; clean on the anchor set + traded-liquidity negative control, scale layer weaker/confounded.
 RQ4 — Repair rate (Scientist): fraction of proposals that repair failing strategies, retain in-sample alpha, survive BH-FDR, show positive OOS Sharpe on 2022–2025 holdout.
 Each RQ has a structurally independent validation path — failure in one component cannot contaminate another.
@@ -15,7 +15,7 @@ Each RQ has a structurally independent validation path — failure in one compon
 - BAA-AAA spread median for regime conditioning must be computed on /data/development/ only; commit to /docs/extension_1_config.yaml before holdout opens
 
 ## Repository Key Paths
-/agents/quant/library/     — ipca.py, four_factor_sort.py, dnn_residual.py (hand-implemented; LLM configures, NEVER modifies; correction-agnostic — run identically on the uncorrected and corrected panels the data layer emits)
+/agents/quant/library/     — ipca.py, characteristic_sort.py, bbw_factors.py (hand-implemented; LLM configures, NEVER modifies; correction-agnostic — run identically on the uncorrected and corrected panels the data layer emits); DNN family deferred (unbuilt)
 /agents/auditor/checks/    — deterministic only; zero LLM calls permitted here
 /schema/                   — Changes to it are deliberate, reviewed migrations
 /docs/thresholds.yaml      — ALL numerical thresholds; never hard-code values in agent code
@@ -26,7 +26,7 @@ Each RQ has a structurally independent validation path — failure in one compon
 
 **Librarian**: dual LLM extraction (stack TBD — see Open Decisions). A field is STATED only if both models agree on value AND verbatim quote. No self-reported confidence scores. UNKNOWN is a valid value, not an error.
 
-**Quant**: configures library modules; NEVER authors algorithmic code. If strategy_class matches no audited module, emit a structured unsupported-strategy-class report (recorded for RQ2 coverage) and terminate gracefully — NEVER improvise an implementation. Modifications to /agents/quant/library/ require manual review + all regression tests passing. ReAct loop hard cap: 8 iterations.
+**Quant**: deterministic compilation — StrategySpec → adapter → QuantConfig → audited runner. Routing is deterministic (closed-enum family table + typed refusal); an LLM appears only as a post-refusal explainer over typed outcomes. The 8-iteration cap applies to the Librarian's retrieval loop if and when the contract's §3.6 gate triggers it. Modifications to /agents/quant/library/ require manual review + all regression tests passing.
 
 **Auditor**: differential comparator — runs each strategy twice (uncorrected/as-published vs corrected) through the same module and measures the gap, NOT single-run inspection (single-run on a pre-cleaned pipeline finds nothing). Checks 1–4 differential; check 5 (multiple-testing) is a non-differential flag. /agents/auditor/checks/ is deterministic — zero LLM calls. LLM appears only in explainer.py after the verdict is produced. Refuses to opine when required fields are UNKNOWN or INFERRED without a matching rule. Silent iteration until pass is forbidden — it is p-hacking.
 
@@ -35,9 +35,10 @@ Each RQ has a structurally independent validation path — failure in one compon
 **Reporter**: NEVER regenerates numbers from prose. Every numeric token in the output is asserted against typed pipeline output by verifier.py before commit.
 
 ## StrategySpec Schema
-Every fact-bearing field: Fact[T] with value, provenance (STATED|INFERRED|UNKNOWN), and quote (required when STATED). INFERRED requires a rule ID from /docs/inference_rules.md. Schema is designed at end of week 3 after KPP and BBW replications are complete — not before.
+Every fact-bearing field is an `Inherited[T]` carrying value, tag (STATED | INFERRED | DESIGN | UNKNOWN), and evidence (STATED requires a verbatim quote + locator; INFERRED requires a rule ID from /docs/inference_rules.md — path reserved, rules not yet authored; DESIGN marks deliberate project substitutions). Schema v1.1 is built and shipped (`agents/librarian/schema/`).
 
 ## Replication Success Criterion
+**Superseded (2026-07-13): the ±15% primary criterion is retired → evaluation contract §7 hierarchical gates (see RQ2). The paragraph below is retained as history.**
 Applies to the data-matched anchors (BBW, str, momentum) on the uncorrected/as-published panel. Primary: Sharpe AND factor loadings AND per-quintile spreads all within 15% tolerance (thresholds.yaml). Coincidental Sharpe match alone is NOT success. KPP is exempt — validated methodologically only (correct IPCA procedure), NO ±15% target, as its ICE-based numbers are unrecoverable on WRDS-MMN. Secondary diagnostic: bootstrap CI overlap reported as an additional column alongside the primary criterion.
 
 ## Testing Requirements
