@@ -38,3 +38,16 @@ substitutions:
       of amount outstanding; a project-wide value-weighting convention applied to every
       value-weighted anchor.
     source_decision: "docs/quant/specs/BBW_anchor_implementation_spec.md §2.4"
+
+  - id: lab_trim_delegation_v1
+    field: expost_trim
+    when_stated_in: [truncate]
+    replacement: none
+    provenance: DESIGN
+    changes_variant_status: false
+    note: >-
+      The lab_trim bias-toggle owns the ex-post/ex-ante return trim (D32a); the base G2
+      rulebook stays trim-free. A paper's stated ex-post truncation is delegated to the
+      toggle registry, not baked into the base construction — an authorised, registered
+      difference, not a silent omission.
+    source_decision: "docs/quant/specs/BBW_anchor_implementation_spec.md §7.1 / silence policy D32a"

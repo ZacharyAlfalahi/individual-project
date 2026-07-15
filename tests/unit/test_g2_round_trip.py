@@ -112,3 +112,21 @@ def test_mom6_loads_and_adapts_without_error(subs):
     r = adapt_gold("mom6", subs)
     assert r is not None
     assert not is_binding("mom6")  # documents the pending dependency
+
+
+def test_g2_mom6_register_lab_trim_delegation(subs):
+    # mom6's STATED expost_trim=truncate is delegated to the lab_trim toggle: byte-equal
+    # modulo the authorised register, ONE standing row (variant_effect=false). This runs
+    # now (it is about the adapter/register, independent of the gated locators). mom6 is
+    # equal-weighted, so no par-proxy row.
+    r = adapt_gold("mom6", subs)
+    assert not r.refused
+    rows = emit_register("mom6", r, subs, rulebook=produced_rulebook(r))
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.authorisation_id == "lab_trim_delegation_v1"
+    assert row.field == "expost_trim"
+    assert (row.paper_value, row.engine_value) == ("truncate", "none")
+    assert row.authorisation_class == "standing"
+    assert row.variant_effect is False
+    assert row.fidelity_aggregate_exclusion is False

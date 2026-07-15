@@ -42,7 +42,7 @@ def _par_table():
 def test_loads_the_par_weighting_convention():
     t = _par_table()
     assert t.version == "v1"
-    assert len(t.substitutions) == 1
+    assert len(t.substitutions) == 2  # par_weighting_v1 + lab_trim_delegation_v1
     sub = t.substitution_for("weighting_base", "market_value")
     assert sub is not None
     assert sub.id == "par_weighting_v1"
@@ -63,6 +63,38 @@ def test_recorded_hash_matches_and_absent_loads_empty(tmp_path):
 def test_par_does_not_match_the_predicate():
     # drf STATES weighting_base=par -> no substitution fires (byte-equal without intervention).
     assert _par_table().substitution_for("weighting_base", "par") is None
+
+
+def test_lab_trim_delegation_present():
+    sub = _par_table().substitution_for("expost_trim", "truncate")
+    assert sub is not None
+    assert sub.id == "lab_trim_delegation_v1"
+    assert sub.replacement == "none"
+    assert sub.changes_variant_status is False  # §6: standing -> NOT variant
+
+
+def test_expost_trim_truncate_delegated_without_variant():
+    # A STATED expost_trim=truncate is delegated to the lab_trim toggle: omitted from the
+    # base rulebook (trim-free), recorded, NOT a variant -- an authorised, registered diff.
+    spec = adapter_spec(expost_trim=stated("truncate"))
+    r = adapt_spec(spec, standing_subs=_par_table())
+    assert not r.refused
+    assert r.variant is False
+    applied = [a for a in r.standing_subs_applied if a.field == "expost_trim"]
+    assert len(applied) == 1
+    assert (applied[0].paper_value, applied[0].engine_value, applied[0].substitution_id) == (
+        "truncate", "none", "lab_trim_delegation_v1",
+    )
+    assert to_rulebook(r.leg_calls[0].result)["trim_rule"] == {"method": "none"}
+
+
+def test_stated_trim_without_a_delegation_still_reviews():
+    # Refuse-by-default preserved: a STATED trim method with no delegation review-refuses.
+    spec = adapter_spec(expost_trim=stated("winsorise"))
+    r = adapt_spec(spec, standing_subs=_par_table())
+    assert r.refused
+    assert any(x.field == "expost_trim" for x in r.refusals)
+    assert r.standing_subs_applied == ()
 
 
 def test_structural_guards_reject_non_design_and_variant():

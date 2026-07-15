@@ -147,8 +147,8 @@ def _adapt_common(
     # weighting: composite of weighting_scheme (+ weighting_base).
     shared["weighting"] = _adapt_weighting(part2, tt, silence, sid, batch, standing_subs)
 
-    # expost_trim: v1 -> none/silent omit; else Review.
-    shared["trim"] = _adapt_trim(part2, tt, silence, sid, batch)
+    # expost_trim: v1 -> none/silent omit; else Review (unless a standing delegation authorises it).
+    shared["trim"] = _adapt_trim(part2, tt, silence, sid, batch, standing_subs)
 
     # Remaining common fields are check-only: route them purely for the D23
     # refuse_on_stated / flag_on_stated overrides (no kwarg).
@@ -221,7 +221,7 @@ def _adapt_weighting(part2, tt, silence, sid, batch, standing_subs=NO_STANDING_S
     )
 
 
-def _adapt_trim(part2, tt, silence, sid, batch) -> Inherited | None:
+def _adapt_trim(part2, tt, silence, sid, batch, standing_subs=NO_STANDING_SUBS) -> Inherited | None:
     routed = route_field(
         silence.policy_for("common", "expost_trim"), part2.expost_trim, control_present=False
     )
@@ -230,7 +230,24 @@ def _adapt_trim(part2, tt, silence, sid, batch) -> Inherited | None:
         return None
     if isinstance(routed, OmitField):
         return None
-    outcome = tt.apply_trim(routed.inherited.value)
+    value = routed.inherited.value
+    # Standing substitution (contract §6): the ex-post trim is the lab_trim bias toggle
+    # (D32a). A STATED trim is DELEGATED to the toggle registry and omitted from the base
+    # rulebook (kept trim-free), recorded as an authorised, REGISTERED difference (not a
+    # silent drop). Bright line: only over a Proceed (STATED/INFERRED), never UNKNOWN (which
+    # took the OmitField branch above). A STATED trim WITHOUT a delegation still Reviews.
+    design_sub = standing_subs.substitution_for("expost_trim", value)
+    if design_sub is not None:
+        batch.standing_subs_applied.append(
+            AppliedStandingSub(
+                field="expost_trim",
+                paper_value=value,
+                engine_value=design_sub.replacement,
+                substitution_id=design_sub.id,
+            )
+        )
+        value = design_sub.replacement
+    outcome = tt.apply_trim(value)
     if isinstance(outcome, Omit):
         return None
     if isinstance(outcome, Review):

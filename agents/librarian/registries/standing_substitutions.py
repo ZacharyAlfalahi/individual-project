@@ -46,7 +46,7 @@ _DEFAULT_STANDING_SUBS_PATH = (
 # The recorded canonical sha256 of the frozen ``config/standing_substitutions_v1.yaml``
 # (the file bytes). Editing the table changes this hash -- update it here deliberately;
 # the diff is the freeze record. The G2 harness asserts ``verify_hash`` against this.
-STANDING_SUBS_V1_SHA256 = "9a7f5dd1a45bc5ca2dede6caf245b469e04017039827e43e1c9e3be3f613e27e"
+STANDING_SUBS_V1_SHA256 = "5f2bb9e52a849cedd5e68d3833f45cf2d1881236ef450201a98a3c8d124835a1"
 
 
 @dataclass(frozen=True)
