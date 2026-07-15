@@ -108,10 +108,11 @@ def test_g2_mom6_byte_equal(subs):  # pragma: no cover -- skipped until JNPS fre
 
 
 def test_mom6_loads_and_adapts_without_error(subs):
-    # Even while byte-equality is gated, mom6 must load + adapt without raising.
+    # mom6 is frozen/binding (JNPS freeze landed); a lightweight load+adapt smoke
+    # alongside the full test_g2_mom6_byte_equal.
     r = adapt_gold("mom6", subs)
     assert r is not None
-    assert not is_binding("mom6")  # documents the pending dependency
+    assert is_binding("mom6")  # JNPS canonical text frozen -> binding locators
 
 
 def test_g2_mom6_register_lab_trim_delegation(subs):

@@ -121,7 +121,7 @@ def test_claimed_headline_metric_parses_as_dict(specs):
 def test_is_binding_flags():
     assert is_binding("str") is True
     assert is_binding("drf") is True
-    assert is_binding("mom6") is False  # pending JNPS canonical-text freeze
+    assert is_binding("mom6") is True  # JNPS canonical text frozen 2026-07-15
 
 
 def test_unknown_anchor_raises():

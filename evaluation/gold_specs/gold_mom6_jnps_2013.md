@@ -1,13 +1,16 @@
 # Gold Spec — mom6 (Jostova, Nikolova, Philipov & Stahel 2013, RFS)
 
-_Status: **AUTHORED 2026-07-11 under schema v1; ◇ (v1.1) fields pre-filled** (control axis trivially
-`none`; paper_facts filled). v1.1 landed 2026-07-11 and str was instantiated under it 2026-07-12;
-this spec's instantiation/re-stamp pass is **blocked only on the JNPS canonical-text freeze**
-(locators here are provisional until then). Expected re-stamp diff = ◇ stamps only._
-_No frozen canonical text exists for this paper yet. Pages are 1-based PDF pages of
-`papers/pdf/Momentum in Corporate Bond Returns.pdf` parsed with the frozen recipe (PyMuPDF 1.28.0,
-L1/v2 ladder, watermark strip v3). Quotes verified as exact L1 substrings
-(`locator_backfill_report.md`); formal locator backfill re-runs when the canonical text is frozen._
+_Status: **INSTANTIATED 2026-07-15 (schema v1.1).** JNPS canonical text FROZEN
+(`evaluation/canonical_texts/jnps_2013.frozen.yaml`, PyMuPDF 1.28.0 / L1 / v2, source_sha256
+7e80f8cb…). All 17 STATED-quote locators re-verified as exact L1 substrings of the frozen text and
+are now **binding** (`scripts/regenerate_locator_backfill.py mom6`; the freeze reproduced the pending
+parse, so offsets were unchanged). `expost_trim=truncate` is delegated to the lab_trim bias toggle via
+the standing substitution `lab_trim_delegation_v1` — the base G2 rulebook stays trim-free; the
+divergence is an authorised, registered difference (self-check 2). G2 byte-equality un-skipped + green._
+_Frozen canonical text: `evaluation/canonical_texts/jnps_2013.frozen.yaml` (45 pages, PyMuPDF 1.28.0,
+L1/v2 ladder, watermark strip v3). Pages are 1-based PDF pages of
+`papers/pdf/Momentum in Corporate Bond Returns.pdf`. Quotes verified as exact L1 substrings of the
+frozen text (2026-07-15)._
 
 ## Header
 
@@ -16,8 +19,8 @@ paper:                   JNPS_2013
 strategy_label:          mom6
 strategy_quote:          "Specifically, each month t, bonds are sorted into decile portfolios, P1 to P10, based on their cumulative returns over months t −6 to t −1 (formation period)."   page: 9
 registry_version:        v1
-silence_policy_version:  v1   # re-stamps to v1.1 at this spec's instantiation pass (cf. str, 2026-07-12)
-canonical_text_hash:     PENDING-FREEZE — recipe normalise_sha256 3d846fef7d710af17c4a183b69353e705ed11e957d7df9390fcba35ac89eee95; source_sha256 7e80f8cb919de4161822df63da1069310d8a113b0562ccd2d3d6420d4f707242
+silence_policy_version:  v1.1
+canonical_text_hash:     normalise_sha256 3d846fef7d710af17c4a183b69353e705ed11e957d7df9390fcba35ac89eee95 (config/canonical_text.yaml recipe, PyMuPDF 1.28.0 / L1 / v2 ladder); source_sha256 7e80f8cb919de4161822df63da1069310d8a113b0562ccd2d3d6420d4f707242 (frozen jnps_2013)
 ```
 
 ## Part 1 — three fields (all CORE)
@@ -202,6 +205,8 @@ claimed_headline_metric: value: {mean: 0.37, t_stat: 3.90, unit: pct_per_month}
    claim, no conflict). **Divergence (real data): trim OPERATION — paper says 'eliminated'
    (truncate); engine adjudicated clip/winsorise from DRR's FilterClass.** Paper wins in the gold;
    the engine's §7.1 adjudication is a DESIGN call downstream.
-3. **Locator backfill.** Quotes verified as exact L1 substrings of the parsed PDF
-   (`locator_backfill_report.md`); re-run against the frozen canonical text when this paper is
-   frozen (PENDING-FREEZE).
+3. **Locator backfill.** Quotes RE-VERIFIED 2026-07-15 as exact L1 substrings of the FROZEN canonical
+   text (`evaluation/canonical_texts/jnps_2013.frozen.yaml`) via
+   `scripts/regenerate_locator_backfill.py mom6` — 17 distinct STATED-quote locators, zero cross-page,
+   all matching `locator_backfill_report.md` (binding). The freeze reproduced the pending parse
+   (source_sha256 7e80f8cb…), so the offsets were unchanged; only their status flips provisional→binding.

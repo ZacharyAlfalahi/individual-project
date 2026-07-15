@@ -5,10 +5,11 @@ _Re-generated 2026-07-12 by running every `quote:` field through the project's `
 zero cross-page fallbacks. Offsets are into `normalise(page, L1)` (store-L0 / normalise-on-read),
 pages 1-based._
 
-**Locator authority:** BBW and DRR-2026 offsets index their **frozen** canonical texts
-(`bbw_2019.frozen.yaml`, `drr_2026.frozen.yaml`) — real, binding D6 locators. JNPS-2013 offsets
-index a **pending-freeze** parse (PyMuPDF 1.28.0, frozen recipe, source hash in the mom6 header) —
-re-run on freeze; offsets are then binding.
+**Locator authority:** BBW, DRR-2026, and JNPS-2013 offsets index their **frozen** canonical texts
+(`bbw_2019.frozen.yaml`, `drr_2026.frozen.yaml`, `jnps_2013.frozen.yaml`) — real, binding D6 locators.
+JNPS-2013 was frozen 2026-07-15 (`scripts/freeze_canonical_text.py`); the freeze reproduced the
+pending parse, so its offsets below were unchanged and re-verified binding
+(`scripts/regenerate_locator_backfill.py mom6`).
 
 | spec | page | char_start | char_end | quote (first 70 chars) |
 |---|---|---|---|---|

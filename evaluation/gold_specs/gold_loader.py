@@ -81,7 +81,7 @@ _LOCATOR_REPORT = _HERE / "locator_backfill_report.md"
 _ANCHORS: dict[str, dict[str, Any]] = {
     "str": {"file": "gold_str_drr_2026.md", "spec_key": "str_drr_2026", "binding": True},
     "drf": {"file": "gold_drf_bbw_2019.md", "spec_key": "drf_bbw_2019", "binding": True},
-    "mom6": {"file": "gold_mom6_jnps_2013.md", "spec_key": "mom6_jnps_2013", "binding": False},
+    "mom6": {"file": "gold_mom6_jnps_2013.md", "spec_key": "mom6_jnps_2013", "binding": True},
 }
 
 # Integer-valued schema fields -- parse their STATED value as an int.
