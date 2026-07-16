@@ -114,17 +114,20 @@ class CanonicalText:
             )
         return self
 
-    def locate(self, quote: str, level: str = "L0") -> Locator | None:
+    def locate(self, quote: str, level: str | None = None) -> Locator | None:
         """Locate ``quote`` in ``pages`` at ladder ``level``; return a
         ``Locator(page, char_start, char_end)`` for the match, else ``None``.
 
         Delegates to ``locate.locate_quote`` (the single matching source of truth,
         shared with the parser bake-off): the same normalisation ladder is applied
         to both the page text and the candidate quote before an exact-substring
-        compare. ``level`` defaults to ``"L0"`` (exact byte substring, the identity
-        ladder), so an L0 locator's offsets are byte-correct into the raw page. At a
-        higher level the offsets index ``normalise(page, level)`` -- callers interpret
-        them at the ``normalisation.ladder_level`` the canonical text records.
+        compare. ``level`` defaults to the canonical text's own
+        ``normalisation.ladder_level`` (L1 for a frozen text; L0 for a stub) -- the
+        store-L0 / normalise-on-read ladder the recipe records -- so a located quote's
+        offsets index ``normalise(page, ladder_level)``, byte-comparable with the gold
+        STATED locators (also L1). Pass an explicit ``level`` to override. (An L0 default
+        was a latent footgun: real, L1-normalised quotes fail an exact L0 substring, so
+        the D9 quote gate returned spurious ``quote_match_failure`` on every live extraction.)
 
         A quote that only matches via the adjacent page-pair fallback (straddling a
         page boundary) returns ``None`` here: its offsets index the joined page-pair,
@@ -134,6 +137,8 @@ class CanonicalText:
         """
         if not isinstance(quote, str) or quote == "":
             raise LibrarianSchemaError("locate(quote) requires a non-empty string")
+        if level is None:
+            level = self.normalisation.get("ladder_level", "L0")
         result = locate_quote(self.pages, quote, level)
         if not result.matched:
             return None

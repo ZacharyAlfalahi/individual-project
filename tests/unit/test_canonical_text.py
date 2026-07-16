@@ -101,6 +101,23 @@ def test_locate_level_l1_normalises_whitespace():
     assert loc.page == 0
 
 
+def test_locate_default_follows_frozen_ladder_level():
+    # locate() must DEFAULT to the text's own recipe ladder (L1 for the real frozen
+    # papers), not L0. The L0 default was a footgun: real, L1-normalised quotes fail an
+    # exact L0 substring, so the D9 quote gate returned spurious quote_match_failure on
+    # every live extraction (RealClient BBW smoke, 2026-07-16).
+    ct = CanonicalText(
+        source_pdf="synthetic/frozen_l1.pdf",
+        source_sha256="ab" * 32,
+        parser={"name": "stub-parser", "version": "0.0.0"},
+        normalisation={"ladder_level": "L1", "rules": ["whitespace_collapse"]},
+        pages=("the long short\nfactor series",),  # newline only bridged at L1
+        status="frozen",
+    )
+    assert ct.locate("long short factor series") is not None      # default -> L1
+    assert ct.locate("long short factor series", level="L0") is None  # explicit L0 still can't
+
+
 def test_locate_level_l2_dehyphenates_fold():
     ct = _frozen(pages=("bonds sorted into quintiles at formation",))
     # a fixture-style hyphen-space fold is bridged only at L2.
