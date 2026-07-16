@@ -41,3 +41,7 @@ coverage.xml
 # Local workflow notes — not synced to remote
 tasks/
 
+# API keys for live Librarian extraction — NEVER commit (see .env.example)
+.env
+runs/
+

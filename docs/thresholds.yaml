@@ -396,3 +396,58 @@ fisd:
     # BOTH runs so they cancel and add nothing to the gap. (Calls are undateable
     # in FISD, so never flagged — a documented limitation.)
     distress_exits: ["defaulted"]
+
+# ---------------------------------------------------------------------------
+# Librarian dual-model LLM stack (D33 amendment, 2026-07-13; stack values
+# committed 2026-07-14 per docs/backlog/remaining_work.md L1/D4).
+# Read at runtime by the RealModelClient (agents/librarian/pipeline/real_client.py)
+# — model ids are NEVER hard-coded in agent code (inviolable rule).
+# Two-phase policy (docs/evaluation/evaluation_contract_v1.md §1):
+#   phase_d — free DEVELOPMENT pair; numbers are NON-reportable (calibration is
+#             pair-specific). Two model families per the D9 independence rationale.
+#   phase_f — REPORTED figures only; gated on per-corpus SKU + cost authorization
+#             (D33) BEFORE any gold run. Claude Sonnet (snapshot) + Gemini 2.5 Flash.
+# temperature 0 + structured (JSON-schema-constrained) decoding, per D9/D10/D33.
+# api_key_env names the env var each client reads its key from — the key itself
+# NEVER lives in the repo (.env is git-ignored; see .env.example).
+# ---------------------------------------------------------------------------
+librarian:
+  model_stack:
+    temperature: 0
+    structured_decoding: true
+    # Rate-limit knobs (RealModelClient): min seconds between calls + retry count.
+    # Free tiers cap requests/sec AND tokens/min; per-model overrides below.
+    min_interval_s: 1.0
+    max_retries: 6
+    phase_d:                       # free dev pair — non-reportable
+      model_a:
+        vendor: gemini
+        # EMPIRICALLY PINNED 2026-07-16 (live probe; returned version gemini-3.5-flash).
+        # Contract §1 says "Gemini 2.5 Flash", but gemini-2.5-flash / -2.5-flash-lite 404
+        # ("no longer available to new users") and gemini-2.0-flash is deprecated/quota-
+        # limited for this key. gemini-3.5-flash is the current available Gemini Flash ->
+        # the Google Gemini FAMILY survives; the SKU deviation is recorded as the D33
+        # amendment (2026-07-16) in decision-log_librarian.md, NOT this comment. Thinking
+        # is disabled in the client (thinking_budget=0) for deterministic extraction.
+        model_id: gemini-3.5-flash
+        api_key_env: GEMINI_API_KEY
+        min_interval_s: 1.0
+      model_b:
+        vendor: mistral
+        # EMPIRICALLY PINNED 2026-07-16: mistral-small-latest returns schema-valid JSON at
+        # temp 0 (returned version mistral-small-latest) — a free-tier SKU, contract-
+        # consistent ("Mistral free tier"). The WIP's mistral-large-latest is the PAID
+        # flagship (corrected). D33 contingency: if a free SKU fails schema at temp 0,
+        # swap the family (e.g. Qwen2.5-72B via DashScope) — the two-family structure survives.
+        model_id: mistral-small-latest
+        api_key_env: MISTRAL_API_KEY
+        min_interval_s: 4.0          # free tier tokens/min is the binding cap
+    phase_f:                       # reported figures — gated on SKU/cost authorization (D33)
+      model_a:
+        vendor: anthropic
+        model_id: claude-sonnet-4-6    # "current snapshot" — pinned at authorization
+        api_key_env: ANTHROPIC_API_KEY
+      model_b:
+        vendor: gemini
+        model_id: gemini-3.5-flash   # 2.5-flash is new-user-restricted (404)
+        api_key_env: GEMINI_API_KEY

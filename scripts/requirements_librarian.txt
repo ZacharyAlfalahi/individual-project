@@ -1,0 +1,15 @@
+# Librarian live dual-model extraction — vendor SDK dependencies (L1 / D33).
+# Install into the project venv:  ./.venv/bin/pip install -r scripts/requirements_librarian.txt
+#
+# These are needed ONLY to run the live pipeline (scripts/run_librarian.py).
+# The offline pipeline + unit tests (FakeModelClient) need none of them — the
+# RealModelClient imports each SDK lazily, so absence never breaks collection.
+#
+# Phase D (dev pair): Gemini 2.5 Flash + a Mistral SKU (the model id lives in
+# docs/thresholds.yaml; free-tier coverage of that SKU is account-dependent).
+google-genai>=1.0.0        # Gemini — client.models.generate_content, JSON output
+mistralai>=1.0.0           # Mistral — client.chat.complete, JSON output (v1 + v2 SDKs supported)
+
+# Phase F (reported figures, gated on SKU authorization): Claude Sonnet + Gemini.
+# Uncomment when wiring the paid anchor pair.
+# anthropic>=0.40.0
