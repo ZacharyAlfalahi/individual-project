@@ -422,16 +422,15 @@ librarian:
     phase_d:                       # free dev pair — non-reportable
       model_a:
         vendor: gemini
-        # EMPIRICALLY PINNED 2026-07-16 (live probe; returned version gemini-3.5-flash).
-        # Contract §1 says "Gemini 2.5 Flash", but gemini-2.5-flash / -2.5-flash-lite 404
-        # ("no longer available to new users") and gemini-2.0-flash is deprecated/quota-
-        # limited for this key. gemini-3.5-flash is the current available Gemini Flash ->
-        # the Google Gemini FAMILY survives; the SKU deviation is recorded as the D33
-        # amendment (2026-07-16) in decision-log_librarian.md, NOT this comment. Thinking
-        # is disabled in the client (thinking_budget=0) for deterministic extraction.
-        model_id: gemini-3.5-flash
+        # Free-dev SKU (probed 2026-07-18): 3.5-flash=20 req/day, 2.0-flash-lite=free-0,
+        # 2.5-flash-lite=404; 3.1-flash-lite has a free daily budget -> pinned. Gemini
+        # FAMILY per contract §1; SKU deviation = D33 amendment in decision-log. thinking=0.
+        model_id: gemini-3.1-flash-lite
         api_key_env: GEMINI_API_KEY
-        min_interval_s: 1.0
+        # 3.1-flash-lite free tier = 250k INPUT TOKENS/MIN; each full-paper call is
+        # ~20-25k tokens, so pace to ~10 calls/min to stay under it (a full paper is
+        # ~41 calls ⇒ ~4-5 min). Residual 429s recover via the body retryDelay.
+        min_interval_s: 6.0
       model_b:
         vendor: mistral
         # EMPIRICALLY PINNED 2026-07-16: mistral-small-latest returns schema-valid JSON at

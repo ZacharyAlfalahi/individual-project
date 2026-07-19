@@ -95,6 +95,13 @@ def test_is_non_retryable():
     assert rc._is_non_retryable(ValueError("boom")) is False
 
 
+def test_retry_after_seconds_parses_google_body():
+    # Gemini puts the delay in the error BODY, not a Retry-After header.
+    assert rc._retry_after_seconds(Exception("429 ... Please retry in 57.13s")) == pytest.approx(57.13)
+    assert rc._retry_after_seconds(Exception("... 'retryDelay': '30s' ...")) == 30.0
+    assert rc._retry_after_seconds(Exception("no delay mentioned")) is None
+
+
 # ---------------------------------------------------------------------------
 # Client with a stubbed backend.
 # ---------------------------------------------------------------------------

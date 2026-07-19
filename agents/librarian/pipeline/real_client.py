@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -325,20 +326,24 @@ def _is_non_retryable(exc: Exception) -> bool:
 
 
 def _retry_after_seconds(exc: Exception) -> float | None:
-    """The server's Retry-After (seconds) if the vendor exposes it on the failed
-    HTTP response, else None. Both the Gemini (``response``) and Mistral
-    (``http_res``) SDK errors carry the raw httpx response with headers."""
+    """The server's retry delay (seconds) if exposed, else None. Checked in order:
+    the ``Retry-After`` header (Mistral ``http_res`` / Gemini ``response``), then the
+    error BODY -- Gemini puts its delay there, not in a header (a ``RetryInfo``
+    ``retryDelay`` and a "Please retry in Ns" message)."""
     resp = getattr(exc, "http_res", None) or getattr(exc, "response", None)
     headers = getattr(resp, "headers", None)
-    if not headers:
-        return None
-    val = headers.get("Retry-After") or headers.get("retry-after")
-    if val is None:
-        return None
-    try:
-        return max(0.0, float(val))
-    except (TypeError, ValueError):
-        return None
+    if headers:
+        val = headers.get("Retry-After") or headers.get("retry-after")
+        if val is not None:
+            try:
+                return max(0.0, float(val))
+            except (TypeError, ValueError):
+                pass
+    # Gemini: delay is in the error body -- "retry in 57.1s" / "retryDelay': '57s'".
+    m = re.search(r"retry(?:Delay['\"]?[:=]\s*['\"]?|\s+in\s+)(\d+(?:\.\d+)?)s", str(exc))
+    if m:
+        return max(0.0, float(m.group(1)))
+    return None
 
 
 # ---------------------------------------------------------------------------
