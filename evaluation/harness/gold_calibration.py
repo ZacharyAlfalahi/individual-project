@@ -41,6 +41,7 @@ from evaluation.harness.compare_policy import (  # noqa: E402
     compare_field,
 )
 from evaluation.harness.field_pairing import FieldKey, pair_fields  # noqa: E402
+from evaluation.harness.reportability import Reportability  # noqa: E402
 from evaluation.harness.run_artefacts import RunArtefacts, RunField, load_run  # noqa: E402
 
 
@@ -109,10 +110,17 @@ class ScoredField:
 
 @dataclass(frozen=True)
 class AnchorScore:
+    """One anchor's scored rows plus the run's reportability stamp.
+
+    ``reportability`` has NO DEFAULT, so a score cannot exist without its phase
+    being decided (contract §1). Anything that renders these rows as a headline
+    number must pass it through ``require_reportable`` first."""
+
     anchor_id: str
     paper_id: str
     run_dir: Path
     rows: tuple[ScoredField, ...]
+    reportability: Reportability
 
     def counts(self) -> Counter:
         return Counter(r.outcome for r in self.rows)
@@ -192,4 +200,5 @@ def score_anchor(anchor_id: str, run_dir: str | Path, *,
         ))
 
     return AnchorScore(anchor_id=anchor_id, paper_id=art.paper_id,
-                       run_dir=Path(run_dir), rows=tuple(rows))
+                       run_dir=Path(run_dir), rows=tuple(rows),
+                       reportability=art.reportability)

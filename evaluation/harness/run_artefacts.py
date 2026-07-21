@@ -39,6 +39,8 @@ for _p in (str(_REPO_ROOT), str(_REPO_ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from evaluation.harness.reportability import Reportability, classify_phase  # noqa: E402
+
 
 class ArtefactError(RuntimeError):
     """A run's artefacts could not be loaded cleanly. Surfaced loudly -- a run
@@ -126,13 +128,19 @@ class RunField:
 
 @dataclass(frozen=True)
 class RunArtefacts:
-    """One scored run: its header, its fields keyed by flat trace name, and the
-    raw-archive line counts (kept for the integrity check, not for scoring)."""
+    """One scored run: its header, its fields keyed by flat trace name, its
+    reportability stamp, and the raw-archive line counts (kept for the integrity
+    check, not for scoring).
+
+    ``reportability`` has NO DEFAULT: a run cannot be loaded without its phase
+    being decided, so nothing downstream can render a number from an artefact
+    whose reportability nobody established (contract §1)."""
 
     run_dir: Path
     paper_id: str
     header: dict
     fields: dict[str, RunField]
+    reportability: "Reportability"
     raw_line_counts: dict[str, int] = dc_field(default_factory=dict)
 
     @property
@@ -199,7 +207,7 @@ def _not_extracted_fields(spec_dict: dict) -> set[str]:
 
 
 def load_run(run_dir: str | Path, *, strategy_index: int = 0,
-             check_raw: bool = True) -> RunArtefacts:
+             check_raw: bool = True, model_stack: dict | None = None) -> RunArtefacts:
     """Load one strategy's spec + trace from a run directory.
 
     ``check_raw`` compares the per-model raw JSONL line counts against the trace
@@ -260,5 +268,6 @@ def load_run(run_dir: str | Path, *, strategy_index: int = 0,
         paper_id=header.get("paper_id", ""),
         header=header,
         fields=fields,
+        reportability=classify_phase(header, model_stack),
         raw_line_counts=raw_counts,
     )
