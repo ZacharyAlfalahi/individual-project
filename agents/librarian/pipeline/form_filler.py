@@ -30,6 +30,8 @@ locating quotes, both models' summaries to the trace, earliest-span ship rule.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from agents.quant.config import Evidence, Inherited, Locator
@@ -59,11 +61,20 @@ _ENUM_MENU_BY_FIELD: dict[str, tuple[str, ...]] = {
 
 
 def _field_kind(field: str) -> str:
-    """The prompt-template family for a field (build brief §5.3 / manifest)."""
+    """The prompt-template family for a field (build brief §5.3 / manifest).
+
+    The manifest is authoritative -- this is the fallback for a query built
+    without one. The paper_facts branches matter: the ``enum`` default would send
+    them to ``_menu_for``, which fails loud (correctly -- they have no menu), so
+    an unbound paper_facts field would abort a live run rather than degrade."""
     if field in (F.FORMATION_STRUCTURE, F.ASSET_CLASS):
         return "part1_enum"
     if field in F.INT_FIELDS:
         return "int"
+    if field in (F.SAMPLE_START, F.SAMPLE_END):
+        return "date"
+    if field == F.CLAIMED_HEADLINE_METRIC:
+        return "paper_metric"
     return "enum"
 
 
@@ -112,18 +123,31 @@ def normalise(field: str, raw: object, value_kind: str | None = None) -> object:
         ``"equal_weighted"``) together.
 
     ``value_kind`` optionally overrides the int-vs-token decision (``"int"`` ->
-    int, anything else -> token) for a field whose name is NOT in ``INT_FIELDS``
-    -- used by the signal filler for a registry parameter typed ``int`` in its
-    concept's schema (the param name is not a schema field, so ``INT_FIELDS``
-    membership cannot classify it). ``None`` (the default) keeps the field-name
-    -driven behaviour unchanged.
+    int, ``"paper_metric"`` -> canonical metric tuple, anything else -> token)
+    for a field whose name is NOT in ``INT_FIELDS`` -- used by the signal filler
+    for a registry parameter typed ``int`` in its concept's schema (the param
+    name is not a schema field, so ``INT_FIELDS`` membership cannot classify it),
+    and by the paper_facts filler for the composite headline metric. ``None``
+    (the default) keeps the field-name-driven behaviour unchanged.
 
     ``None`` normalises to ``None`` (a silent / absent value)."""
     if raw is None:
         return None
+    # Dispatch on the FIELD NAME as well as value_kind, matching the int rule. The
+    # name alone is sufficient to classify these, and a caller that forgets
+    # value_kind would otherwise silently fall through to _normalise_token, which
+    # destroys both shapes (a date loses its hyphen, a metric folds to its repr).
+    if value_kind == "paper_metric" or field == F.CLAIMED_HEADLINE_METRIC:
+        return _normalise_paper_metric(field, raw)
+    if value_kind == "date" or field in (F.SAMPLE_START, F.SAMPLE_END):
+        return _normalise_date(field, raw)
     if value_kind == "int" or field in F.INT_FIELDS:
         return _normalise_int(field, raw)
     return _normalise_token(raw)
+
+
+# paper_facts dates are YYYY-MM, per schemas/date.schema.json.
+_DATE_RE = re.compile(r"^[0-9]{4}-(0[1-9]|1[0-2])$")
 
 
 def _normalise_int(field: str, raw: object) -> int:
@@ -148,6 +172,76 @@ def _normalise_int(field: str, raw: object) -> int:
             return int(digits)
         raise LibrarianSchemaError(f"{field}: string {raw!r} has no leading integer to normalise")
     raise LibrarianSchemaError(f"{field}: cannot normalise {type(raw).__name__} to int")
+
+
+def _normalise_date(field: str, raw: object) -> str:
+    """A paper_facts date, normalised to itself.
+
+    YYYY-MM is ALREADY the canonical form, so normalisation here is validation
+    plus pass-through -- deliberately NOT ``_normalise_token``, which collapses
+    the hyphen to an underscore and would ship ``2004_07`` for a value the prompt
+    and schema both demand as ``2004-07``. The shipped value is the normalised
+    one (see the STATED branch of ``fill_field``), so a destructive normaliser
+    here corrupts the artefact rather than just the comparison key: the field
+    would be read correctly and still score as a mismatch against gold.
+
+    The real client already degrades a non-conforming date to silent, so a bad
+    one reaching here is a decoding-contract violation, surfaced not coerced."""
+    if not isinstance(raw, str):
+        raise LibrarianSchemaError(
+            f"{field}: date value must be a string; got {type(raw).__name__}"
+        )
+    token = raw.strip()
+    if not _DATE_RE.match(token):
+        raise LibrarianSchemaError(
+            f"{field}: {raw!r} is not a YYYY-MM date (zero-padded month)"
+        )
+    return token
+
+
+def _normalise_paper_metric(field: str, raw: object) -> dict:
+    """The composite claimed_headline_metric ({mean, t_stat, unit}) with its
+    components coerced: mean / t_stat to float (so 0.7 and "0.70" agree), unit to
+    a token.
+
+    Returns a DICT, not a tuple. Python dict equality is already order-independent
+    (``{'a':1,'b':2} == {'b':2,'a':1}``), so D9 gets key-order invariance for free
+    and there is no reason to fold to a sorted tuple -- doing so would change the
+    shipped TYPE, since the STATED branch of ``fill_field`` ships the normalised
+    value. Gold holds a mapping (``strategy_spec.PaperFacts`` declares
+    ``Inherited[{mean, t_stat, unit}]``), so a tuple could never match it and
+    would break every downstream subscript.
+
+    A value that is not a complete triple -> ``LibrarianSchemaError``: the client
+    already degrades a partial metric to silent, so a partial one reaching here
+    is a decoding-contract violation, surfaced not silently coerced."""
+    if not isinstance(raw, Mapping):
+        raise LibrarianSchemaError(
+            f"{field}: paper_metric value must be a mapping; got {type(raw).__name__}"
+        )
+    missing = [k for k in ("mean", "t_stat", "unit") if k not in raw]
+    if missing:
+        raise LibrarianSchemaError(
+            f"{field}: paper_metric value is missing {missing} -- a mean without its "
+            "t-statistic is not a headline claim"
+        )
+    out: dict = {}
+    for key in sorted(raw):
+        value = raw[key]
+        if key == "unit":
+            out[key] = _normalise_token(value)
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            raise LibrarianSchemaError(
+                f"{field}.{key}: cannot normalise {type(value).__name__} to a number"
+            )
+        try:
+            out[key] = float(value)
+        except ValueError as exc:
+            raise LibrarianSchemaError(
+                f"{field}.{key}: string {value!r} is not a number"
+            ) from exc
+    return out
 
 
 def _normalise_token(raw: object) -> str:

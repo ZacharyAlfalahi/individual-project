@@ -1,0 +1,14 @@
+# Decoding config for field-type: date (build brief §5.3, D10/D33).
+#
+# Temperature 0 + structured (JSON-schema-constrained) decoding, per D10/D33.
+# k=1 is the primary sampling protocol (D10); the k=3 / 2-of-3 ladder is
+# pre-registered but NOT built (trigger = gold STATED coverage < 80%).
+#
+# v1.1: paper_facts sample_start / sample_end. Analysis-only output (Guard 2).
+field_type: date
+temperature: 0
+top_p: 1
+structured: true
+schema: schemas/date.schema.json
+k: 1
+max_output_tokens: 512

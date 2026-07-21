@@ -184,3 +184,98 @@ def test_client_fails_loud_on_non_retryable(monkeypatch, builder):
     client = _client_with(monkeypatch, builder, _DeadBackend())
     with pytest.raises(rc.RealClientError):
         client.answer(FieldQuery("weighting_scheme", "enum"), _stub_ct())
+
+
+# --- paper_facts field types (v1.1): date + paper_metric ---------------------
+
+def test_coerce_paper_metric_is_all_or_nothing():
+    full = {"mean": 0.7, "t_stat": 3.6, "unit": "pct_per_month"}
+    assert rc._coerce_paper_metric(full) == {"mean": 0.7, "t_stat": 3.6, "unit": "pct_per_month"}
+    # numeric strings are accepted (the model quoted the printed figure)
+    assert rc._coerce_paper_metric({"mean": "-0.99", "t_stat": "-4.46", "unit": "pct_per_month"}) == {
+        "mean": -0.99, "t_stat": -4.46, "unit": "pct_per_month"
+    }
+    # a mean without its t-statistic is NOT a headline claim -> silent
+    assert rc._coerce_paper_metric({"mean": 0.7, "unit": "pct_per_month"}) is None
+    assert rc._coerce_paper_metric({"mean": 0.7, "t_stat": 3.6}) is None
+    assert rc._coerce_paper_metric({"mean": 0.7, "t_stat": 3.6, "unit": "  "}) is None
+    assert rc._coerce_paper_metric({"mean": True, "t_stat": 3.6, "unit": "x"}) is None
+    assert rc._coerce_paper_metric({"mean": "n/a", "t_stat": 3.6, "unit": "x"}) is None
+    assert rc._coerce_paper_metric("0.7 (t=3.6)") is None
+    assert rc._coerce_paper_metric(None) is None
+
+
+def test_answer_from_parsed_paper_metric(builder):
+    parsed = {
+        "field": "claimed_headline_metric", "answered": True,
+        "value": {"mean": 0.7, "t_stat": 3.6, "unit": "pct_per_month"},
+        "quote": "0.70% per month (t = 3.60)",
+    }
+    ans = rc._answer_from_parsed("claimed_headline_metric", "paper_metric", parsed, "m")
+    assert ans.answered is True
+    assert ans.raw == {"mean": 0.7, "t_stat": 3.6, "unit": "pct_per_month"}
+
+    # partial value -> silent, exactly like an unparseable int
+    partial = dict(parsed, value={"mean": 0.7, "unit": "pct_per_month"})
+    assert rc._answer_from_parsed("claimed_headline_metric", "paper_metric", partial, "m").answered is False
+    # complete value but no quote -> silent (evidence rule, unchanged)
+    no_quote = {k: v for k, v in parsed.items() if k != "quote"}
+    assert rc._answer_from_parsed("claimed_headline_metric", "paper_metric", no_quote, "m").answered is False
+
+
+def test_render_date_and_paper_metric_kinds(builder):
+    date_out = builder.render(FieldQuery("sample_start", "date"), "Downside Risk Factor (DRF)")
+    assert "sample_start" in date_out and "YYYY-MM" in date_out
+
+    metric_out = builder.render(FieldQuery("claimed_headline_metric", "paper_metric"), "Momentum (6m)")
+    # the strategy label is load-bearing here: a paper reports many numbers, and
+    # the field is "the headline figure THIS strategy claims" (D20).
+    assert "Momentum (6m)" in metric_out
+    assert "pct_per_month" in metric_out
+
+
+def test_paper_facts_kinds_never_route_to_the_enum_menu():
+    """The crash-guard. paper_facts fields have no domains.yaml menu, so if
+    _field_kind ever defaulted them to `enum` the renderer would fail loud in
+    _menu_for and abort a whole live run at the first paper_facts field."""
+    from agents.librarian.pipeline.form_filler import _field_kind
+
+    assert _field_kind("sample_start") == "date"
+    assert _field_kind("sample_end") == "date"
+    assert _field_kind("claimed_headline_metric") == "paper_metric"
+
+
+def test_coerce_date_enforces_the_schema_pattern():
+    """The JSON Schema declares ^\\d{4}-\\d{2}$ but is inlined into the prompt, not
+    vendor-enforced -- this is the only enforcement point. Without it two models
+    both answering "July 2004" would agree, locate, and ship STATED with a value
+    no gold can match."""
+    assert rc._coerce_date("2004-07") == "2004-07"
+    assert rc._coerce_date("  2016-12  ") == "2016-12"
+    for bad in ("2004", "July 2004", "2004-7", "2004-13", "2004-00", "", None, 200407):
+        assert rc._coerce_date(bad) is None
+
+
+def test_coerce_paper_metric_rejects_an_off_menu_unit():
+    # pct_per_year vs pct_per_month is a 12x scaling error, so an unrecognised
+    # unit must degrade to silent rather than ship.
+    ok = {"mean": 0.7, "t_stat": 3.6, "unit": "pct_per_year"}
+    assert rc._coerce_paper_metric(ok)["unit"] == "pct_per_year"
+    for bad_unit in ("% per month", "bps", "BOGUS", "pct per month", ""):
+        assert rc._coerce_paper_metric({"mean": 0.7, "t_stat": 3.6, "unit": bad_unit}) is None
+
+
+def test_paper_metric_unit_menu_matches_the_schema():
+    """Tripwire: the runtime menu and the schema's enum are two copies of one
+    fact. If they drift, the schema shown to the model stops describing what the
+    client will actually accept."""
+    import json
+    from pathlib import Path
+
+    schema = json.loads(
+        (Path(rc.__file__).resolve().parents[1] / "data" / "schemas" / "paper_metric.schema.json")
+        .read_text(encoding="utf-8")
+    )
+    assert set(schema["properties"]["value"]["properties"]["unit"]["enum"]) == set(
+        rc._PAPER_METRIC_UNITS
+    )

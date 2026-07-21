@@ -450,3 +450,22 @@ librarian:
         vendor: gemini
         model_id: gemini-3.5-flash   # 2.5-flash is new-user-restricted (404)
         api_key_env: GEMINI_API_KEY
+
+  # --- G3 gold calibration (D34 mechanics, D37 conventions) -------------------
+  # Read at runtime by the G3 harness; the harness HARD-RAISES if this block is
+  # absent rather than defaulting (same discipline as load_verified_standing_subs
+  # on the G2 side -- a calibration run against silently-defaulted thresholds is
+  # a number nobody chose). Per the project rule these live here, never in agent code.
+  g3:
+    # D34: per-field-type cells at n >= 20, else the cell reports "uncalibrated".
+    # D34's own reopen clause: if no cell reaches the bar, granularity is
+    # coarsened and DECLARED -- never silently pooled. On a 3-anchor gold set
+    # (136 comparable field observations) most cells are expected to sit below
+    # this; that is the honest output, not an error state.
+    min_cell_n: 20
+    # Two-sided 95% Wilson interval. Wilson (not Wald) because the counts are
+    # small and often at 0 or n, where Wald gives degenerate zero-width bounds.
+    wilson_z: 1.959963984540054
+    # Contract §3.3: field-level intervals are DESCRIPTIVE; the unit of
+    # generalisation is the observed gold corpus, so no population-level claim.
+    interval_label: descriptive

@@ -189,6 +189,15 @@ class PromptBuilder:
             return tpl.format(field=query.field, registry_menu=self._registry_menu)
         if kind == "method_summary":
             return tpl.format(strategy_label=strategy_label)
+        if kind == "date":
+            return tpl.format(field=query.field, definition=definition)
+        if kind == "paper_metric":
+            # The strategy label matters here: a paper reports many numbers, and
+            # the field is "the headline figure THIS strategy claims" (D20 keys
+            # RQ1 scoring by the label), not "a number from this paper".
+            return tpl.format(
+                field=query.field, definition=definition, strategy_label=strategy_label
+            )
         raise LibrarianSchemaError(f"RealModelClient cannot render unknown kind {kind!r}")
 
 
@@ -389,6 +398,73 @@ def _coerce_int(value: Any) -> int | None:
     return None
 
 
+_PAPER_METRIC_KEYS: tuple[str, ...] = ("mean", "t_stat", "unit")
+
+# The closed unit menu. Mirrors the `unit` enum in schemas/paper_metric.schema.json
+# -- the JSON Schema is inlined into the prompt but NOT vendor-enforced, so this is
+# the only place the menu is actually applied. A tripwire test asserts the two stay
+# in step. An off-menu unit is not cosmetic: it mis-scales every downstream numeric
+# comparison (pct_per_year vs pct_per_month is a 12x error).
+_PAPER_METRIC_UNITS: frozenset[str] = frozenset(
+    ("pct_per_month", "pct_per_year", "bps_per_month", "decimal_per_month")
+)
+
+# paper_facts dates are YYYY-MM (zero-padded month), per schemas/date.schema.json.
+_DATE_RE = re.compile(r"^[0-9]{4}-(0[1-9]|1[0-2])$")
+
+
+def _coerce_date(value: Any) -> str | None:
+    """A YYYY-MM date string, or None if it is not one.
+
+    The schema declares the pattern but nothing enforces it (schemas are inlined
+    into the prompt, not vendor-enforced), so this is the enforcement point. A
+    model that answers "July 2004" or a bare year has NOT answered this field:
+    returning None degrades it to silent, which is the safe state -- otherwise two
+    models both saying "July 2004" would agree, locate, and ship STATED with a
+    value no gold can match."""
+    if not isinstance(value, str):
+        return None
+    token = value.strip()
+    return token if _DATE_RE.match(token) else None
+
+
+def _coerce_paper_metric(value: Any) -> dict | None:
+    """The composite claimed_headline_metric value, or None if it is not a
+    complete {mean, t_stat, unit} triple.
+
+    All-or-nothing by design: a mean without its t-statistic is not a headline
+    claim, and shipping a half-populated dict would put a value into the D9 merge
+    that no gold can ever match, and that the Reporter's numeric verifier would
+    later have to special-case. Partial -> None -> the caller degrades to silent
+    (the same rule as an unparseable int)."""
+    if not isinstance(value, dict):
+        return None
+    out: dict = {}
+    for key in _PAPER_METRIC_KEYS:
+        if key not in value:
+            return None
+        v = value[key]
+        if key == "unit":
+            if not (isinstance(v, str) and v.strip() in _PAPER_METRIC_UNITS):
+                return None
+            out[key] = v.strip()
+            continue
+        # mean / t_stat: a number, or a numeric string the model quoted.
+        if isinstance(v, bool):
+            return None
+        if isinstance(v, (int, float)):
+            out[key] = float(v)
+            continue
+        if isinstance(v, str):
+            try:
+                out[key] = float(v.strip())
+            except ValueError:
+                return None
+            continue
+        return None
+    return out
+
+
 def _answer_from_parsed(field_name: str, kind: str, parsed: dict, model_id: str) -> ModelAnswer:
     """Map a parsed JSON reply to a ``ModelAnswer``, defensively. An ``answered``
     reply with no supporting quote is downgraded to silent -- the D9 gate has
@@ -411,6 +487,10 @@ def _answer_from_parsed(field_name: str, kind: str, parsed: dict, model_id: str)
         raw = parsed.get("concept_id")
     elif kind == "int":
         raw = _coerce_int(parsed.get("value"))
+    elif kind == "paper_metric":
+        raw = _coerce_paper_metric(parsed.get("value"))
+    elif kind == "date":
+        raw = _coerce_date(parsed.get("value"))
     else:  # enum, part1_enum
         raw = parsed.get("value")
 

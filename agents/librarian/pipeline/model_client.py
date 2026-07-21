@@ -34,9 +34,11 @@ from ..errors import LibrarianSchemaError
 
 # The field kinds a query can carry -- one per prompt-template family (build brief
 # §5.3): the enum menus, the ints, a SignalRef pick, the method_summary free
-# text, and the Part-1 enum menus. Matches data/prompts/manifest.yaml templates.
+# text, the Part-1 enum menus, and (v1.1) the two paper_facts types -- a
+# YYYY-MM date and the composite {mean, t_stat, unit} claimed headline metric.
+# Matches data/prompts/manifest.yaml templates.
 FIELD_KINDS: frozenset[str] = frozenset(
-    ("enum", "int", "signal_ref", "method_summary", "part1_enum")
+    ("enum", "int", "signal_ref", "method_summary", "part1_enum", "date", "paper_metric")
 )
 
 

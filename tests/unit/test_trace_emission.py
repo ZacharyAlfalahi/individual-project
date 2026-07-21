@@ -176,3 +176,55 @@ def test_run_paper_collects_emission_failure_run_to_completion():
     result = run_paper(ct, enum, bad_assembler, provenance())
     assert result.specs == []
     assert any(isinstance(e, LibrarianEmissionError) for e in result.events)
+
+
+# --- assembler arity: v1 (4-tuple) and v1.1 (5-tuple, +paper_facts) ---------
+# run_paper accepts BOTH so that adding the paper_facts block could not perturb a
+# single existing emission (the additive discipline). These two tests pin that:
+# remove the 4-arity branch and the first fails; remove the 5-arity branch and
+# the second fails. Without them, a later "simplification" to one arity would
+# silently break either every offline fixture or every live run.
+
+def _paper_facts():
+    from agents.librarian.schema import PaperFacts
+
+    return PaperFacts(
+        sample_start=stated("2004-07"),
+        sample_end=stated("2016-12"),
+        universe_filter=Inherited(
+            None, "UNKNOWN",
+            Evidence(note="not extracted (universe_filter: no prose field-type yet)",
+                     unknown_reason="not_stated"),
+        ),
+        claimed_headline_metric=stated({"mean": 0.7, "t_stat": 3.6, "unit": "pct_per_month"}),
+    )
+
+
+def _assembler_v11(construction_arg, canonical_text, prov):
+    return build_part1(), build_part2(), stated("Synthetic Momentum"), _trace(), _paper_facts()
+
+
+def _frozen_enum():
+    return EnumerationResult(
+        paper_id="SYNTH-0001",
+        constructions=(construction(name="Momentum", quote=Q_RANKED, cls="strategy"),),
+    )
+
+
+def test_run_paper_accepts_a_v1_assembler_without_paper_facts():
+    result = run_paper(frozen_stub(), _frozen_enum(), _assembler, provenance())
+    assert len(result.specs) == 1
+    spec, _ = result.specs[0]
+    assert spec.paper_facts is None
+
+
+def test_run_paper_threads_paper_facts_from_a_v11_assembler():
+    result = run_paper(frozen_stub(), _frozen_enum(), _assembler_v11, provenance())
+    assert len(result.specs) == 1
+    spec, _ = result.specs[0]
+    assert spec.paper_facts is not None
+    assert spec.paper_facts.sample_start.value == "2004-07"
+    assert spec.paper_facts.claimed_headline_metric.value["t_stat"] == 3.6
+    # universe_filter is NOT ASKED, not a claim that the paper is silent -- the
+    # marker G3 keys on to keep it out of the missed-evidence denominator.
+    assert spec.paper_facts.universe_filter.evidence.note.startswith("not extracted")

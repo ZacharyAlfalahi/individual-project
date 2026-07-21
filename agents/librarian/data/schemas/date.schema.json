@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "librarian/field-type/date",
+  "title": "Date field extraction answer",
+  "description": "Structured-decoding contract for a paper_facts date field (sample_start, sample_end). The model returns the date as stated, normalised to YYYY-MM, plus a verbatim supporting quote, OR reports the paper silent. paper_facts (schema v1.1) are analysis-only extraction output: RQ1-scorable, and the adapter NEVER reads them (Guard 2).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["field", "answered"],
+  "properties": {
+    "field": {"type": "string", "minLength": 1},
+    "answered": {"type": "boolean"},
+    "value": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}$",
+      "description": "The stated date normalised to YYYY-MM (month zero-padded), or null when answered=false. A year alone is not a valid value -- the paper is silent on the month."
+    },
+    "quote": {
+      "type": ["string", "null"],
+      "description": "Verbatim span supporting the value; required when answered=true."
+    }
+  }
+}

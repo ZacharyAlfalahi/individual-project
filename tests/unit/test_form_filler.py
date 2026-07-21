@@ -191,3 +191,83 @@ def test_method_summary_none_when_silent(stub):
     assert summary is None
     assert trace.final_tag == "UNKNOWN"
     assert trace.final_reason == NOT_STATED
+
+
+# --- paper_facts: the composite metric normaliser (v1.1) --------------------
+# The whole point of _normalise_paper_metric is that it is ORDER-FREE: two models
+# emitting the same figure with the keys in a different order must AGREE. If this
+# folded to a dict repr, key order would become a source of spurious D9
+# disagreement -- a merge artefact masquerading as an extraction conflict.
+
+_METRIC_A = {"mean": 0.7, "t_stat": 3.6, "unit": "pct_per_month"}
+
+
+def test_paper_metric_normalise_is_key_order_invariant():
+    reordered = {"unit": "pct_per_month", "t_stat": 3.6, "mean": 0.7}
+    assert list(_METRIC_A) != list(reordered)  # the dicts really do differ in order
+    assert normalise("claimed_headline_metric", _METRIC_A, "paper_metric") == normalise(
+        "claimed_headline_metric", reordered, "paper_metric"
+    )
+
+
+def test_paper_metric_normalise_folds_numeric_surface_forms():
+    as_strings = {"mean": "0.70", "t_stat": "3.6", "unit": "Pct Per Month"}
+    assert normalise("claimed_headline_metric", _METRIC_A, "paper_metric") == normalise(
+        "claimed_headline_metric", as_strings, "paper_metric"
+    )
+
+
+def test_paper_metric_normalise_keeps_sign():
+    # A reversal reported negative must not fold together with its mirror -- the
+    # str anchor's whole §8 story is that a sign flip can match a published number
+    # by coincidence, so the merge must never treat -0.99 and 0.99 as one value.
+    neg = {"mean": -0.99, "t_stat": -4.46, "unit": "pct_per_month"}
+    pos = {"mean": 0.99, "t_stat": 4.46, "unit": "pct_per_month"}
+    assert normalise("claimed_headline_metric", neg, "paper_metric") != normalise(
+        "claimed_headline_metric", pos, "paper_metric"
+    )
+
+
+def test_paper_metric_normalise_raises_on_partial_triple():
+    # The client degrades a partial metric to silent, so a partial one reaching
+    # normalise is a decoding-contract violation -- surfaced, not coerced.
+    with pytest.raises(LibrarianSchemaError):
+        normalise("claimed_headline_metric", {"mean": 0.7, "unit": "pct_per_month"}, "paper_metric")
+
+
+def test_paper_metric_normalise_raises_on_non_mapping():
+    with pytest.raises(LibrarianSchemaError):
+        normalise("claimed_headline_metric", "0.7 (t=3.6)", "paper_metric")
+
+
+# The two tests below pin the SHIPPED SHAPE against the gold's own shape. They
+# exist because the first version of this code shipped '2004_07' and a tuple: the
+# STATED branch of fill_field ships the NORMALISED value, so a destructive
+# normaliser corrupts the artefact, not merely the comparison key. A field read
+# correctly then scored as a mismatch is the worst failure mode available here --
+# it reads as an extraction error in the RQ1 headline.
+
+def test_date_normalises_to_the_gold_shape_not_a_token():
+    # gold_drf_bbw_2019 holds '2004-07'; the token folder would give '2004_07'.
+    assert normalise("sample_start", "2004-07") == "2004-07"
+    assert normalise("sample_end", " 2016-12 ") == "2016-12"
+    assert normalise("sample_start", "2004-07") != normalise("sample_start", "2004-08")
+
+
+def test_date_normalise_rejects_non_conforming():
+    for bad in ("2004", "July 2004", "2004-7", "2004-13", ""):
+        with pytest.raises(LibrarianSchemaError):
+            normalise("sample_start", bad)
+
+
+def test_paper_metric_normalises_to_the_gold_shape_a_mapping():
+    # gold holds a mapping; a tuple could never match it and breaks subscripting.
+    got = normalise("claimed_headline_metric", _METRIC_A, "paper_metric")
+    assert got == {"mean": 0.7, "t_stat": 3.6, "unit": "pct_per_month"}
+    assert got["t_stat"] == 3.6
+
+
+def test_paper_facts_dispatch_on_field_name_without_value_kind():
+    # A caller that omits value_kind must not fall through to the token folder.
+    assert normalise("claimed_headline_metric", _METRIC_A) == _METRIC_A
+    assert normalise("sample_start", "2004-07") == "2004-07"

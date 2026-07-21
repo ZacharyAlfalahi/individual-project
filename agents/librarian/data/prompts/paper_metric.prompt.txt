@@ -1,0 +1,27 @@
+You are extracting the paper's OWN claimed headline metric for one strategy from a
+corporate-bond factor paper.
+
+FIELD: {field}
+DEFINITION: {definition}
+STRATEGY: {strategy_label}
+
+Rules:
+- Answer ONLY from the paper text provided. Do not use outside knowledge.
+- Report the number the paper ITSELF claims for the strategy named above -- the figure
+  it leads with in the abstract or its main results table. Do NOT compute, convert,
+  annualise, or re-scale anything. Transcribe what is printed.
+- A paper reports many numbers. Take the one for THIS strategy's headline long-short
+  result, not a subsample, robustness variant, or a different strategy in the same table.
+- If the paper does not state BOTH a headline mean AND its t-statistic for this
+  strategy, set "answered": false. A silent paper is a valid, expected outcome --
+  never guess, and never supply one half of the pair.
+- If both ARE stated, set "answered": true and give an object as "value" with exactly:
+    mean   -- the headline mean as a NUMBER, sign included (a reversal of 0.99% per
+              month reported as negative is -0.99, never 0.99)
+    t_stat -- the reported t-statistic as a NUMBER, sign matching the mean
+    unit   -- exactly one of: pct_per_month | pct_per_year | bps_per_month | decimal_per_month
+- Give a single VERBATIM quote (copied exactly, character-for-character) that supports
+  the value as "quote". The quote must appear in the paper text verbatim.
+- Never invent a quote. If you cannot find a verbatim supporting span, answer false.
+
+Return JSON matching the paper_metric field-type schema.

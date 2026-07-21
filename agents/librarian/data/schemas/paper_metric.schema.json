@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "librarian/field-type/paper_metric",
+  "title": "Claimed headline metric extraction answer",
+  "description": "Structured-decoding contract for the paper_facts claimed_headline_metric field. The model returns the paper's OWN reported headline figure for one strategy as a {mean, t_stat, unit} object, plus a verbatim supporting quote, OR reports the paper silent. This is a transcription of what the paper claims -- never a computed or converted value. paper_facts (schema v1.1) are analysis-only extraction output: RQ1-scorable, consumed by the fidelity harness and the Reporter's numeric verifier, and the adapter NEVER reads them (Guard 2).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["field", "answered"],
+  "properties": {
+    "field": {"type": "string", "minLength": 1},
+    "answered": {"type": "boolean"},
+    "value": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["mean", "t_stat", "unit"],
+      "properties": {
+        "mean": {
+          "type": "number",
+          "description": "The headline mean as printed, sign included."
+        },
+        "t_stat": {
+          "type": "number",
+          "description": "The reported t-statistic, sign matching the mean."
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["pct_per_month", "pct_per_year", "bps_per_month", "decimal_per_month"],
+          "description": "The unit the mean is printed in. No conversion is performed."
+        }
+      },
+      "description": "The paper's claimed headline figure, or null when answered=false. All three components are required together: a mean without its t-statistic is not a valid answer."
+    },
+    "quote": {
+      "type": ["string", "null"],
+      "description": "Verbatim span supporting the value; required when answered=true."
+    }
+  }
+}

@@ -43,8 +43,21 @@ field_types:
     schema: schemas/part1_enum.schema.json
     decoding: decoding/part1_enum.decoding.yaml
     sha256: 8331d8ee01c0b55ac873ae54977e021ea4ac75e6147a50f1a2c8459dccc4fb51
+  # v1.1 -- the two paper_facts types. paper_facts are analysis-only extraction
+  # output (RQ1-scorable, Guard 2: the adapter never reads them), but they are
+  # extracted through the same frozen per-field triple as everything else.
+  date:
+    prompt: prompts/date.prompt.txt
+    schema: schemas/date.schema.json
+    decoding: decoding/date.decoding.yaml
+    sha256: 551dc579aaf24bfda3820d755bdddfa75a18d6bcb1c1f3f567072b61b7088bbb
+  paper_metric:
+    prompt: prompts/paper_metric.prompt.txt
+    schema: schemas/paper_metric.schema.json
+    decoding: decoding/paper_metric.decoding.yaml
+    sha256: d93521b2cac2ed63ca9137dd7ff6e1c9b09ce35360961b733cd8987a6ffd2242
 
-# --- field -> field-type (Part 1 + ALREADY_FINAL_PART2) ---------------------
+# --- field -> field-type (Part 1 + ALREADY_FINAL_PART2 + v1.1 paper_facts) ---
 fields:
   # Part 1 (D13) -- method_summary is free text (D16), the two menus are part1_enum.
   formation_structure: part1_enum
@@ -61,6 +74,7 @@ fields:
   control_missing_policy: enum
   long_leg: enum
   signal_transform: enum
+  control_n_groups: int
   combiner: enum
 
   # Part 2 common block (28 fields).
@@ -92,3 +106,15 @@ fields:
   rf_convention: enum
   benchmark_model: enum
   expost_trim: enum
+
+  # paper_facts (v1.1) -- a SEPARATE spec-level block, not Part 2 execution
+  # fields. Extracted like any other field; consumed only by the analysis.
+  #
+  # universe_filter is DELIBERATELY UNBOUND: it is free prose, so it needs a
+  # prose field-type that does not exist yet, and G3 scores prose under a rubric
+  # (D34: declared weaker, excluded from headline accuracy) which is not authored
+  # either. Binding it to `enum` would fail loud in _menu_for -- correctly, since
+  # there is no menu. It is filled as UNKNOWN(not extracted) until both land.
+  sample_start: date
+  sample_end: date
+  claimed_headline_metric: paper_metric

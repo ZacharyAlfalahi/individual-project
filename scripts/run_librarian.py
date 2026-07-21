@@ -73,6 +73,7 @@ from agents.librarian.schema import (  # noqa: E402
     Combiner,
     Leg,
     MethodSummary,
+    PaperFacts,
     Part1,
     Part2,
 )
@@ -96,7 +97,58 @@ PAPERS: dict[str, dict] = {
             {"name": "Downside Risk Factor (DRF)", "quote": "downside risk factor (DRF)", "cls": "strategy"},
         ],
     },
+    # The other two anchors. Each construction quote is the anchor gold's own
+    # formation_structure quote -- table-backed, verified binding against the
+    # frozen text in locator_backfill_report.md -- so the strategy label ships
+    # STATED and the run is scored against a gold built from the same sentence.
+    "jnps": {
+        "paper_id": "JNPS_2013",
+        "canonical_text": "evaluation/canonical_texts/jnps_2013.frozen.yaml",
+        "constructions": [
+            {
+                "name": "Six-Month Momentum (mom6)",
+                "quote": (
+                    "each month t, bonds are sorted into decile portfolios, P1 to P10, "
+                    "based on their cumulative returns over months t −6 to t −1 (formation period)"
+                ),
+                "cls": "strategy",
+            },
+        ],
+    },
+    "drr": {
+        "paper_id": "DRR_2026",
+        "canonical_text": "evaluation/canonical_texts/drr_2026.frozen.yaml",
+        "constructions": [
+            {
+                "name": "Short-Term Reversal (str)",
+                "quote": (
+                    "we sort bonds into deciles each month and form value-weighted portfolios "
+                    "(using bond market capitalization) that are long the top decile and short "
+                    "the bottom decile"
+                ),
+                "cls": "strategy",
+            },
+        ],
+    },
 }
+
+
+# A field the run never ASKED about, as opposed to one the paper was silent on.
+# The tag-reason registry has no `not_extracted` row (its five UNKNOWN reasons are
+# all claims about the paper), so these ride `not_stated` and are identified by
+# this note marker -- which the G3 scorer keys on to bucket them NOT_ASKED and
+# keep them OUT of the §3.6 missed-evidence denominator. One constant, so the
+# writer and the reader cannot drift. Registering a real `not_extracted` reason
+# is the cleaner fix and is recorded as follow-up debt.
+NOT_EXTRACTED_NOTE_PREFIX = "not extracted"
+
+
+def _not_extracted(detail: str) -> Inherited:
+    """UNKNOWN for a field this run did not ask about (never a claim of silence)."""
+    return Inherited(
+        None, "UNKNOWN",
+        Evidence(note=f"{NOT_EXTRACTED_NOTE_PREFIX} ({detail})", unknown_reason="not_stated"),
+    )
 
 
 class AssemblyIncomplete(RuntimeError):
@@ -128,10 +180,7 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None):
         return manifest.query_for(field_name) if field_name in manifest.field_types else None
 
     def _skipped():
-        return Inherited(
-            None, "UNKNOWN",
-            Evidence(note="not extracted (smoke --limit)", unknown_reason="not_stated"),
-        )
+        return _not_extracted("smoke --limit")
 
     def assemble(construction: Construction, canonical_text, prov: RunProvenance):
         # method_summary renders with this construction's name (the Protocol
@@ -231,6 +280,28 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None):
         records.append(comb.trace)
         part2 = Part2(legs=(leg,), combiner=Combiner(kind=comb.value), **common)
 
+        # --- paper_facts (v1.1, spec-level) ------------------------------------
+        # Analysis-only extraction output: RQ1-scorable, and the adapter NEVER
+        # reads it (Guard 2). Always extracted live -- these are 4 gold-STATED
+        # fields on every anchor, so skipping them under --limit would put a
+        # pipeline gap into the coverage denominator.
+        pf_start = fill_field(F.SAMPLE_START, model_a, model_b, canonical_text, query=_q(F.SAMPLE_START))
+        pf_end = fill_field(F.SAMPLE_END, model_a, model_b, canonical_text, query=_q(F.SAMPLE_END))
+        pf_metric = fill_field(
+            F.CLAIMED_HEADLINE_METRIC, model_a, model_b, canonical_text,
+            query=_q(F.CLAIMED_HEADLINE_METRIC), value_kind="paper_metric",
+        )
+        records += [pf_start.trace, pf_end.trace, pf_metric.trace]
+        paper_facts = PaperFacts(
+            sample_start=pf_start.value,
+            sample_end=pf_end.value,
+            # universe_filter needs a prose field-type (unbuilt) and a scoring
+            # rubric (unauthored, D34) -- see the manifest note. Marked NOT ASKED,
+            # not silent: the paper is not silent on its universe, we did not ask.
+            universe_filter=_not_extracted("universe_filter: no prose field-type yet"),
+            claimed_headline_metric=pf_metric.value,
+        )
+
         header = TraceRunHeader(
             paper_id=prov.paper_id,
             strategy_label=construction.name,
@@ -245,7 +316,7 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None):
             prompt_template_hashes=prov.prompt_template_hashes,
         )
         trace = ExtractionTrace(header=header, records=tuple(records))
-        return part1, part2, strategy_label, trace
+        return part1, part2, strategy_label, trace, paper_facts
 
     return assemble
 

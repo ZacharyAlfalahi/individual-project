@@ -97,6 +97,7 @@ def emit_spec_and_trace(
     prov: RunProvenance,
     registry: SignalRegistryLike | None = None,
     tag_reason_registry: TagReasonRegistry | None = None,
+    paper_facts=None,
 ) -> tuple[StrategySpec, ExtractionTrace]:
     """Assemble + stamp + validate one spec, fail-closed.
 
@@ -121,7 +122,7 @@ def emit_spec_and_trace(
         standing_substitutions_version=prov.standing_substitutions_version,
         standing_substitutions_hash=prov.standing_substitutions_hash,
     )
-    spec = StrategySpec(header=header, part1=part1, part2=part2)
+    spec = StrategySpec(header=header, part1=part1, part2=part2, paper_facts=paper_facts)
 
     violations = validate_librarian_spec(
         spec, registry=registry, tag_reason_registry=tag_reason_registry
@@ -191,9 +192,16 @@ def run_paper(
     for construction in enumeration.strategies:
         if not isinstance(construction, Construction):  # defensive
             raise LibrarianSchemaError("enumeration.strategies must yield Constructions")
-        part1, part2, strategy_label, trace = assemble_strategy(
-            construction, canonical_text, prov
-        )
+        assembled = assemble_strategy(construction, canonical_text, prov)
+        # Two arities, deliberately: a v1 assembler returns 4 (no paper_facts), a
+        # v1.1 one returns 5. Accepting both keeps every existing assembler --
+        # including the offline fixtures -- working unchanged, so adding the block
+        # cannot perturb a single existing emission (the additive discipline).
+        if len(assembled) == 5:
+            part1, part2, strategy_label, trace, paper_facts = assembled
+        else:
+            part1, part2, strategy_label, trace = assembled
+            paper_facts = None
         try:
             spec_and_trace = emit_spec_and_trace(
                 part1=part1,
@@ -203,6 +211,7 @@ def run_paper(
                 prov=prov,
                 registry=registry,
                 tag_reason_registry=tag_reason_registry,
+                paper_facts=paper_facts,
             )
         except LibrarianEmissionError as exc:
             result.events.append(exc)
