@@ -247,6 +247,18 @@ def _leg_return_series(env: dict) -> pd.Series:
     )
 
 
+def _leg_n_bonds_series(env: dict) -> pd.Series:
+    """The leg's per-month ``n_bonds`` as a date-indexed Series (empty when the
+    leg's envelope omits the column, e.g. an empty leg)."""
+    monthly = env["monthly_returns"]
+    if len(monthly) == 0 or "n_bonds" not in monthly.columns:
+        return pd.Series([], dtype=float, index=pd.DatetimeIndex([]))
+    return pd.Series(
+        monthly["n_bonds"].values,
+        index=pd.DatetimeIndex(monthly["date"].values),
+    )
+
+
 def _combine_equal_average(
     result: "AdaptResult", panel: pd.DataFrame, *, safe_rate: pd.DataFrame | None
 ) -> StrategyResult:
@@ -284,8 +296,25 @@ def _combine_equal_average(
         float(leg_avgs.sum()) if bool(leg_avgs.notna().any()) else float("nan")
     )
 
+    # Combined per-month bond count = SUM over legs of each leg's n_bonds that month
+    # (the total bonds the strategy deploys). Carried so the membership of a multi-leg
+    # strategy is observable downstream (the Auditor's invariance no-op proxy, §3.5);
+    # without it the combined envelope would drop n_bonds and the membership check
+    # would be silently vacuous. NaN only where every leg is absent that month.
+    n_bonds_wide = pd.concat([_leg_n_bonds_series(e) for e in envs], axis=1)
+    if n_bonds_wide.shape[1] and len(n_bonds_wide):
+        combined_n_bonds = (
+            n_bonds_wide.sum(axis=1, min_count=1).reindex(combined.index)
+        )
+    else:
+        combined_n_bonds = pd.Series(float("nan"), index=combined.index)
+
     combined_mr = pd.DataFrame(
-        {"date": pd.DatetimeIndex(combined.index), "strategy_ret": combined.to_numpy()}
+        {
+            "date": pd.DatetimeIndex(combined.index),
+            "strategy_ret": combined.to_numpy(),
+            "n_bonds": combined_n_bonds.to_numpy(),
+        }
     )
 
     return StrategyResult(

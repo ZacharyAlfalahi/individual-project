@@ -62,6 +62,7 @@ def invariance_test(lattice: LatticeResult, toggle_id: ToggleId) -> InvarianceRe
     all_returns_same = True
     all_n_bonds_same = True
     all_metrics_same = True
+    membership_available = True
     first_violation = ""
 
     for S in _other_subsets(others):
@@ -77,6 +78,13 @@ def invariance_test(lattice: LatticeResult, toggle_id: ToggleId) -> InvarianceRe
         all_n_bonds_same = all_n_bonds_same and n_bonds_same
         all_metrics_same = all_metrics_same and metrics_same
 
+        # The membership proxy is unavailable when a cell has returns but no
+        # per-month bond count (e.g. a multi-leg envelope that dropped n_bonds):
+        # then n_bonds_same is trivially True (empty==empty) and proves nothing.
+        for cell in (off, on):
+            if len(cell.returns) > 0 and len(cell.n_bonds) == 0:
+                membership_available = False
+
         if not first_violation:
             if not config_differs:
                 first_violation = (
@@ -90,14 +98,20 @@ def invariance_test(lattice: LatticeResult, toggle_id: ToggleId) -> InvarianceRe
             elif not metrics_same:
                 first_violation = f"metrics differ at others={sorted(S)}"
 
+    # membership_verified requires the proxy to be present AND identical.
+    membership_verified = membership_available and all_n_bonds_same
     is_no_op = (
-        all_config_differ and all_returns_same and all_n_bonds_same and all_metrics_same
+        all_config_differ and all_returns_same and all_metrics_same and membership_verified
     )
-    note = (
-        "verified inert across all parallel edges"
-        if is_no_op
-        else f"NOT a no-op: {first_violation}"
-    )
+    if is_no_op:
+        note = "verified inert across all parallel edges"
+    elif not membership_available and all_returns_same and all_metrics_same and all_config_differ:
+        note = (
+            "NOT certified a no-op: membership proxy (n_bonds) unavailable, so an "
+            "inert membership cannot be verified (conservative)"
+        )
+    else:
+        note = f"NOT a no-op: {first_violation}"
     return InvarianceResult(
         toggle_id=toggle_id,
         config_hashes_differ=all_config_differ,
@@ -105,6 +119,7 @@ def invariance_test(lattice: LatticeResult, toggle_id: ToggleId) -> InvarianceRe
         n_bonds_identical=all_n_bonds_same,
         metrics_identical=all_metrics_same,
         is_no_op=is_no_op,
+        membership_verified=membership_verified,
         note=note,
     )
 

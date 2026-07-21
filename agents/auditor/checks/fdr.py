@@ -70,15 +70,25 @@ class FdrReport:
     decisions: dict            # key -> FdrDecision
     n_family: int
     n_rejected: int
+    scope: str = "within_strategy"   # "within_strategy" | "corpus_confirmatory"
 
     def to_dict(self) -> dict:
         from ..schemas.decomposition import subset_label
 
         def _label(k):
+            if isinstance(k, tuple) and len(k) == 2:
+                # (strategy_label, coordinate) key from the corpus assembler.
+                strat, coord = k
+                coord_label = (
+                    subset_label(frozenset(coord))
+                    if isinstance(coord, (frozenset, set)) else str(coord)
+                )
+                return f"{strat}::{coord_label}"
             return subset_label(frozenset(k)) if isinstance(k, (frozenset, set)) else str(k)
 
         return {
             "q": self.q,
+            "scope": self.scope,
             "n_family": self.n_family,
             "n_rejected": self.n_rejected,
             "decisions": {
@@ -93,8 +103,31 @@ class FdrReport:
         }
 
 
-def run_fdr(pvalues: Mapping, q: float) -> FdrReport:
-    """Apply BH-FDR to a confirmatory family of p-values."""
+def run_fdr(pvalues: Mapping, q: float, *, scope: str = "within_strategy") -> FdrReport:
+    """Apply BH-FDR to a family of p-values. `scope` labels the family: a single
+    strategy's coordinates are `within_strategy` (a diagnostic multiplicity control,
+    NOT the §7.2 confirmatory verdict); the corpus assembler sets
+    `corpus_confirmatory`."""
     decisions = benjamini_hochberg(pvalues, q)
     n_rej = sum(1 for d in decisions.values() if d.rejected)
-    return FdrReport(q=q, decisions=decisions, n_family=len(decisions), n_rejected=n_rej)
+    return FdrReport(
+        q=q, decisions=decisions, n_family=len(decisions), n_rejected=n_rej, scope=scope
+    )
+
+
+def corpus_confirmatory_fdr(
+    per_strategy_pvalues: Mapping[str, Mapping], q: float
+) -> FdrReport:
+    """The pre-registered §7.2 confirmatory FDR: BH over the UNION family across the
+    locked anchors (mom6, drf, ...). `per_strategy_pvalues` maps each locked
+    strategy label to its {coordinate: p_value}; the family is keyed by
+    `(strategy_label, coordinate)` so the adjustment spans anchors, as RQ3's claims
+    do (D-A9: per-strategy BH controls nothing at the level the claims are made).
+
+    NOT the within-strategy `run_fdr` — that is a per-strategy diagnostic. `str`
+    (pilot) must be excluded by the caller; only locked anchors enter (D-A33)."""
+    family: dict = {}
+    for strategy_label, coord_pvalues in per_strategy_pvalues.items():
+        for coord, p in coord_pvalues.items():
+            family[(strategy_label, coord)] = p
+    return run_fdr(family, q, scope="corpus_confirmatory")

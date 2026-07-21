@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from agents.auditor.checks.fdr import benjamini_hochberg, run_fdr
+from agents.auditor.checks.fdr import (
+    benjamini_hochberg,
+    corpus_confirmatory_fdr,
+    run_fdr,
+)
 
 
 def test_bh_hand_computed_rejections():
@@ -64,3 +68,41 @@ def test_run_fdr_report_counts_and_serialises():
 def test_run_fdr_rejects_invalid_q():
     with pytest.raises(ValueError):
         benjamini_hochberg({"a": 0.1}, 1.5)
+
+
+# --------------------------------------------------------------------------
+# S4 — corpus confirmatory FDR spans the locked anchors; per-strategy is diagnostic
+# --------------------------------------------------------------------------
+
+def test_within_strategy_scope_label():
+    report = run_fdr({frozenset({"meas_err"}): 0.01}, 0.1)
+    assert report.scope == "within_strategy"
+    assert report.to_dict()["scope"] == "within_strategy"
+
+
+def test_corpus_fdr_builds_union_family_across_anchors():
+    per_strategy = {
+        "mom6": {frozenset({"lab_trim"}): 0.001, frozenset({"meas_err"}): 0.4},
+        "drf": {frozenset({"meas_err"}): 0.002, frozenset({"lib_gap"}): 0.6},
+    }
+    report = corpus_confirmatory_fdr(per_strategy, 0.1)
+    # union family = 2 strategies × 2 coordinates = 4 tests, keyed by (strategy, coord)
+    assert report.scope == "corpus_confirmatory"
+    assert report.n_family == 4
+    labels = set(report.to_dict()["decisions"])
+    assert "mom6::lab_trim" in labels and "drf::meas_err" in labels
+
+
+def test_corpus_fdr_adjustment_spans_all_anchors():
+    # The BH denominator is the FULL union size (4), so a p that would reject in a
+    # 2-test family may not in the 4-test corpus family — the point of §7.2.
+    per_strategy = {
+        "mom6": {frozenset({"lab_trim"}): 0.02, frozenset({"meas_err"}): 0.9},
+        "drf": {frozenset({"meas_err"}): 0.9, frozenset({"lib_gap"}): 0.9},
+    }
+    corpus = corpus_confirmatory_fdr(per_strategy, 0.05)
+    within = run_fdr({frozenset({"lab_trim"}): 0.02, frozenset({"meas_err"}): 0.9}, 0.05)
+    # smallest p 0.02: within-family (m=2) BH threshold 0.025 => reject;
+    # corpus-family (m=4) BH threshold 0.0125 => NOT reject.
+    assert within.decisions[frozenset({"lab_trim"})].rejected
+    assert not corpus.decisions[("mom6", frozenset({"lab_trim"}))].rejected

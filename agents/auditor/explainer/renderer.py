@@ -49,6 +49,9 @@ def render_report(report: AuditReport) -> str:
         f"{comp['d_max']}; compression "
         f"{'adequate' if comp['compression_adequate'] else 'inadequate'}."
     )
+    # A NaN metric renders as the token "nan", which the numeric verifier's number
+    # regex deliberately does not match — so it is unverifiable-by-omission, never a
+    # fabricated number. All finite values below trace to typed report fields.
     lines.append(
         f"Deflated Sharpe of the corrected endpoint is "
         f"{econ['deflated_sharpe_corrected']:.4f}."

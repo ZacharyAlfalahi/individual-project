@@ -266,10 +266,13 @@ def inject_lab_trim(panel: pd.DataFrame, signals: pd.DataFrame, mag: float, rng)
     high = _leg_bonds(signals, 0.3, high=True)
     mask = panel["cusip"].isin(high)
     hit = mask & (rng.random(len(panel)) < 0.25)
-    for col in ("ret_raw", "ret_corr"):
-        panel.loc[hit, col] = -(0.5 + mag)   # beyond the truncate bound of -0.5
-    for col in ("xret_raw", "xret_corr"):
-        panel.loc[hit, col] = -(0.5 + mag)
+    extreme = -(0.5 + mag)   # beyond the truncate bound of -0.5
+    panel.loc[hit, "ret_raw"] = extreme
+    panel.loc[hit, "ret_corr"] = extreme
+    # Keep the panel's own xret == ret - rf invariant on the injected rows.
+    rf = panel.loc[hit, "rf_monthly"]
+    panel.loc[hit, "xret_raw"] = extreme - rf
+    panel.loc[hit, "xret_corr"] = extreme - rf
     return panel, signals
 
 

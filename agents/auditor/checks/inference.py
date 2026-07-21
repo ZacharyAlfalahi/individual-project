@@ -73,10 +73,14 @@ def _monthly_doe_series(
 
 
 def _bootstrap_p(draws: np.ndarray) -> float:
-    """A two-sided bootstrap p-value: 2 · min(P(draw>0), P(draw<0))."""
+    """A two-sided bootstrap p-value: 2 · min(P(draw>0), P(draw<0)), floored at 1/B.
+    A bootstrap p-value cannot resolve below 1/n_replicates, so reporting an exact 0
+    would overstate the precision the resampling can support."""
+    n = len(draws)
     frac_pos = float(np.mean(draws > 0))
     frac_neg = float(np.mean(draws < 0))
-    return min(1.0, 2.0 * min(frac_pos, frac_neg))
+    p = min(1.0, 2.0 * min(frac_pos, frac_neg))
+    return max(1.0 / n, p) if n else float("nan")
 
 
 def infer_doe_effects(
@@ -104,6 +108,10 @@ def infer_doe_effects(
         keys, R = return_matrix(cells, months)
         series = _monthly_doe_series(R, keys, months, toggles)
         for T in coords:
+            # A coordinate whose monthly DOE series has zero within-sample variance
+            # yields a NaN HAC t (and NaN p). That is a degenerate case on real returns;
+            # such a coordinate should be read off its bootstrap CI (carried below),
+            # which still shows a tight nonzero interval.
             summ = summarize_returns(series[T], None, months_per_year)
             t = summ["t_stat"]
             lo, hi = doe_ci.get(T, (float("nan"), float("nan")))

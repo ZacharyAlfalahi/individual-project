@@ -26,7 +26,10 @@ from typing import Hashable, Mapping, Sequence
 from ..schemas.decomposition import ShapleyResult
 from .algebra import harsanyi_dividends
 
-# Efficiency is exact in theory; allow only floating-point slack.
+# Efficiency is exact in theory; allow only floating-point slack. The absolute floor
+# assumes O(1)-O(10) metric magnitudes (Sharpe, annualised return, t-stat on monthly
+# bond long-shorts); at pathological magnitudes (~1e7) the Harsanyi accumulation could
+# false-raise, which never occurs for the metrics this instrument attributes.
 EFFICIENCY_RTOL = 1e-9
 EFFICIENCY_ATOL = 1e-12
 

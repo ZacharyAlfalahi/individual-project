@@ -49,6 +49,8 @@ class SupportInfo:
             "t_common": self.t_common,
             "reference_native_months": self.reference_native_months,
             "common_fraction": float(self.common_fraction),
+            "min_common_months": self.min_common_months,
+            "min_common_fraction_of_reference": float(self.min_common_fraction_of_reference),
             "native_min_months": self.native_min_months,
             "native_max_months": self.native_max_months,
             "gate_passed": self.gate_passed,
@@ -61,7 +63,12 @@ class InvarianceResult:
     """The §3.5 invariance verdict for one `expect_no_op` toggle. The claim being
     proved is *different config, identical behaviour* — BOTH halves are required.
     `is_no_op` is True iff the config hashes differ AND every observable output
-    hash matches."""
+    hash matches AND the membership proxy was actually verifiable.
+
+    `membership_verified` guards the multi-leg case: an `equal_average` combiner
+    that dropped its `n_bonds` column would make the membership half trivially true
+    (empty==empty), so a no-op is NEVER certified when the proxy is unavailable —
+    the conservative direction (a membership change must not slip through)."""
 
     toggle_id: ToggleId
     config_hashes_differ: bool
@@ -69,6 +76,7 @@ class InvarianceResult:
     n_bonds_identical: bool
     metrics_identical: bool
     is_no_op: bool
+    membership_verified: bool = True
     note: str = ""
 
     def to_dict(self) -> dict:
@@ -78,6 +86,7 @@ class InvarianceResult:
             "returns_identical": self.returns_identical,
             "n_bonds_identical": self.n_bonds_identical,
             "metrics_identical": self.metrics_identical,
+            "membership_verified": self.membership_verified,
             "is_no_op": self.is_no_op,
             "note": self.note,
         }

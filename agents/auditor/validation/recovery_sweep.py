@@ -78,6 +78,8 @@ def classify_curve(effects: Sequence[float]) -> str:
     monotone = all(
         b >= a for a, b in zip(effects, effects[1:])
     ) or all(b <= a for a, b in zip(effects, effects[1:]))
+    # `monotone` only REFINES the sign-stable (no-crossing) case: a monotone curve that
+    # passes through zero genuinely changes sign, so it is a crossover, not sign_stable.
     if crossings == 0:
         return "sign_stable" if monotone else "non_monotone_sign_stable"
     if crossings == 1:

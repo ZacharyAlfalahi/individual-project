@@ -219,10 +219,22 @@ def load_bayes_params(path: str | Path | None = None) -> BayesParams:
     block = _auditor_block(path)
     ps = _require(block, ("bayes", "prior_scale"), "§7.4")
     eps = _require(block, ("bayes", "epsilon"), "§7.3.3")
-    return BayesParams(
-        prior_scale=_require_number(ps, "auditor.bayes.prior_scale", "§7.4"),
-        epsilon=_require_number(eps, "auditor.bayes.epsilon", "§7.3.3"),
-    )
+    prior_scale = _require_number(ps, "auditor.bayes.prior_scale", "§7.4")
+    epsilon = _require_number(eps, "auditor.bayes.epsilon", "§7.3.3")
+    # ε must be strictly positive: the eigenvalue floor guarantees a positive-definite
+    # covariance only when ε > 0 (a zero floor would leave a singular V̂). prior_scale
+    # likewise must be positive (it enters as 1/prior_scale²).
+    if epsilon <= 0:
+        raise AuditorThresholdError(
+            "auditor.bayes.epsilon (must be strictly positive; the eigenvalue floor "
+            f"needs ε > 0, got {epsilon})", "§7.3.3"
+        )
+    if prior_scale <= 0:
+        raise AuditorThresholdError(
+            f"auditor.bayes.prior_scale (must be strictly positive; got {prior_scale})",
+            "§7.4",
+        )
+    return BayesParams(prior_scale=prior_scale, epsilon=epsilon)
 
 
 @dataclass(frozen=True)

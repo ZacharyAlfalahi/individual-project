@@ -156,7 +156,11 @@ def run_economic(
     kurtosis: float = 3.0,
 ) -> EconomicResult:
     """Classify the endpoint gap, compute the practitioner deltas, and the deflated
-    Sharpe of the corrected endpoint. `gap` uses the annualised-return metric."""
+    Sharpe of the corrected endpoint. `gap` uses the annualised-return metric.
+
+    `sr_std` must be the PER-PERIOD (monthly) cross-trial Sharpe standard deviation —
+    it is compared against `sr_periodic = average/bumpiness`, also per-period. Passing
+    an annualised value would inflate the deflation benchmark by √months_per_year."""
     gap = corrected.annualised_average - uncorrected.annualised_average
     deltas = economic_deltas(uncorrected, corrected)
     # per-period Sharpe of the corrected endpoint = mean / sd (native units).

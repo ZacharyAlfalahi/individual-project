@@ -111,24 +111,32 @@ def assemble_theta(
 
 def regularise_covariance(
     V: np.ndarray, epsilon: float
-) -> tuple[np.ndarray, CovarianceRegularisation]:
-    """Symmetrise and clip eigenvalues below ε (§7.3.3). Records how many were
-    clipped and the smallest eigenvalue before clipping."""
+) -> tuple[np.ndarray, np.ndarray, CovarianceRegularisation]:
+    """Symmetrise and clip eigenvalues at ε (§7.3.3), returning BOTH the regularised
+    covariance and its inverse. Clipping at `<= epsilon` (with ε > 0 enforced by the
+    loader) guarantees the returned matrices are positive definite, so the posterior
+    never touches an unguarded `np.linalg.inv`. Records how many eigenvalues were
+    clipped and the smallest one before clipping."""
     Vs = 0.5 * (V + V.T)
     eigvals, eigvecs = np.linalg.eigh(Vs)
     min_before = float(eigvals.min()) if eigvals.size else float("nan")
-    clipped = eigvals < epsilon
+    clipped = eigvals <= epsilon
     n_clipped = int(np.sum(clipped))
     eigvals_reg = np.where(clipped, epsilon, eigvals)
     V_reg = (eigvecs * eigvals_reg) @ eigvecs.T
     V_reg = 0.5 * (V_reg + V_reg.T)
-    return V_reg, CovarianceRegularisation(n_clipped, epsilon, min_before)
+    # V_inv from the same eigendecomposition — no second inversion, and finite
+    # because every eigenvalue is now >= epsilon > 0.
+    V_inv = (eigvecs / eigvals_reg) @ eigvecs.T
+    V_inv = 0.5 * (V_inv + V_inv.T)
+    return V_reg, V_inv, CovarianceRegularisation(n_clipped, epsilon, min_before)
 
 
-def _posterior(theta_hat: np.ndarray, V: np.ndarray, prior_scale: float):
-    """Conjugate normal-normal posterior with prior N(0, prior_scale² I)."""
+def _posterior(theta_hat: np.ndarray, V_inv: np.ndarray, prior_scale: float):
+    """Conjugate normal-normal posterior with prior N(0, prior_scale² I). Takes the
+    (regularised) precision `V_inv` directly; `V_inv + prior_prec` is positive
+    definite (ridge prior), so its inverse is the only one needed and never raises."""
     d = theta_hat.shape[0]
-    V_inv = np.linalg.inv(V)
     prior_prec = np.eye(d) / (prior_scale ** 2)
     Sigma_post = np.linalg.inv(V_inv + prior_prec)
     mu_post = Sigma_post @ (V_inv @ theta_hat)
@@ -153,14 +161,15 @@ def run_bayes(
 
     V_boot = np.cov(draws, rowvar=False)
     V_boot = np.atleast_2d(V_boot)
-    V_reg, reg = regularise_covariance(V_boot, epsilon)
+    V_reg, V_inv, reg = regularise_covariance(V_boot, epsilon)
 
-    mu_post, Sigma_post = _posterior(theta_hat, V_reg, prior_scale)
+    mu_post, Sigma_post = _posterior(theta_hat, V_inv, prior_scale)
     sd = np.sqrt(np.clip(np.diag(Sigma_post), 0.0, None))
 
-    # Diagonal-V̂ sensitivity (§7.3.3 step 4): refit with off-diagonals dropped.
-    V_diag = np.diag(np.diag(V_reg))
-    mu_diag, _ = _posterior(theta_hat, V_diag, prior_scale)
+    # Diagonal-V̂ sensitivity (§7.3.3 step 4): refit with off-diagonals dropped. Its
+    # precision is the reciprocal of the (positive) regularised variances — no inversion.
+    V_diag_inv = np.diag(1.0 / np.diag(V_reg))
+    mu_diag, _ = _posterior(theta_hat, V_diag_inv, prior_scale)
     max_shift = float(np.max(np.abs(mu_post - mu_diag))) if d else 0.0
 
     z = normal_ppf(0.975)

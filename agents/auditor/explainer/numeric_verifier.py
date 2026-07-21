@@ -18,7 +18,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-# A signed decimal / integer / scientific number, optionally followed by '%'.
+# A signed decimal / integer / scientific number, optionally followed by '%'. The
+# negative lookbehind (?<![\w.]) skips digits embedded in identifiers (mom6, var_5pct,
+# v1.3). Known tokenisation limitation: a thousands-grouped token ("1,234.5") or a
+# hyphen range ("2022-2025") splits into parts — harmless here because the renderer
+# emits only machine-formatted, ungrouped numbers.
 _NUMBER_RE = re.compile(
     r"(?<![\w.])([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(%?)"
 )

@@ -31,10 +31,19 @@ def hash_series(series: pd.Series) -> str:
     if not isinstance(series, pd.Series):
         raise TypeError(f"hash_series expects a pd.Series; got {type(series).__name__}")
     s = series.sort_index()
-    idx = pd.DatetimeIndex(s.index)
+    # The invariance surface must never hash a mis-typed index: a plain integer index
+    # would be silently coerced to nanosecond timestamps (a silent wrong hash) and a
+    # PeriodIndex would crash opaquely. Fail loud instead (an empty DatetimeIndex is fine).
+    if not isinstance(s.index, pd.DatetimeIndex):
+        raise TypeError(
+            f"hash_series requires a DatetimeIndex; got {type(s.index).__name__}. "
+            "Convert a PeriodIndex via .to_timestamp() upstream."
+        )
     # int64 ns since epoch — deterministic, tz-naive (the pipeline is tz-naive).
-    idx_bytes = idx.view("int64").astype("<i8").tobytes()
-    val_bytes = np.asarray(s.to_numpy(), dtype="<f8").tobytes()
+    idx_bytes = s.index.view("int64").astype("<i8").tobytes()
+    # `+ 0.0` normalises -0.0 to 0.0 so two numerically identical runs that differ only
+    # in the sign of a zero are not judged non-invariant (NaN is unaffected).
+    val_bytes = (np.asarray(s.to_numpy(), dtype="<f8") + 0.0).tobytes()
     h = hashlib.sha256()
     h.update(b"idx")
     h.update(idx_bytes)
@@ -58,10 +67,12 @@ def hash_metrics(metrics: dict, keys: tuple[str, ...]) -> str:
             h.update(b"\x00none")
         elif isinstance(val, (int, float)) and not isinstance(val, bool):
             h.update(b"\x01")
-            h.update(np.asarray([val], dtype="<f8").tobytes())
+            # `+ 0.0` normalises -0.0 to 0.0 (int/float both hash via float64, so 240
+            # and 240.0 unify, which is the desired invariance behaviour).
+            h.update((np.asarray([val], dtype="<f8") + 0.0).tobytes())
         else:
-            # Fallback for non-numeric metrics (e.g. an int count already covered
-            # above); encode the repr so a change is still detected.
+            # Fallback for a non-numeric, non-None metric (e.g. a string label);
+            # encode the repr so a change is still detected.
             h.update(b"\x02")
             h.update(repr(val).encode("utf-8"))
     return h.hexdigest()

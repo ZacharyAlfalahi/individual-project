@@ -32,6 +32,16 @@ def metric_set_on(
     if months is not None:
         idx = pd.DatetimeIndex(months).sort_values()
         restricted = returns.reindex(idx)
+        # Self-enforce the §4.2 "same support for every cell" contract: a requested
+        # month where this cell is NaN would be silently dropped by summarize_returns'
+        # internal dropna, computing the metric on a DIFFERENT support than requested
+        # (exactly the estimand mismatch common support exists to prevent). On the
+        # common support every cell is valid by construction, so this never fires there.
+        if int(restricted.notna().sum()) != len(idx):
+            raise ValueError(
+                "metric_set_on: the requested months include months where this cell "
+                "has no return; the common-support invariant (§4.2) is violated"
+            )
     else:
         restricted = returns
     summary = summarize_returns(restricted, nw_lags, months_per_year)

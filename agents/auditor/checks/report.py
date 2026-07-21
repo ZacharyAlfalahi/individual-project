@@ -100,7 +100,8 @@ def run_full_audit(
 ) -> AuditReport:
     """Full per-strategy audit: spine + bootstrap + inference/FDR/Bayes/compression
     /economic. `n_trials` and `sr_std` are the strategy-level deflated-Sharpe inputs
-    (O-A4: the discovery count is a strategy property, identical across cells)."""
+    (O-A4: the discovery count is a strategy property, identical across cells).
+    `sr_std` must be the PER-PERIOD cross-trial Sharpe SD (see run_economic)."""
     pf, lattice, core = audit_spine(
         strategy, maximal_panel, facts,
         signals=signals,
@@ -131,6 +132,11 @@ def run_full_audit(
         metric=config.primary_metric, coordinates=coords,
         months_per_year=config.months_per_year, alpha=config.alpha,
     )
+    # WITHIN-STRATEGY diagnostic multiplicity control — NOT the §7.2 confirmatory
+    # verdict. The pre-registered confirmatory family is the UNION across the locked
+    # anchors (mom6, drf); assemble it with fdr.corpus_confirmatory_fdr over multiple
+    # strategies' coordinate p-values (D-A9). The `scope` field marks this as
+    # within_strategy so the Reporter cannot mistake it for the confirmatory result.
     fdr = run_fdr({T: inference[T].p_value for T in coords}, config.fdr_q)
 
     Y = primary_metric_vector(
