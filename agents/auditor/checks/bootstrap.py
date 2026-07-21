@@ -37,6 +37,7 @@ from ..schemas.lattice_types import CellReturns
 from ..schemas.toggle import ToggleId
 from .algebra import doe_effects, harsanyi_dividends, walsh_coefficients
 from .shapley import shapley_values
+from .support import return_matrix
 
 
 class BootstrapError(RuntimeError):
@@ -64,21 +65,6 @@ def circular_block_indices(t: int, ell: int, rng: np.random.Generator) -> np.nda
     starts = rng.integers(0, t, size=n_blocks)
     idx = np.concatenate([(np.arange(s, s + ell) % t) for s in starts])
     return idx[:t]
-
-
-def _return_matrix(
-    cells: Sequence[CellReturns], months: pd.DatetimeIndex
-) -> tuple[list[frozenset], np.ndarray]:
-    """Build the (T x 2^k) return matrix on the common support: column j is cell
-    j's returns restricted to `months`. Order of columns follows `cells`."""
-    idx = pd.DatetimeIndex(months).sort_values()
-    keys: list[frozenset] = []
-    cols: list[np.ndarray] = []
-    for cell in cells:
-        keys.append(cell.on_set)
-        cols.append(cell.returns.reindex(idx).to_numpy(dtype=float))
-    R = np.column_stack(cols) if cols else np.empty((len(idx), 0))
-    return keys, R
 
 
 def _metric_of(values: np.ndarray, metric: str, months_per_year: int) -> float:
@@ -131,7 +117,7 @@ def run_bootstrap(
 
     Raises BootstrapError if the block length is incompatible with the common
     support (ℓ >= T_common, or fewer than `min_effective_blocks` effective blocks)."""
-    keys, R = _return_matrix(cells, months)
+    keys, R = return_matrix(cells, months)
     t = R.shape[0]
     if t == 0 or R.shape[1] == 0:
         raise BootstrapError("empty return matrix on the common support")

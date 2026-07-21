@@ -21,16 +21,23 @@ The public entry point is `run_audit` (see checks.orchestrator).
 from __future__ import annotations
 
 from .checks.orchestrator import AuditRefused, run_audit
+from .checks.report import AuditorConfig, run_full_audit
 from .explainer.numeric_verifier import VerificationResult, verify_numbers
+from .explainer.renderer import render_report
 from .schemas.audit_core import AuditCore
+from .schemas.audit_report import AuditReport
 from .schemas.toggle import TOGGLE_IDS, ToggleFacts
 
 __all__ = [
     "run_audit",
+    "run_full_audit",
+    "AuditorConfig",
     "AuditRefused",
     "AuditCore",
+    "AuditReport",
     "ToggleFacts",
     "TOGGLE_IDS",
     "verify_numbers",
     "VerificationResult",
+    "render_report",
 ]

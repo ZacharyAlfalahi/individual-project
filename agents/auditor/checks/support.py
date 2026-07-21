@@ -30,6 +30,22 @@ def valid_months(series: pd.Series) -> pd.DatetimeIndex:
     return pd.DatetimeIndex(series.dropna().index).sort_values()
 
 
+def return_matrix(
+    cells: Sequence[CellReturns], months: pd.DatetimeIndex
+) -> tuple[list, "object"]:
+    """The (T x 2^k) return matrix on the common support: column j is cell j's
+    returns restricted to `months` (order follows `cells`). Returns (on_set keys,
+    ndarray). The single source of the cell return vector process {r_t} consumed
+    by the bootstrap (§6) and the inference layer (§7)."""
+    import numpy as np
+
+    idx = pd.DatetimeIndex(months).sort_values()
+    keys = [cell.on_set for cell in cells]
+    cols = [cell.returns.reindex(idx).to_numpy(dtype=float) for cell in cells]
+    R = np.column_stack(cols) if cols else np.empty((len(idx), 0))
+    return keys, R
+
+
 def common_support(cells: Sequence[CellReturns]) -> pd.DatetimeIndex:
     """The intersection of months valid in ALL cells (§4.2), sorted."""
     if not cells:

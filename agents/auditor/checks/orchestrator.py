@@ -19,6 +19,7 @@ from typing import Sequence
 import pandas as pd
 
 from ..schemas.audit_core import AuditCore
+from ..schemas.lattice_types import LatticeResult
 from ..schemas.toggle import ToggleFacts
 from ..thresholds import (
     SupportGate,
@@ -47,6 +48,59 @@ class AuditRefused(RuntimeError):
         )
 
 
+def audit_spine(
+    strategy,
+    maximal_panel: pd.DataFrame,
+    facts: Sequence[ToggleFacts],
+    *,
+    signals: pd.DataFrame | None = None,
+    primary_metric: str,
+    percentage_denominator_min: float,
+    support_gate: SupportGate,
+    lib_gap_lags: tuple[int, int] = (0, 1),
+    months_per_year: int = 12,
+    nw_lags: int | None = None,
+    pre_registration_tag: str | None = None,
+) -> tuple[PreflightResult, LatticeResult, AuditCore]:
+    """Run the deterministic analytical spine (steps 2-7) and return the pre-flight
+    result, the executed lattice, and the AuditCore. Shared by `run_audit` (which
+    returns just the core) and `run_full_audit` (which needs the lattice for the
+    bootstrap-based inference layers). Raises `AuditRefused` for a REFUSED scope."""
+    pf = derive_scope(getattr(strategy, "strategy_label", "?"), facts)
+    if pf.audit_scope == "REFUSED":
+        raise AuditRefused(pf)
+
+    lattice = run_lattice(
+        strategy, pf.runnable_toggles, pf.fixed_states, maximal_panel,
+        signals=signals, lib_gap_lags=lib_gap_lags,
+    )
+
+    info = support_info(lattice.cells, support_gate)
+    common = common_support(lattice.cells)
+    Y = primary_metric_vector(
+        lattice.cells, common, primary_metric,
+        months_per_year=months_per_year, nw_lags=nw_lags,
+    )
+    core = AuditCore(
+        strategy_label=pf.strategy_label,
+        audit_scope=pf.audit_scope,
+        runnable_toggles=pf.runnable_toggles,
+        conditioning_signature=pf.conditioning_signature,
+        conditioning_statement=pf.conditioning_statement,
+        primary_metric=primary_metric,
+        support=info,
+        corner_marginals=corner_marginals_result(Y, pf.runnable_toggles),
+        saturated=saturated_basis(Y, pf.runnable_toggles),
+        shapley=shapley_result(
+            Y, pf.runnable_toggles,
+            percentage_denominator_min=percentage_denominator_min,
+        ),
+        invariance=run_invariance_tests(lattice, pf.facts),
+        pre_registration_tag=pre_registration_tag,
+    )
+    return pf, lattice, core
+
+
 def run_audit(
     strategy,
     maximal_panel: pd.DataFrame,
@@ -62,7 +116,7 @@ def run_audit(
     pre_registration_tag: str | None = None,
     thresholds_path: str | Path | None = None,
 ) -> AuditCore:
-    """Audit one strategy end-to-end -> AuditCore.
+    """Audit one strategy's analytical spine -> AuditCore.
 
     Raises `AuditRefused` if the derived audit scope is REFUSED."""
     if primary_metric is None:
@@ -72,44 +126,12 @@ def run_audit(
     if support_gate is None:
         support_gate = load_support_gate(thresholds_path)
 
-    pf = derive_scope(getattr(strategy, "strategy_label", "?"), facts)
-    if pf.audit_scope == "REFUSED":
-        raise AuditRefused(pf)
-
-    lattice = run_lattice(
-        strategy,
-        pf.runnable_toggles,
-        pf.fixed_states,
-        maximal_panel,
-        signals=signals,
-        lib_gap_lags=lib_gap_lags,
-    )
-
-    info = support_info(lattice.cells, support_gate)
-    common = common_support(lattice.cells)
-    Y = primary_metric_vector(
-        lattice.cells, common, primary_metric,
+    _, _, core = audit_spine(
+        strategy, maximal_panel, facts,
+        signals=signals, primary_metric=primary_metric,
+        percentage_denominator_min=percentage_denominator_min,
+        support_gate=support_gate, lib_gap_lags=lib_gap_lags,
         months_per_year=months_per_year, nw_lags=nw_lags,
-    )
-
-    marginals = corner_marginals_result(Y, pf.runnable_toggles)
-    basis = saturated_basis(Y, pf.runnable_toggles)
-    shap = shapley_result(
-        Y, pf.runnable_toggles, percentage_denominator_min=percentage_denominator_min
-    )
-    invariance = run_invariance_tests(lattice, pf.facts)
-
-    return AuditCore(
-        strategy_label=pf.strategy_label,
-        audit_scope=pf.audit_scope,
-        runnable_toggles=pf.runnable_toggles,
-        conditioning_signature=pf.conditioning_signature,
-        conditioning_statement=pf.conditioning_statement,
-        primary_metric=primary_metric,
-        support=info,
-        corner_marginals=marginals,
-        saturated=basis,
-        shapley=shap,
-        invariance=invariance,
         pre_registration_tag=pre_registration_tag,
     )
+    return core

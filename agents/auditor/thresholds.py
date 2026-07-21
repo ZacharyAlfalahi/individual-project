@@ -181,3 +181,65 @@ def load_shapley_pct_denominator_min(path: str | Path | None = None) -> float:
     return _require_number(
         value, "auditor.shapley.percentage_denominator_min", "§5.3"
     )
+
+
+def load_vartheta(path: str | Path | None = None) -> float:
+    """ϑ — the practical-significance threshold. Load-bearing TWICE: it classifies
+    economic significance (§9) AND defines material-effect prevalence (§8.2.3). Must
+    be pre-registered with a cited source (O-A6)."""
+    block = _auditor_block(path)
+    value = _require(block, ("practical_significance", "vartheta"), "§9 / §8.2.3")
+    return _require_number(value, "auditor.practical_significance.vartheta", "§9 / §8.2.3")
+
+
+def load_compression_dmax(path: str | Path | None = None) -> float:
+    """D_max — the compression-adequacy materiality threshold (§8.1, O-A10)."""
+    block = _auditor_block(path)
+    value = _require(block, ("compression", "d_max"), "§8.1")
+    return _require_number(value, "auditor.compression.d_max", "§8.1")
+
+
+def load_fdr_q(path: str | Path | None = None) -> float:
+    """The BH-FDR level q over the confirmatory family (§7.2)."""
+    block = _auditor_block(path)
+    value = _require(block, ("fdr", "q"), "§7.2")
+    return _require_number(value, "auditor.fdr.q", "§7.2")
+
+
+@dataclass(frozen=True)
+class BayesParams:
+    """Bayesian normal-approximation constants (§7.3-7.4): the weakly-informative
+    prior scale and the eigenvalue floor for V̂_boot regularisation."""
+
+    prior_scale: float
+    epsilon: float
+
+
+def load_bayes_params(path: str | Path | None = None) -> BayesParams:
+    block = _auditor_block(path)
+    ps = _require(block, ("bayes", "prior_scale"), "§7.4")
+    eps = _require(block, ("bayes", "epsilon"), "§7.3.3")
+    return BayesParams(
+        prior_scale=_require_number(ps, "auditor.bayes.prior_scale", "§7.4"),
+        epsilon=_require_number(eps, "auditor.bayes.epsilon", "§7.3.3"),
+    )
+
+
+@dataclass(frozen=True)
+class EconomicGapBands:
+    small: float
+    moderate: float
+    large: float
+
+
+def load_economic_gap_bands(path: str | Path | None = None) -> EconomicGapBands:
+    """Practical-significance bands for the endpoint gap (§9), each with a source."""
+    block = _auditor_block(path)
+    node = _require(block, ("economic", "gap_bands"), "§9")
+    if not isinstance(node, dict):
+        raise AuditorThresholdError("auditor.economic.gap_bands (not a mapping)", "§9")
+    return EconomicGapBands(
+        small=_require_number(node.get("small"), "auditor.economic.gap_bands.small", "§9"),
+        moderate=_require_number(node.get("moderate"), "auditor.economic.gap_bands.moderate", "§9"),
+        large=_require_number(node.get("large"), "auditor.economic.gap_bands.large", "§9"),
+    )
