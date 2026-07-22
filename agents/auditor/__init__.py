@@ -22,6 +22,13 @@ from __future__ import annotations
 
 from .checks.orchestrator import AuditRefused, run_audit
 from .checks.report import AuditorConfig, run_full_audit
+from .explainer.explainer import ExplainerOutput, explain
+from .explainer.model_client import (
+    ExplainerResponse,
+    FakeExplainerClient,
+    LiveExplainerClient,
+    build_live_explainer_client,
+)
 from .explainer.numeric_verifier import VerificationResult, verify_numbers
 from .explainer.renderer import render_report
 from .schemas.audit_core import AuditCore
@@ -40,4 +47,10 @@ __all__ = [
     "verify_numbers",
     "VerificationResult",
     "render_report",
+    "explain",
+    "ExplainerOutput",
+    "FakeExplainerClient",
+    "LiveExplainerClient",
+    "ExplainerResponse",
+    "build_live_explainer_client",
 ]

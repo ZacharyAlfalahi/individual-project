@@ -255,3 +255,66 @@ def load_economic_gap_bands(path: str | Path | None = None) -> EconomicGapBands:
         moderate=_require_number(node.get("moderate"), "auditor.economic.gap_bands.moderate", "§9"),
         large=_require_number(node.get("large"), "auditor.economic.gap_bands.large", "§9"),
     )
+
+
+@dataclass(frozen=True)
+class ExplainerModelConfig:
+    """The pre-registered LLM explainer model for one phase (§11). `dev` uses the
+    free `phase_d` model (non-reportable prose); `reported` uses `phase_f`."""
+
+    phase: str                       # "dev" | "reported"
+    vendor: str
+    model_id: str
+    api_key_env: str
+    temperature: float
+    max_output_tokens: int
+    max_retries: int
+    min_interval_s: float
+
+
+def load_explainer_config(
+    phase: str, path: str | Path | None = None
+) -> ExplainerModelConfig:
+    """Read the step-19 explainer model for `phase` ∈ {'dev','reported'} fail-loud
+    from `auditor.explainer` (§11)."""
+    if phase not in ("dev", "reported"):
+        raise ValueError(f"phase must be 'dev' or 'reported'; got {phase!r}")
+    phase_key = "phase_d" if phase == "dev" else "phase_f"
+    block = _auditor_block(path)
+    temperature = _require_number(
+        _require(block, ("explainer", "temperature"), "§11"),
+        "auditor.explainer.temperature", "§11",
+    )
+    max_tokens = _require_int(
+        _require(block, ("explainer", "max_output_tokens"), "§11"),
+        "auditor.explainer.max_output_tokens", "§11",
+    )
+    max_retries = _require_int(
+        _require(block, ("explainer", "max_retries"), "§11"),
+        "auditor.explainer.max_retries", "§11",
+    )
+    pspec = _require(block, ("explainer", phase_key), "§11")
+    if not isinstance(pspec, dict):
+        raise AuditorThresholdError(f"auditor.explainer.{phase_key} (not a mapping)", "§11")
+
+    def _str(key: str) -> str:
+        value = pspec.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise AuditorThresholdError(
+                f"auditor.explainer.{phase_key}.{key} (missing or not a non-empty string)", "§11"
+            )
+        return value
+
+    min_interval = pspec.get("min_interval_s", 0.0)
+    return ExplainerModelConfig(
+        phase=phase,
+        vendor=_str("vendor"),
+        model_id=_str("model_id"),
+        api_key_env=_str("api_key_env"),
+        temperature=temperature,
+        max_output_tokens=max_tokens,
+        max_retries=max_retries,
+        min_interval_s=_require_number(
+            min_interval, f"auditor.explainer.{phase_key}.min_interval_s", "§11"
+        ),
+    )

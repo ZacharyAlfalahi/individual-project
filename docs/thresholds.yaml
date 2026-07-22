@@ -469,3 +469,94 @@ librarian:
     # Contract §3.3: field-level intervals are DESCRIPTIVE; the unit of
     # generalisation is the observed gold corpus, so no population-level claim.
     interval_label: descriptive
+
+# ---------------------------------------------------------------------------
+# Auditor (RQ3) pre-registration constants — docs/auditor/auditor_design.md v1.7.
+# Read fail-loud by agents/auditor/thresholds.py (never defaulted in code, §13.2).
+# PRE-REGISTERED: these are committed with ex-ante justification and git-tagged
+# (auditor-prereg-2026-07-22) BEFORE any confirmatory run — the git tag + commit
+# hash are the pre-registration evidence (§13.1). Units for the primary metric
+# `average` are decimal monthly long-short return (0.001 = 0.1%/month = 10 bp/mo).
+# ---------------------------------------------------------------------------
+auditor:
+  # The primary metric drives the confirmatory family, the DOE decomposition, the
+  # Bayesian/hierarchical estimands and the inference routing (§9.1). `average`
+  # (mean monthly long-short return) is a mean of observables, so the exact HAC
+  # branch applies (§7.1); Sharpe is still reported per-cell as secondary.
+  primary_metric: average
+  support_gate:
+    # §4.2 minimum common-support gate. 60 months (5y) is a conventional floor for
+    # stable factor moments; the development window (2002-2021, ~240 months) far
+    # exceeds it, so the gate binds only under heavy stale/survivorship intersection.
+    min_common_months: 60
+    # Keep >= 50% of the longest cell's native sample; below this the intersection
+    # loss is itself the finding (§4.2), not a usable common support.
+    min_common_fraction_of_reference: 0.5
+  bootstrap:
+    # §14 normative replicate count (the first conditional cut is 500, never the
+    # lattice or the injection calibration).
+    n_replicates: 1000
+    # §6.2 B_min: at least 10 non-overlapping blocks for a usable block bootstrap.
+    min_effective_blocks: 10
+    # §6.2 l_data_driven: the pre-committed block length; the realised block is
+    # l = max(H_max, 6). 6 aligns with the longest anchor holding horizon (mom6
+    # H=6) and captures monthly-return serial dependence.
+    block_length_months: 6
+  shapley:
+    # §5.3 percentage-denominator guard: shares (phi_i / Delta) are emitted only
+    # when |Delta_correction| > 0.1%/month; below that the ratio is a division
+    # artefact (and the endpoint gap is economically negligible anyway).
+    percentage_denominator_min: 0.001
+  practical_significance:
+    # §9 / §8.2.3 -- vartheta is load-bearing TWICE (economic classification AND
+    # material-effect prevalence). 10 bp/month sits below the smallest documented
+    # DRR implementation bias (measurement error ~15-90 bp/month), so a bias must
+    # clear the smallest known effect to count as "material" -- a conservative,
+    # ex-ante floor, not chosen from any result.
+    vartheta: 0.001
+  compression:
+    # §8.1 D_max: main + confirmatory two-way effects must carry >= 90% of total
+    # effect energy; > 10% in third-and-higher order means the bias structure is
+    # irreducibly higher-order (a finding, promoting the appendix coefficients).
+    d_max: 0.10
+  fdr:
+    # §7.2 Benjamini-Hochberg level for the confirmatory family (5 first-order
+    # effects + 3 validated interaction pairs x locked anchors).
+    q: 0.10
+  bayes:
+    # §7.4 weakly-informative primary prior N(0, prior_scale^2) on the DOE effects.
+    # 0.02 is broad relative to the plausible bias range (DRR effects <= ~1%/month)
+    # and is deliberately NOT the anchor's expected value (that would make agreement
+    # with DRR self-fulfilling). The DRR-informed prior is sensitivity-only.
+    prior_scale: 0.02
+    # §7.3.3 eigenvalue floor for V_boot regularisation -- a numerical PD floor,
+    # small enough not to distort a well-conditioned bootstrap covariance.
+    epsilon: 1.0e-10
+  economic:
+    # §9 practical-significance bands, applied to the ANNUALISED endpoint gap
+    # (corrected - as-published). A correction worth > 5%/year of annual return is
+    # a Large economic effect for a practitioner.
+    gap_bands:
+      small: 0.005      # 0.5%/year
+      moderate: 0.02    # 2%/year
+      large: 0.05       # 5%/year
+  # Step-19 LLM explainer prose. Runs strictly AFTER the deterministic verdict with
+  # ZERO gating power (§11); every numeric token is checked against the typed report
+  # by numeric_verifier, falling back to the deterministic renderer on any mismatch.
+  # Two-phase like librarian.model_stack: phase_d is the free DEV pair (prose is
+  # non-reportable), phase_f is the REPORTED model. Single model per phase (the
+  # verifier is the gate, so no dual-model merge is needed).
+  explainer:
+    temperature: 0
+    max_output_tokens: 1024
+    max_retries: 3
+    phase_d:                          # free DEV -- non-reportable prose
+      vendor: gemini
+      model_id: gemini-3.1-flash-lite
+      api_key_env: GEMINI_API_KEY
+      min_interval_s: 6.0
+    phase_f:                          # REPORTED / testing prose
+      vendor: anthropic
+      model_id: claude-sonnet-4-6
+      api_key_env: ANTHROPIC_API_KEY
+      min_interval_s: 1.0

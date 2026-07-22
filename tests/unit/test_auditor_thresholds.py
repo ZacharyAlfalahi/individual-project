@@ -107,9 +107,14 @@ def test_bool_is_rejected_as_int(tmp_path):
         load_bootstrap_config(path)
 
 
-def test_the_real_thresholds_file_has_no_auditor_block_yet():
-    # Documents the current state: the auditor block is NOT pre-registered, so the
-    # loader fails loud against the repo file. When the researcher pre-registers
-    # and git-tags it, this test flips to xfail-and-update (a deliberate tripwire).
-    with pytest.raises(AuditorThresholdError):
-        load_support_gate()
+def test_the_real_thresholds_file_is_pre_registered():
+    # The auditor: block is now pre-registered (git tag auditor-prereg-2026-07-22).
+    # The real file must load a valid support gate, and the whole AuditorConfig must
+    # assemble fail-loud-free. (This flipped from the earlier "no block yet" tripwire.)
+    gate = load_support_gate()
+    assert gate.min_common_months > 0 and 0 < gate.min_common_fraction_of_reference <= 1.0
+
+    from agents.auditor.checks.report import AuditorConfig
+    cfg = AuditorConfig.from_thresholds()
+    assert cfg.primary_metric == "average"
+    assert cfg.vartheta > 0 and cfg.d_max > 0 and 0 < cfg.fdr_q < 1

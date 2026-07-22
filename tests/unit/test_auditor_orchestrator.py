@@ -86,14 +86,27 @@ def test_run_audit_refused_scope_raises():
         _audit(scenario, facts=facts)
 
 
-def test_run_audit_reads_thresholds_fail_loud_when_absent():
-    # Without explicit args, run_audit reads thresholds.yaml, which has no auditor
-    # block yet => fail loud (integrity: never default a pre-registration constant).
+def test_run_audit_reads_thresholds_fail_loud_when_absent(tmp_path):
+    # Integrity: run_audit reads the pre-registration constants fail-loud. Against a
+    # thresholds file WITHOUT an auditor: block it must raise (never default one).
+    import textwrap
+    thin = tmp_path / "thresholds.yaml"
+    thin.write_text(textwrap.dedent("trace_cleaning:\n  price_floor: 1.0\n"))
     scenario = build_scenario(None, seed=0)
     from agents.auditor.thresholds import AuditorThresholdError
     with pytest.raises(AuditorThresholdError):
         run_audit(scenario.strategy, scenario.panel, all_runnable_facts(),
-                  signals=scenario.signals)
+                  signals=scenario.signals, thresholds_path=thin)
+
+
+def test_run_audit_uses_the_pre_registered_thresholds_by_default():
+    # The auditor: block is now pre-registered, so run_audit works with NO explicit
+    # threshold args (reads the real thresholds.yaml).
+    scenario = build_scenario("meas_err", seed=0)
+    core = run_audit(scenario.strategy, scenario.panel, all_runnable_facts(),
+                     signals=scenario.signals)
+    assert core.audit_scope == "COMPLETE"
+    assert core.primary_metric == "average"
 
 
 # --------------------------------------------------------------------------
