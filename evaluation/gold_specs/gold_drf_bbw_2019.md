@@ -17,7 +17,7 @@ strategy_label:          DRF
 strategy_quote:          "To con- struct the downside risk factor for corporate bonds, for each month from July 2004 to December 2016, we form bivariate portfolios by independently sorting bonds into five quintiles based on their credit rating and five quin- tiles based on their downside risk (measured by 5% VaR)."   page: 14
 registry_version:        v1
 silence_policy_version:  v1.1
-canonical_text_hash:     normalise_sha256 3d846fef7d710af17c4a183b69353e705ed11e957d7df9390fcba35ac89eee95 (config/canonical_text.yaml recipe, PyMuPDF 1.28.0 / L1 / v2 ladder); source_sha256 fcb58bf7bd433f82e722d284776da639e038f1bc5e0c919d8943f9a04cbde91a (frozen bbw_2019)
+canonical_text_hash:     normalise_sha256 abe11ff63b76df2e46a775a70f1feb397d10fa59984bafd38d312b178b01a79e (config/canonical_text.yaml recipe, PyMuPDF 1.28.0 / L1 / v3 ladder); source_sha256 fcb58bf7bd433f82e722d284776da639e038f1bc5e0c919d8943f9a04cbde91a (frozen bbw_2019)
 ```
 
 ## Part 1 — three fields (all CORE)

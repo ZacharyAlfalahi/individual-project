@@ -28,8 +28,9 @@ from evaluation.harness.reportability import Reportability, ReportabilityError  
 from evaluation.harness.run_artefacts import load_run  # noqa: E402
 
 _ROOT = Path(__file__).resolve().parents[2]
-_RUNS = {"drf": _ROOT / "runs" / "g3_2026-07-21_postfix" / "bbw",
-         "mom6": _ROOT / "runs" / "g3_2026-07-21_postfix" / "jnps"}
+_RUNS = {"drf": _ROOT / "runs" / "g3_2026-07-22_v3" / "bbw",
+         "mom6": _ROOT / "runs" / "g3_2026-07-22_v3" / "jnps",
+         "str": _ROOT / "runs" / "g3_2026-07-22_v3" / "drr"}
 
 _needs_runs = pytest.mark.skipif(
     not all((p / "trace_0.json").exists() for p in _RUNS.values()),
@@ -65,9 +66,10 @@ def test_macro_is_an_unweighted_mean_that_shows_its_constituents():
     b = _bundles()
     agg = aggregate(b)
     m = agg.macro["selective_accuracy"]
-    assert m.n_papers == 2
-    assert dict(m.values) == {"drf": pytest.approx(0.5), "mom6": pytest.approx(5 / 7)}
-    assert m.mean == pytest.approx((0.5 + 5 / 7) / 2)
+    assert m.n_papers == 3
+    assert dict(m.values) == {"drf": pytest.approx(3 / 4), "mom6": pytest.approx(6 / 7),
+                              "str": pytest.approx(6 / 8)}
+    assert m.mean == pytest.approx((3 / 4 + 6 / 7 + 6 / 8) / 3)
     assert "constituents" in m.render()
 
 
@@ -94,50 +96,66 @@ def test_no_dispersion_statistic_is_emitted_on_so_few_papers():
 @_needs_runs
 def test_leave_one_out_drops_exactly_one_paper():
     agg = aggregate(_bundles())
-    assert set(agg.leave_one_out) == {"drf", "mom6"}
-    # with two papers, dropping one leaves the other's own numbers
-    solo = agg.leave_one_out["drf"]["selective_accuracy"]
-    assert (solo.numerator, solo.denominator) == (5, 7)      # mom6 alone
+    assert set(agg.leave_one_out) == {"drf", "mom6", "str"}
+    # at G=3, dropping one leaves a genuine POOL of two, not a single paper
+    rest = agg.leave_one_out["drf"]["selective_accuracy"]
+    assert (rest.numerator, rest.denominator) == (6 + 6, 7 + 8)   # mom6 + str pooled
 
 
 @_needs_runs
-def test_leave_one_out_is_declared_degenerate_at_two_papers():
-    """It must not read as a robustness claim: dropping one of two leaves one."""
+def test_leave_one_out_is_not_declared_degenerate_at_three_papers():
+    """At G=3 dropping one leaves a real pool, so the degeneracy caveat must NOT
+    fire -- carrying it would understate what the analysis supports."""
     out = render_aggregate(aggregate(_bundles()), allow_non_reportable=True)
+    assert "degenerates to the per-paper row" not in out
+
+
+@_needs_runs
+def test_leave_one_out_is_still_declared_degenerate_below_three_papers():
+    """The caveat must fire when it applies. Synthetic G=2 subset."""
+    b = _bundles()
+    two = {k: v for k, v in list(b.items())[:2]}
+    out = render_aggregate(aggregate(two), allow_non_reportable=True)
     assert "degenerates to the per-paper row" in out
     assert "NOT as a robustness claim" in out
 
 
 @_needs_runs
-def test_a_single_paper_moves_selective_accuracy_materially():
-    """The honest headline of a G=2 corpus: LOO is the size of one paper's
-    influence, and here it is large."""
+def test_the_third_anchor_stabilised_selective_accuracy():
+    """At G=2 selective accuracy spanned 21 points across drops -- which read as
+    pipeline instability. At G=3 it spans under 10, so the G=2 swing was an
+    artefact of having two papers, not a property of the pipeline. This is the
+    single clearest argument for why the third anchor was worth recovering."""
     agg = aggregate(_bundles())
-    without_drf = agg.leave_one_out["drf"]["selective_accuracy"].value
-    without_mom6 = agg.leave_one_out["mom6"]["selective_accuracy"].value
-    assert abs(without_drf - without_mom6) > 0.15
+    vals = [agg.leave_one_out[a]["selective_accuracy"].value for a in agg.anchors_scored]
+    assert max(vals) - min(vals) < 0.10
 
 
 # --- completeness ------------------------------------------------------------
 
 @_needs_runs
-def test_incomplete_anchor_coverage_is_declared_not_implied():
-    """The gold corpus is three anchors; str has no artefact. An aggregate over
-    two must never read as if it covered the corpus."""
+def test_the_full_anchor_set_reports_complete():
+    """All three anchors now have artefacts -- the first aggregate that genuinely
+    covers the gold corpus."""
     agg = aggregate(_bundles())
     assert agg.anchors_expected == ANCHOR_SET
-    assert agg.complete is False
-    assert agg.missing == ("str",)
+    assert agg.complete is True and agg.missing == ()
     out = render_aggregate(agg, allow_non_reportable=True)
-    assert "2 of 3 anchors" in out
-    assert "does NOT cover the gold corpus" in out
+    assert "3 of 3 anchors" in out
+    assert "does NOT cover the gold corpus" not in out
 
 
 @_needs_runs
-def test_a_complete_aggregate_reports_complete():
+def test_incomplete_coverage_is_declared_not_implied():
+    """The guard still has to fire when an anchor IS missing -- an aggregate over
+    a subset must never read as if it covered the corpus."""
     b = _bundles()
-    agg = aggregate(b, anchors_expected=("drf", "mom6"))
-    assert agg.complete is True and agg.missing == ()
+    subset = {k: v for k, v in b.items() if k != "str"}
+    agg = aggregate(subset)
+    assert agg.complete is False and agg.missing == ("str",)
+    out = render_aggregate(agg, allow_non_reportable=True)
+    assert "2 of 3 anchors" in out
+    assert "does NOT cover the gold corpus" in out
 
 
 # --- reportability -----------------------------------------------------------
@@ -170,12 +188,14 @@ def test_mixed_phases_never_pool():
     number that describes no pair."""
     b = _bundles()
     keys = list(b)
-    b[keys[0]] = replace(b[keys[0]], reportability=Reportability(
-        phase="phase_f", reportable=True, reason="ok",
-        model_a_id="claude-sonnet-4-6", model_b_id="gemini-3.5-flash"))
-    b[keys[1]] = replace(b[keys[1]], reportability=Reportability(
-        phase="phase_d", reportable=True, reason="ok (synthetic)",
-        model_a_id="gemini-3.1-flash-lite", model_b_id="mistral-small-latest"))
+    live = Reportability(phase="phase_f", reportable=True, reason="ok",
+                         model_a_id="claude-sonnet-4-6", model_b_id="gemini-3.5-flash")
+    dev = Reportability(phase="phase_d", reportable=True, reason="ok (synthetic)",
+                        model_a_id="gemini-3.1-flash-lite", model_b_id="mistral-small-latest")
+    # ALL constituents reportable, so the non-reportable guard cannot fire first --
+    # this isolates the mixed-phase rule specifically.
+    b = {k: replace(v, reportability=live) for k, v in b.items()}
+    b[keys[-1]] = replace(b[keys[-1]], reportability=dev)
     agg = aggregate(b)
     assert agg.reportability.reportable is False
     assert "different phases" in agg.reportability.reason

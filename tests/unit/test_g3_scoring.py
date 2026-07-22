@@ -36,8 +36,8 @@ from evaluation.harness.run_artefacts import (  # noqa: E402
 )
 
 _ROOT = Path(__file__).resolve().parents[2]
-_BBW = _ROOT / "runs" / "g3_2026-07-21_postfix" / "bbw"
-_JNPS = _ROOT / "runs" / "g3_2026-07-21_postfix" / "jnps"
+_BBW = _ROOT / "runs" / "g3_2026-07-22_v3" / "bbw"
+_JNPS = _ROOT / "runs" / "g3_2026-07-22_v3" / "jnps"
 
 _needs_bbw = pytest.mark.skipif(
     not (_BBW / "trace_0.json").exists(),
@@ -46,6 +46,11 @@ _needs_bbw = pytest.mark.skipif(
 _needs_jnps = pytest.mark.skipif(
     not (_JNPS / "trace_0.json").exists(),
     reason="post-fix JNPS dev run absent (runs/ is gitignored); regenerate with run_librarian.py",
+)
+_DRR = _ROOT / "runs" / "g3_2026-07-22_v3" / "drr"
+_needs_str = pytest.mark.skipif(
+    not (_DRR / "trace_0.json").exists(),
+    reason="DRR dev run absent (runs/ is gitignored); regenerate with run_librarian.py",
 )
 
 
@@ -57,8 +62,8 @@ def test_g3_drf_golden_counts():
     s = score_anchor("drf", _BBW)
     c = s.counts()
     assert len(s.rows) == 47
-    assert c[Outcome.SHIPPED_CORRECT] == 2
-    assert c[Outcome.SHIPPED_WRONG] == 2
+    assert c[Outcome.SHIPPED_CORRECT] == 3
+    assert c[Outcome.SHIPPED_WRONG] == 1
     assert c[Outcome.SHIPPED_GOLD_SILENT] == 0
     assert c[Outcome.SHIPPED_NOT_SCORABLE] == 0
     assert c[Outcome.ABSTAINED_GOLD_STATED] == 14
@@ -74,41 +79,62 @@ def test_g3_mom6_golden_counts():
     s = score_anchor("mom6", _JNPS)
     c = s.counts()
     assert len(s.rows) == 47
-    assert c[Outcome.SHIPPED_CORRECT] == 5
+    assert c[Outcome.SHIPPED_CORRECT] == 6
     assert c[Outcome.SHIPPED_WRONG] == 0
-    assert c[Outcome.SHIPPED_GOLD_SILENT] == 2
-    assert c[Outcome.ABSTAINED_GOLD_STATED] == 16
-    assert c[Outcome.ABSTAINED_GOLD_SILENT] == 21
+    assert c[Outcome.SHIPPED_GOLD_SILENT] == 1
+    assert c[Outcome.ABSTAINED_GOLD_STATED] == 15
+    assert c[Outcome.ABSTAINED_GOLD_SILENT] == 22
     assert sum(c.values()) == 47
 
 
 @_needs_bbw
-def test_g3_control_axis_is_scored_wrong():
-    """The single most important assertion in G3.
-
-    BBW's control_axis is the observed CORRELATED error: both models agreed on
-    var_5pct where the gold says credit_rating, so the dual-model gate shipped a
-    wrong value with false confidence. The compare policy must not let a
-    None-handling shortcut swallow it."""
+def test_g3_a_wrong_shipped_value_is_scored_wrong():
+    """drf ships sample_start = 2002-07 where the gold says 2004-07 -- the models
+    read the TRACE data-availability date instead of the portfolio sample start.
+    A genuine correlated error (both models agreed), correctly caught."""
     s = score_anchor("drf", _BBW)
-    row = next(r for r in s.rows if r.key.name == "control_axis")
+    row = next(r for r in s.rows if r.key.name == "sample_start")
     assert row.outcome is Outcome.SHIPPED_WRONG
-    assert row.gold_value == "credit_rating"
-    assert row.run_value == "var_5pct"
+    assert row.gold_value == "2004-07"
+    assert row.run_value == "2002-07"
 
 
-@_needs_jnps
+@_needs_str
 def test_g3_absent_control_axis_scores_the_run_as_over_claiming():
-    """mom6 is a SINGLE sort: the gold has no control axis at all, so
+    """str is a SINGLE sort: the gold has no control axis at all, so
     _iter_inherited yields no path for it. The pairing injects an explicit None
     comparand, which is what makes the run's assertion of a control axis --
     naming the sort signal itself -- visible as a fabrication rather than
     silently dropped."""
-    s = score_anchor("mom6", _JNPS)
+    s = score_anchor("str", _DRR)
     row = next(r for r in s.rows if r.key.name == "control_axis")
     assert row.outcome is Outcome.SHIPPED_GOLD_SILENT
     assert row.gold_value is None
-    assert row.run_value == "past_6m_cumulative_return"
+    assert row.run_value == "prior_1m_excess_return"
+
+
+@_needs_str
+def test_g3_str_golden_counts():
+    """The third anchor, extractable for the first time after the D39 prompt nudge
+    and the D40 ladder fix."""
+    s = score_anchor("str", _DRR)
+    c = s.counts()
+    assert len(s.rows) == 47
+    assert c[Outcome.SHIPPED_CORRECT] == 6
+    assert c[Outcome.SHIPPED_WRONG] == 1
+    assert c[Outcome.SHIPPED_GOLD_SILENT] == 1
+    assert c[Outcome.ABSTAINED_GOLD_STATED] == 14
+    assert sum(c.values()) == 47
+
+
+@_needs_str
+def test_g3_composite_metric_matches_gold_exactly():
+    """str is the anchor whose headline number is DRR's famous -0.99. The
+    paper_metric field type reproduces the full {mean, t_stat, unit} triple."""
+    s = score_anchor("str", _DRR)
+    row = next(r for r in s.rows if r.key.name == "claimed_headline_metric")
+    assert row.outcome is Outcome.SHIPPED_CORRECT
+    assert row.gold_value["mean"] == -0.99
 
 
 @_needs_bbw

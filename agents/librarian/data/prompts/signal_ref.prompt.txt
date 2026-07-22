@@ -19,5 +19,11 @@ Rules:
   VERBATIM quote (copied exactly) that names/defines the signal in "quote".
 - Picking "unrecognised" REQUIRES a verbatim quote (the paper's words that failed
   to match). The quote must appear in the paper text verbatim. Never invent one.
+- Give the SHORTEST span that names or defines the signal -- ideally one clause,
+  at most one sentence, and never more than about 200 characters. Do NOT quote a
+  whole paragraph or run several sentences together. A long span is more likely to
+  cross a line break, a hyphenated word split across lines, or a column boundary,
+  and a quote that does not reproduce the paper EXACTLY is discarded even when
+  your concept choice is correct. Short and exact beats long and approximate.
 
 Return JSON matching the signal_ref field-type schema.

@@ -22,7 +22,7 @@ strategy_label:          str
 strategy_quote:          "In Panel A, we sort bonds into deciles each month and form value-weighted portfolios (using bond market capitalization) that are long the top decile and short the bottom decile."   page: 17
 registry_version:        v1
 silence_policy_version:  v1.1
-canonical_text_hash:     normalise_sha256 3d846fef7d710af17c4a183b69353e705ed11e957d7df9390fcba35ac89eee95 (config/canonical_text.yaml recipe, PyMuPDF 1.28.0 / L1 / v2 ladder); source_sha256 d481c99e38fbb012a87f33ecedbcba6614a35e0c28555e39ad459246edf42b58 (frozen drr_2026)
+canonical_text_hash:     normalise_sha256 abe11ff63b76df2e46a775a70f1feb397d10fa59984bafd38d312b178b01a79e (config/canonical_text.yaml recipe, PyMuPDF 1.28.0 / L1 / v3 ladder); source_sha256 d481c99e38fbb012a87f33ecedbcba6614a35e0c28555e39ad459246edf42b58 (frozen drr_2026)
 ```
 
 ## Part 1 — three fields (all CORE)

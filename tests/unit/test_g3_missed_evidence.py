@@ -27,8 +27,8 @@ from evaluation.harness.missed_evidence import (  # noqa: E402
 from evaluation.harness.run_artefacts import RunField, load_run  # noqa: E402
 
 _ROOT = Path(__file__).resolve().parents[2]
-_BBW = _ROOT / "runs" / "g3_2026-07-21_postfix" / "bbw"
-_JNPS = _ROOT / "runs" / "g3_2026-07-21_postfix" / "jnps"
+_BBW = _ROOT / "runs" / "g3_2026-07-22_v3" / "bbw"
+_JNPS = _ROOT / "runs" / "g3_2026-07-22_v3" / "jnps"
 
 _needs_bbw = pytest.mark.skipif(not (_BBW / "trace_0.json").exists(),
                                 reason="post-fix BBW dev run absent (runs/ is gitignored)")
@@ -118,7 +118,7 @@ def test_drf_decomposition_golden():
     art = load_run(_BBW)
     d = decompose(score_anchor("drf", _BBW, artefacts=art), art)
     assert d.total == 14
-    assert d.counts == {"gate_lost": 6, "merge_refused": 5, "value_wrong": 3}
+    assert d.counts == {"gate_lost": 6, "merge_refused": 4, "value_wrong": 4}
     assert d.dominant is Mechanism.GATE_LOST
 
 
@@ -126,8 +126,8 @@ def test_drf_decomposition_golden():
 def test_mom6_decomposition_golden():
     art = load_run(_JNPS)
     d = decompose(score_anchor("mom6", _JNPS, artefacts=art), art)
-    assert d.total == 16
-    assert d.counts == {"merge_refused": 8, "value_wrong": 6,
+    assert d.total == 15
+    assert d.counts == {"merge_refused": 7, "value_wrong": 6,
                         "not_retrieved": 1, "gate_lost": 1}
     assert d.dominant is Mechanism.MERGE_REFUSED
 

@@ -32,7 +32,10 @@ field_types:
     prompt: prompts/signal_ref.prompt.txt
     schema: schemas/signal_ref.schema.json
     decoding: decoding/signal_ref.decoding.yaml
-    sha256: 2a77f552c6af47c12f04fbd53773b6a8527652c75caf2bd7dccbb56ddfc30016
+    # Re-stamped 2026-07-22 (D39): added a quote-length constraint. The template's
+    # extraction CONTRACT is unchanged -- same menu, same exact-and-binary matching,
+    # same verbatim-quote requirement; only the span-selection guidance is new.
+    sha256: a0b9e0e77e327c6c3fd6613a7b3892938fefc816213b656a7c1f95a50cd693e0
   method_summary:
     prompt: prompts/method_summary.prompt.txt
     schema: schemas/method_summary.schema.json

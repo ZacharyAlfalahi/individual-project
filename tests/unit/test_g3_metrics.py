@@ -29,8 +29,8 @@ from evaluation.harness.run_artefacts import load_run  # noqa: E402
 from evaluation.harness.stats import Proportion, wilson  # noqa: E402
 
 _ROOT = Path(__file__).resolve().parents[2]
-_BBW = _ROOT / "runs" / "g3_2026-07-21_postfix" / "bbw"
-_JNPS = _ROOT / "runs" / "g3_2026-07-21_postfix" / "jnps"
+_BBW = _ROOT / "runs" / "g3_2026-07-22_v3" / "bbw"
+_JNPS = _ROOT / "runs" / "g3_2026-07-22_v3" / "jnps"
 
 _Z = 1.959963984540054
 
@@ -116,7 +116,7 @@ def test_drf_metrics_golden():
     b = compute_metrics(score_anchor("drf", _BBW, artefacts=art), art)
     assert b.universe == 44
     assert (b.coverage.numerator, b.coverage.denominator) == (4, 44)
-    assert (b.selective_accuracy.numerator, b.selective_accuracy.denominator) == (2, 4)
+    assert (b.selective_accuracy.numerator, b.selective_accuracy.denominator) == (3, 4)
     assert (b.over_claim_rate.numerator, b.over_claim_rate.denominator) == (0, 4)
     assert (b.abstention_rate.numerator, b.abstention_rate.denominator) == (40, 44)
     assert (b.missed_evidence_rate.numerator, b.missed_evidence_rate.denominator) == (14, 18)
@@ -128,10 +128,10 @@ def test_mom6_metrics_golden():
     b = compute_metrics(score_anchor("mom6", _JNPS, artefacts=art), art)
     assert b.universe == 44
     assert (b.coverage.numerator, b.coverage.denominator) == (7, 44)
-    assert (b.selective_accuracy.numerator, b.selective_accuracy.denominator) == (5, 7)
-    # mom6 shipped nothing WRONG; both its failures were fabrications.
-    assert (b.over_claim_rate.numerator, b.over_claim_rate.denominator) == (2, 7)
-    assert (b.missed_evidence_rate.numerator, b.missed_evidence_rate.denominator) == (16, 21)
+    assert (b.selective_accuracy.numerator, b.selective_accuracy.denominator) == (6, 7)
+    # mom6 shipped nothing WRONG; its only failure was a fabrication.
+    assert (b.over_claim_rate.numerator, b.over_claim_rate.denominator) == (1, 7)
+    assert (b.missed_evidence_rate.numerator, b.missed_evidence_rate.denominator) == (15, 21)
 
 
 @_needs_bbw

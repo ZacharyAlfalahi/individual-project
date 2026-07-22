@@ -20,7 +20,7 @@ strategy_label:          mom6
 strategy_quote:          "Specifically, each month t, bonds are sorted into decile portfolios, P1 to P10, based on their cumulative returns over months t −6 to t −1 (formation period)."   page: 9
 registry_version:        v1
 silence_policy_version:  v1.1
-canonical_text_hash:     normalise_sha256 3d846fef7d710af17c4a183b69353e705ed11e957d7df9390fcba35ac89eee95 (config/canonical_text.yaml recipe, PyMuPDF 1.28.0 / L1 / v2 ladder); source_sha256 7e80f8cb919de4161822df63da1069310d8a113b0562ccd2d3d6420d4f707242 (frozen jnps_2013)
+canonical_text_hash:     normalise_sha256 abe11ff63b76df2e46a775a70f1feb397d10fa59984bafd38d312b178b01a79e (config/canonical_text.yaml recipe, PyMuPDF 1.28.0 / L1 / v3 ladder); source_sha256 7e80f8cb919de4161822df63da1069310d8a113b0562ccd2d3d6420d4f707242 (frozen jnps_2013)
 ```
 
 ## Part 1 — three fields (all CORE)

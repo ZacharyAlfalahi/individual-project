@@ -84,10 +84,39 @@ _QUOTES: dict[int, str] = {
     0x201D: '"',   # ”  right double
 }
 
-# en (U+2013) / em (U+2014) dash -> hyphen, ONLY when flanked by word chars
-# ("Newey–West" -> "Newey-West"; a spaced "word – word" is left alone). Zero-width
-# look-around so only the dash is rewritten.
-_DASH_WORD_FLANKED = re.compile(r"(?<=\w)[–—](?=\w)")
+# v3 (2026-07-22, D40): the COMPLETE dash class -> ASCII hyphen, UNCONDITIONALLY.
+#
+# Supersedes v2's `(?<=\w)[–—](?=\w)`, which was wrong in two independent ways and
+# cost an anchor. It covered only en/em dash, so U+2212 MINUS SIGN -- the single
+# most common non-ASCII character in this corpus (1,034 occurrences post-L1) --
+# was never unified at all; and the word-flanking condition meant that even adding
+# U+2212 to the class would NOT have fixed it, because papers write " t −6 ", where
+# the minus is preceded by a SPACE and the lookbehind fails.
+#
+# The defect class is transcription equivalence: a model (or a human) reading a
+# rendered PDF types ASCII "-" for every one of these glyphs, so a quote is
+# discarded for a character difference no reader can see. Unconditional unification
+# is safe for MATCHING because the same transform is applied to both the page and
+# the quote -- and it is strictly safer than the flanked rule, which left 286
+# unflanked en-dashes unmatched. Every member is a 1:1 substitution, so spans are
+# LENGTH-PRESERVING and no locator offset moves (verified: 57/57 gold STATED
+# locators slice back byte-exact before and after).
+#
+# Deliberately NOT included: U+00AD SOFT HYPHEN (invisible -- would need DELETION,
+# which is not length-preserving; absent from this corpus, so out of scope until it
+# appears). Deliberately NOT unified: Greek letters and math operators (γ, ×, ≈, ∗,
+# ′). Those are CONTENT, not typography -- a transcriber reproduces them, and
+# folding them to ASCII would destroy meaning rather than recover it.
+_DASHES: dict[int, str] = {
+    0x2010: "-",  # ‐ hyphen
+    0x2011: "-",  # ‑ non-breaking hyphen
+    0x2012: "-",  # ‒ figure dash
+    0x2013: "-",  # – en dash
+    0x2014: "-",  # — em dash
+    0x2015: "-",  # ― horizontal bar
+    0x2043: "-",  # ⁃ hyphen bullet
+    0x2212: "-",  # − MINUS SIGN (Sm, not Pd -- NFKC does not touch it)
+}
 
 # Any run of whitespace (incl. newlines/tabs; Unicode \s covers NBSP) -> single space.
 _WS_RUN = re.compile(r"\s+")
@@ -110,7 +139,7 @@ _L1_RULES: list[str] = [
     "nfkc",
     "ligature_expansion",
     "curly_quote_unification",
-    "dash_unification_word_flanked",
+    "dash_unification",          # v3: complete dash class, unconditional
     "whitespace_collapse",
     "strip_space_before_punctuation",
 ]
@@ -123,13 +152,15 @@ RULES: dict[str, list[str]] = {
 
 
 def _l1(text: str) -> str:
-    """Apply the L1 rules in order. Whitespace collapse is LAST so the word-flank
-    dash test sees original adjacency (collapse never changes it, but order is
-    fixed for determinism)."""
+    """Apply the L1 rules in order.
+
+    Dash unification is now context-free (v3), so it no longer depends on running
+    before whitespace collapse; the order is kept for determinism and so the rule
+    list reads in application order."""
     text = unicodedata.normalize("NFKC", text)
     text = text.translate(_LIGATURES)
     text = text.translate(_QUOTES)
-    text = _DASH_WORD_FLANKED.sub("-", text)
+    text = text.translate(_DASHES)
     text = _WS_RUN.sub(" ", text)
     text = _SPACE_BEFORE_PUNCT.sub(r"\1", text)
     return text.strip()
