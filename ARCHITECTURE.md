@@ -48,4 +48,4 @@ Applies to the data-matched anchors (BBW, str, momentum) on the uncorrected/as-p
 
 ## Open Decisions (resolve before Librarian v1 runs on any corpus paper)
 D4 — LLM stack: commit chosen stack to thresholds.yaml before first Librarian run. Candidate: Claude Sonnet 4.6 + GPT-4o for anchor-layer dual extraction; cost-optimised single-model for scale corpus.
-D5 — Dickerson 2026 label availability: verify by end of week 1 (arXiv 2604.07880). If available: Auditor check 5 uses exact name matching against /data/dickerson_zoo/names.csv. If unavailable: check 5 uses t-stat band + free-parameter count only; record outcome in /docs/citations_verified.md.
+D5 — Dickerson 2026 label availability. If available: Auditor check 5 uses exact name matching against /data/dickerson_zoo/names.csv. If unavailable: check 5 uses t-stat band + free-parameter count only; record outcome in /docs/citations_verified.md.
