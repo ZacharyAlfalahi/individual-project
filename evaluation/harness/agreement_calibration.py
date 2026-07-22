@@ -233,6 +233,21 @@ def cohens_kappa(pairs: list[tuple[object, object]]) -> tuple[float | None, str]
     return (p_o - p_e) / (1.0 - p_e), ""
 
 
+def _kappa_population(score: AnchorScore, artefacts) -> list[tuple[object, object]]:
+    """Every asked, non-excluded field as a (model_a label, model_b label) pair,
+    with silence as an explicit category. See build_agreement_table."""
+    rows: list[tuple[object, object]] = []
+    for row in score.rows:
+        if row.outcome in EXCLUDED_OUTCOMES or row.key.name in RUBRIC_FIELDS:
+            continue
+        run = artefacts.fields.get(row.key.name)
+        if run is None:
+            continue
+        rows.append((run.normalised_a if run.a_answered else SILENT,
+                     run.normalised_b if run.b_answered else SILENT))
+    return rows
+
+
 def build_agreement_table(score: AnchorScore, artefacts, *,
                           thresholds: G3Thresholds | None = None) -> AgreementTable:
     th = thresholds if thresholds is not None else load_g3_thresholds()
@@ -264,9 +279,14 @@ def build_agreement_table(score: AnchorScore, artefacts, *,
                           Arm.AGREE_QUOTE_GATE_FAILED)}
     per_type = {key: cell(rows, key[0], key[1]) for key, rows in by_arm_type.items()}
 
-    pairs = [(o.candidate_a if o.candidate_a is not None else SILENT,
-              o.candidate_b if o.candidate_b is not None else SILENT) for o in obs]
-    kappa, kappa_note = cohens_kappa(pairs)
+    # Kappa runs over ALL asked fields, INCLUDING both-silent -- not just the 2x2
+    # arms. D34 asks for kappa "over dual-model output", and declining to answer
+    # IS output (the model returns answered=false); silence is a category, not a
+    # missing value. Restricting to the arms would silently condition the
+    # statistic on "at least one model spoke", which is a different question and
+    # materially different number (drf 0.214 arms-only vs 0.289 all-asked).
+    kappa_rows = _kappa_population(score, artefacts)
+    kappa, kappa_note = cohens_kappa(kappa_rows)
 
     return AgreementTable(
         anchor_id=score.anchor_id, reportability=score.reportability,

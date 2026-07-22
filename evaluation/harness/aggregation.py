@@ -205,6 +205,10 @@ def render_aggregate(agg: AggregateBundle, *, allow_non_reportable: bool = False
     lines.append("  Unit of generalisation is the observed gold corpus (§3.3): "
                  "no population-level claim is made.")
 
+    if not agg.anchors_scored:
+        lines.append("  no anchors scored -- nothing to aggregate")
+        return "\n".join(lines)
+
     lines.append("  -- micro (pooled across fields) --")
     for m in _METRICS:
         lines.append(f"      {agg.micro[m].render()}")

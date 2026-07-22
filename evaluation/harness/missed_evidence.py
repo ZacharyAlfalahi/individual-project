@@ -50,7 +50,12 @@ for _p in (str(_REPO_ROOT), str(_REPO_ROOT / "scripts")):
 
 from evaluation.harness.agreement_calibration import _matches_gold  # noqa: E402
 from evaluation.harness.gold_calibration import AnchorScore  # noqa: E402
-from evaluation.harness.reportability import G3Thresholds, load_g3_thresholds  # noqa: E402
+from evaluation.harness.reportability import (  # noqa: E402
+    G3Thresholds,
+    Reportability,
+    load_g3_thresholds,
+    require_reportable,
+)
 from evaluation.harness.stats import Proportion  # noqa: E402
 
 
@@ -59,6 +64,7 @@ class Mechanism(str, Enum):
     GATE_LOST = "gate_lost"
     MERGE_REFUSED = "merge_refused"
     VALUE_WRONG = "value_wrong"
+    NOT_SCORABLE = "not_scorable"
 
 
 # The remedy each mechanism routes to under evaluation contract v1.1 §3.6.
@@ -72,6 +78,10 @@ MECHANISM_REMEDY: dict[Mechanism, str] = {
                              "systematic abstention against D9's both-must-answer rule; neither "
                              "retrieval nor self-consistency addresses abstention",
     Mechanism.VALUE_WRONG: "k=3 ladder -- no model produced the gold value (reading / decoding noise)",
+    Mechanism.NOT_SCORABLE: "NO REMEDY INDICATED -- the gold and run values are not comparable "
+                            "(e.g. a gold value its own field type cannot hold, D37 ruling 2), so "
+                            "this field cannot testify about any mechanism. Counted, never folded "
+                            "into value_wrong, which would assert that no model was right",
 }
 
 
@@ -87,10 +97,18 @@ class MissedField:
 
 @dataclass(frozen=True)
 class MissedEvidenceDecomposition:
+    """The §3.6 gate input.
+
+    ``reportability`` has NO DEFAULT. This is the number the contract's
+    ReAct-vs-k=3 architecture decision turns on, so it is the LAST place the phase
+    stamp may be optional -- a Phase-D decomposition reaching a reader unmarked is
+    the exact hazard §1 exists to prevent."""
+
     anchor_id: str
     total: int
     fields: tuple[MissedField, ...]
     shares: dict[str, Proportion]
+    reportability: Reportability
 
     @property
     def counts(self) -> dict[str, int]:
@@ -134,6 +152,15 @@ def _classify(row, run) -> tuple[Mechanism, str]:
         silent = "model_b" if (a_ok and not run.b_answered) else (
             "model_a" if (b_ok and not run.a_answered) else "the other model")
         return Mechanism.MERGE_REFUSED, f"a model had the gold value; {silent} was silent/differed"
+
+    # Neither model matched -- but "did not match" and "could not be compared" are
+    # different claims. _matches_gold returns None when the pair is not comparable
+    # (a gold value its own field type cannot hold, D37 ruling 2). Folding those
+    # into value_wrong would assert that no model produced the gold value, which
+    # is exactly what was NOT established -- and would route a remedy off it.
+    answered = [ok for ok, ans in ((a_ok, run.a_answered), (b_ok, run.b_answered)) if ans]
+    if answered and all(ok is None for ok in answered):
+        return Mechanism.NOT_SCORABLE, "answered, but gold and run values are not comparable"
     return Mechanism.VALUE_WRONG, "answered, but no model produced the gold value"
 
 
@@ -162,11 +189,17 @@ def decompose(score: AnchorScore, artefacts, *,
         for m in Mechanism
     }
     return MissedEvidenceDecomposition(anchor_id=score.anchor_id, total=total,
-                                       fields=tuple(out), shares=shares)
+                                       fields=tuple(out), shares=shares,
+                                       reportability=score.reportability)
 
 
-def render_decomposition(d: MissedEvidenceDecomposition) -> str:
-    lines = [f"§3.6 missed-evidence decomposition -- {d.anchor_id} (n={d.total})"]
+def render_decomposition(d: MissedEvidenceDecomposition, *,
+                         allow_non_reportable: bool = False) -> str:
+    require_reportable(d.reportability, allow_non_reportable=allow_non_reportable)
+    lines: list[str] = []
+    if not d.reportability.reportable:
+        lines.append(d.reportability.banner)
+    lines.append(f"§3.6 missed-evidence decomposition -- {d.anchor_id} (n={d.total})")
     for m in Mechanism:
         p = d.shares[m.value]
         lines.append(f"  {p.render()}")

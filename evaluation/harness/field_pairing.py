@@ -165,6 +165,18 @@ def pair_fields(spec, artefacts) -> tuple[list[PairedField], list[str]]:
     Returns (paired, excluded_paths). The universe is fixed by the GOLD, never by
     the run (contract §8): a field the run never emitted still appears, with
     ``run=None``, so it lands in the coverage denominator rather than vanishing."""
+    # The run-side lookup below is by FLAT NAME, so it discards leg_index. On a
+    # single-leg spec that is exact; on a multi-leg spec two gold legs' fields
+    # would resolve to the SAME trace record and both be scored against it -- a
+    # silently wrong number, not a crash. match_legs exists for that join but is
+    # not wired, so refuse rather than score. Every anchor is single-leg today.
+    if len(spec.part2.legs) > 1:
+        raise PairingError(
+            f"multi-leg spec ({len(spec.part2.legs)} legs): the run-side join is by flat trace "
+            "name and would collapse both legs onto one record. Wire match_legs into the lookup "
+            "before scoring a multi-leg anchor."
+        )
+
     paired: list[PairedField] = []
     excluded: list[str] = []
     seen: set[FieldKey] = set()

@@ -161,19 +161,62 @@ def test_a_tie_reports_no_dominant_rather_than_breaking_it():
     """A tie means the evidence does not identify a remedy. Contract v1.1 routes
     that to Z, never to a default, so `dominant` must return None."""
     from evaluation.harness.missed_evidence import MissedEvidenceDecomposition, MissedField
+    from evaluation.harness.reportability import Reportability
 
     fields = (
         MissedField("f1", Mechanism.GATE_LOST, 1, 1, None, ""),
         MissedField("f2", Mechanism.MERGE_REFUSED, 1, 1, None, ""),
     )
-    d = MissedEvidenceDecomposition(anchor_id="x", total=2, fields=fields, shares={})
+    d = MissedEvidenceDecomposition(
+        anchor_id="x", total=2, fields=fields, shares={},
+        reportability=Reportability(phase="phase_d", reportable=False, reason="synthetic",
+                                    model_a_id="a", model_b_id="b"),
+    )
     assert d.dominant is None
 
 
 @_needs_bbw
 def test_render_names_the_remedy_for_every_mechanism():
     art = load_run(_BBW)
-    out = render_decomposition(decompose(score_anchor("drf", _BBW, artefacts=art), art))
+    out = render_decomposition(decompose(score_anchor("drf", _BBW, artefacts=art), art),
+                               allow_non_reportable=True)
     for m in Mechanism:
         assert m.value in out
     assert "LOCATOR remediation" in out and "PAIR remediation" in out
+
+
+@_needs_bbw
+def test_the_decomposition_renderer_is_phase_gated():
+    """This is the number the contract's ReAct-vs-k=3 architecture decision turns
+    on, so it is the LAST place the phase stamp may be optional. It shipped
+    ungated once; this test is why it cannot again."""
+    from evaluation.harness.reportability import ReportabilityError
+
+    art = load_run(_BBW)
+    d = decompose(score_anchor("drf", _BBW, artefacts=art), art)
+    assert d.reportability.reportable is False
+    with pytest.raises(ReportabilityError):
+        render_decomposition(d)
+    assert render_decomposition(d, allow_non_reportable=True).startswith("*** NON-REPORTABLE")
+
+
+def test_the_reportability_stamp_has_no_default():
+    import dataclasses
+
+    from evaluation.harness.missed_evidence import MissedEvidenceDecomposition
+
+    fld = next(f for f in dataclasses.fields(MissedEvidenceDecomposition)
+               if f.name == "reportability")
+    assert fld.default is dataclasses.MISSING
+    assert fld.default_factory is dataclasses.MISSING
+
+
+def test_non_comparable_values_are_not_scorable_not_value_wrong():
+    """A gold value its own field type cannot hold (D37 ruling 2) tells us nothing
+    about any mechanism. Folding it into value_wrong would assert that no model
+    produced the gold value -- exactly what was not established -- and route a
+    remedy off it."""
+    m, note = _classify(_Row(gold_value="floor(T^0.25)", name="hac_lags"),
+                        _rf(field="hac_lags", normalised_a=4, normalised_b=4))
+    assert m is Mechanism.NOT_SCORABLE
+    assert "not comparable" in note
