@@ -45,7 +45,7 @@ Place these under `data/` before running the build steps; without them §1/§4 c
 
 ## What's Built
 
-The data layer produces a **dual-family** monthly panel (`raw` = as-published, `corr` = bias-corrected) that the bias-toggle registry's view layer materialises into two endpoint panels; the gap between them is the measured bias. On top of it sits the **anchor factor layer** — the BBW (2019) four-factor model (MKTB, DRF, LRF, CRF), standalone short-term reversal (`str`) and 6-month momentum (`mom6`), plus the RQ2/RQ3 bias toggles that make them anchors. Each stage hash-logs a report JSON. The first **audited scale-layer module** — the KPP IPCA estimator — sits alongside the anchors (§12), fed by a buildable bond-centric characteristic panel and exercised by an interface-validation shakedown (§13).
+The data layer produces a **dual-family** monthly panel (`raw` = as-published, `corr` = bias-corrected) that the bias-toggle registry's view layer materialises into two endpoint panels; the gap between them is the measured bias. On top of it sits the **anchor factor layer** — the BBW (2019) four-factor model (MKTB, DRF, LRF, CRF), standalone short-term reversal (`str`) and 6-month momentum (`mom6`), plus the RQ2/RQ3 bias toggles that make them anchors. Each stage hash-logs a report JSON. The first **audited scale-layer module** — the KPP IPCA estimator — sits alongside the anchors (§12), fed by a buildable bond-centric characteristic panel and exercised by an interface-validation shakedown (§13). Above the Quant layer, the **Auditor** (RQ3, §14) turns those toggles into a measurement instrument: it runs each strategy through the full `2^k` bias-toggle lattice and attributes the correction effect — corner marginals, DOE effects and Shapley shares, with inference, Bayesian and hierarchical layers — behind calibrated validation gates.
 
 ### 1. TRACE cleaning → dual families
 ```bash
@@ -137,12 +137,18 @@ python scripts/run_ipca_shakedown.py  # in-sample K-sweep + recursive OOS → ru
 ```
 The buildable FISD+TRACE instrument subset — short-term reversal, mom6, VaR, γ-illiquidity, rating, time-to-maturity, 24m return-vol (+ constant) — assembled with the **next-return lag** (instruments at m−1, return at m; adjacent months only), complete-case selection, and **VOLScaled010** returns, emitted as the module's per-month `(Z, R)` feed (which passes the module's own `validate_panel` + wall by construction; 209 months, ~1,700 bonds/month). The shakedown runs the estimator end-to-end on this real feed. **Interface-validation only — NON-COMPARABLE to KPP**: a 7-instrument bond-only, VOL-scaled model is structurally different from KPP's 29-instrument DtS model, so every artifact carries that stamp and it **cannot be cited for RQ1/RQ2/RQ3**. The 15 equity/accounting characteristics and the DtS lane remain blocked (CRSP/Compustat access; spread/yield/OAS).
 
+### 14. Auditor (RQ3) — differential bias-attribution instrument
+```bash
+python -m pytest tests/unit/test_auditor_*.py -q   # Layer A/B gates, calibration, inference
+```
+`agents/auditor/` runs each strategy through a `2^k` lattice of bias-toggle combinations (`meas_err`, `stale_price`, `survivorship`, `lib_gap`, `lab_trim`) — `2^k` return series differing ONLY in toggle settings — and decomposes the endpoint gap three ways: **corner marginals** (external triangulation), **DOE effects** (the interaction finding), and **Shapley shares** (exactly-additive allocation). **Zero language model in the analytical path** (§11): the deterministic core (`checks/`) is preflight (derived `audit_scope`) → lattice runner (SEAM 1: panel toggles via `views.view()`, construction toggles via a `QuantConfig` override) → common-support metrics → Möbius/Walsh/DOE algebra → Shapley (efficiency-asserted, %-guarded) → the invariance no-op gate, then a synchronised **fixed-block bootstrap** and the inference layers — HAC-vs-bootstrap routing, BH-FDR over the confirmatory family, a Bayesian normal approximation, the compression-adequacy statistic `D`, economic significance + deflated Sharpe, and the two-level hierarchical prevalence model. **Validation gates** (`validation/`): Layer A algebraic recovery (exact, no engine, vs an independent Shapley oracle), Layer B injection (a synthetic maximal-panel DGP + 5 single-bias fixtures + FPR/MDE calibration + 3 interaction mechanisms), plus the recovery sweep and per-anchor triangulation. An LLM appears only in a downstream **explainer** whose every numeric token is checked against the typed report by a verifier, falling back to a deterministic renderer. Reuses the Quant library unchanged; the pre-registration constants live in `thresholds.yaml:auditor` (fail-loud, never defaulted).
+
 ---
 
 ## Tests
 
 ```bash
-python -m pytest tests/unit/ -q                          # 372 passing
+python -m pytest tests/unit/ -q                          # full unit suite
 python -m pytest tests/synthetic/test_ipca_battery.py -q # IPCA certification battery (33; ~90s)
 ```
 With the venv active these run on the project interpreter (pandas 3.0.3); a different pandas means you forgot `source .venv/bin/activate`. Each signal, factor, and bias toggle has synthetic-fixture-with-known-answer unit tests (e.g. hand-computed γ covariance, accrued interest, leg directions on a 5×5 grid); the IPCA module adds the synthetic certification battery and is `mypy --strict` + `ruff` clean (toolchain installed by the Setup `pip install`). The holdout firewall (`tests/conftest.py`) blocks any read of `data/holdout/`.
