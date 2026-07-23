@@ -560,3 +560,81 @@ auditor:
       model_id: claude-sonnet-4-6
       api_key_env: ANTHROPIC_API_KEY
       min_interval_s: 1.0
+
+  # =========================================================================
+  # Frozen-Loadings IPCA Differential — exploratory stretch (RQ3 extension).
+  # Spec: docs/auditor/evaluation_frozen_ipca_differential_v5_FINAL.md (v5), §9.
+  # Loaders: agents/auditor/thresholds.py::load_ipca_lambda / _projection_gate /
+  #          _reporting / _execution_config (all fail-loud).
+  #
+  # STATUS DISCIPLINE: this block instantiates ONLY the constants the development
+  # contract + 2x2 engine consume (§9 items 1-7, 10, 11). The bootstrap/FPR/stability
+  # constants (§9 items 8-9) are DEFERRED to their increments. `status` is therefore
+  # `development_contract_only`: load_ipca_execution_config refuses to run any
+  # reportable / real-data extension until status == preregistered_complete AND the
+  # deferred constants are present. A partial block can never masquerade as final.
+  # =========================================================================
+  ipca_differential:
+    status: development_contract_only
+
+    # -- λ, category-4 registered constants (mirror kpp_ipca.yaml / ipca_instruments.yaml,
+    #    re-registered here as the extension's own pre-registration).
+    lambda:
+      factor_count: 5                 # K [kpp_ipca.yaml:model.K; PAPER §III]
+      k_sensitivity: [4, 6]           # §9.5 K±1 sensitivity
+      instrument_count: 8             # L = 7 instruments + constant [ipca_instruments.yaml:meta.L]
+      characteristic_order:           # the L-1 instrument names, in order (constant appended last)
+        - str_reversal
+        - mom6
+        - var_5pct
+        - gamma_illiq
+        - rating
+        - time_to_maturity
+        - bond_vol
+      als_tolerance: 1.0e-4           # [kpp_ipca.yaml:estimation.tolerance]
+      als_max_iter: 1000              # [kpp_ipca.yaml:estimation.max_iter_in_sample]
+      month_weighting: per_month_normalized   # K22 arm [kpp_ipca.yaml]
+      scaling_lane: VOLScaled010      # [ipca_instruments.yaml:meta.scaling_lane]
+      vol_floor: 0.01                 # [kpp_ipca.yaml:scaling.vol_floor]
+      normalisation_rule: kpp_r2_qr_descending_moment_meanpos   # ipca._identify (R2 adjudication)
+      # production estimator rule (§5.2). Single SVD init until the §12.5 fit-timing
+      # measurement decides best-of-M; then n_initialisations grows with NO call-site change.
+      n_initialisations: 1
+      initialisation_seeds: [20260612]        # [kpp_ipca.yaml:bootstrap.seed lineage]
+      tie_break: lowest_objective_then_seed
+
+    # -- Projection identifiability gate (§6.4). Gated on B_t = Z_t Γ directly.
+    projection_gate:
+      min_cross_section_n: 8          # N_m must exceed this (and L) for a usable month
+      require_rank: 5                 # = K; rank(B_t) must equal K
+      max_condition_number: 1.0e+10   # cond(B_t) ceiling; above ⇒ month is unidentified
+      pseudoinverse_permitted: false  # a silent pinv with arbitrary tol is an undisclosed DoF
+      pseudoinverse_tolerance: null   # unused while pseudoinverse_permitted is false
+      max_failed_month_fraction: 0.10 # > this fraction of failed months ⇒ cell refusal
+      failed_month_handling: exclude  # exclude | cell_refusal
+
+    # -- Reporting set + emphasis (§3.2). No aggregate, no GRS; the count is frozen.
+    reporting:
+      n_pairs: 15                     # 5 biases × 3 anchors
+      anchors: [str, mom6, drf]
+      # Pre-specified focal pairs ONLY where the expectation register documents a
+      # mechanism. survivorship / stale_price carry co-equal cross-tests by declared
+      # absence — manufacturing a focal pair now would be the very researcher DoF the
+      # project exposes. The word "primary" is banned inside the extension.
+      focal_pairs:
+        lib_gap: str
+        lab_trim: mom6
+        meas_err: drf
+      no_focal_pair: [survivorship, stale_price]
+      # §3.1 / §9.11 chimera exemption: pricing the corrected fixed anchor against a
+      # dirty-panel factor set is an evaluation OVERLAY, not a construction chimera.
+      # Scoped to the IPCA differential evaluation layer; the construction guard stays armed.
+      benchmark_overlay_exemption: true
+
+    # -- §9 items 8-9 (bootstrap / randomisation-FPR / stability) are DEFERRED to
+    #    They gate an EXTENSION RUN (the 15-pair execution, §12.7), which
+    #    this contract-only block does not perform. Registered before that run, not now:
+    #    # bootstrap: {n_replicates, block_rule, conditioning_labels}
+    #    # randomisation_fpr: {twin_dgp, placebo_operator, Q, R, alpha_nom, acceptance_band,
+    #    #                     reduced_QR_fallback, rename_fallback}
+    #    # stability_diagnostic: {R_prime, scheme, scope}

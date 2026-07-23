@@ -101,6 +101,38 @@ def _require_int(value: object, dotted_key: str, section: str) -> int:
     return value
 
 
+def _require_str(value: object, dotted_key: str, section: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise AuditorThresholdError(
+            f"{dotted_key} (present but not a non-empty string: {value!r})", section
+        )
+    return value
+
+
+def _require_bool(value: object, dotted_key: str, section: str) -> bool:
+    if not isinstance(value, bool):
+        raise AuditorThresholdError(
+            f"{dotted_key} (present but not a bool: {value!r})", section
+        )
+    return value
+
+
+def _require_int_list(value: object, dotted_key: str, section: str) -> tuple[int, ...]:
+    if not isinstance(value, list) or not value:
+        raise AuditorThresholdError(
+            f"{dotted_key} (present but not a non-empty list: {value!r})", section
+        )
+    return tuple(_require_int(v, f"{dotted_key}[{i}]", section) for i, v in enumerate(value))
+
+
+def _require_str_list(value: object, dotted_key: str, section: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value:
+        raise AuditorThresholdError(
+            f"{dotted_key} (present but not a non-empty list: {value!r})", section
+        )
+    return tuple(_require_str(v, f"{dotted_key}[{i}]", section) for i, v in enumerate(value))
+
+
 # ---------------------------------------------------------------------------
 # Typed views
 # ---------------------------------------------------------------------------
@@ -317,4 +349,243 @@ def load_explainer_config(
         min_interval_s=_require_number(
             min_interval, f"auditor.explainer.{phase_key}.min_interval_s", "§11"
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Frozen-Loadings IPCA Differential (RQ3 extension) — spec §9.
+#
+# The extension is a pre-registered exploratory stretch. Its `status` field gates
+# execution: `development_contract_only` (this build) registers only the differential and inference
+# constants; `load_ipca_execution_config` refuses any reportable / real-data run until
+# `status == 'preregistered_complete'` AND the deferred bootstrap/FPR/stability blocks
+# exist — so a partial pre-registration can never masquerade as final (§9 requires ALL
+# constants registered before any extension run).
+# ---------------------------------------------------------------------------
+
+_IPCA_SECTION = "§9 (IPCA differential v5)"
+
+
+def _ipca_block(path: str | Path | None) -> dict:
+    """The `auditor.ipca_differential` sub-block; raise loudly if absent."""
+    block = _auditor_block(path)
+    node = block.get("ipca_differential")
+    if not isinstance(node, dict):
+        raise AuditorThresholdError("auditor.ipca_differential", _IPCA_SECTION)
+    return block  # return the auditor block so _require builds full dotted paths
+
+
+@dataclass(frozen=True)
+class IPCALambda:
+    """Category-4 registered constants λ (spec §4.1 / §9.5). Fixed ex ante, identical
+    across every panel, fit, cell, placebo and diagnostic replicate."""
+
+    factor_count: int                       # K
+    k_sensitivity: tuple[int, ...]          # K±1 sensitivity set
+    instrument_count: int                   # L = len(characteristic_order) + 1
+    characteristic_order: tuple[str, ...]
+    als_tolerance: float
+    als_max_iter: int
+    month_weighting: str
+    scaling_lane: str
+    vol_floor: float
+    normalisation_rule: str
+    n_initialisations: int                  # M (production rule §5.2)
+    initialisation_seeds: tuple[int, ...]
+    tie_break: str
+
+    def __post_init__(self) -> None:
+        if self.instrument_count != len(self.characteristic_order) + 1:
+            raise AuditorThresholdError(
+                f"auditor.ipca_differential.lambda.instrument_count "
+                f"({self.instrument_count}) must equal len(characteristic_order)+1 "
+                f"({len(self.characteristic_order) + 1}; +1 for the constant column)",
+                _IPCA_SECTION,
+            )
+
+
+def load_ipca_lambda(path: str | Path | None = None) -> IPCALambda:
+    """Read the λ registered constants (§4.1 / §9.5). Raises if unregistered."""
+    block = _ipca_block(path)
+
+    def req(*keys: str) -> object:
+        return _require(block, ("ipca_differential", "lambda", *keys), _IPCA_SECTION)
+
+    def dk(*keys: str) -> str:
+        return ".".join(("auditor", "ipca_differential", "lambda", *keys))
+
+    return IPCALambda(
+        factor_count=_require_int(req("factor_count"), dk("factor_count"), _IPCA_SECTION),
+        k_sensitivity=_require_int_list(req("k_sensitivity"), dk("k_sensitivity"), _IPCA_SECTION),
+        instrument_count=_require_int(req("instrument_count"), dk("instrument_count"), _IPCA_SECTION),
+        characteristic_order=_require_str_list(
+            req("characteristic_order"), dk("characteristic_order"), _IPCA_SECTION
+        ),
+        als_tolerance=_require_number(req("als_tolerance"), dk("als_tolerance"), _IPCA_SECTION),
+        als_max_iter=_require_int(req("als_max_iter"), dk("als_max_iter"), _IPCA_SECTION),
+        month_weighting=_require_str(req("month_weighting"), dk("month_weighting"), _IPCA_SECTION),
+        scaling_lane=_require_str(req("scaling_lane"), dk("scaling_lane"), _IPCA_SECTION),
+        vol_floor=_require_number(req("vol_floor"), dk("vol_floor"), _IPCA_SECTION),
+        normalisation_rule=_require_str(
+            req("normalisation_rule"), dk("normalisation_rule"), _IPCA_SECTION
+        ),
+        n_initialisations=_require_int(
+            req("n_initialisations"), dk("n_initialisations"), _IPCA_SECTION
+        ),
+        initialisation_seeds=_require_int_list(
+            req("initialisation_seeds"), dk("initialisation_seeds"), _IPCA_SECTION
+        ),
+        tie_break=_require_str(req("tie_break"), dk("tie_break"), _IPCA_SECTION),
+    )
+
+
+@dataclass(frozen=True)
+class IPCAProjectionGate:
+    """Projection identifiability gate (§6.4). Gated on B_t = Z_t Γ directly."""
+
+    min_cross_section_n: int
+    require_rank: int                       # = K
+    max_condition_number: float
+    pseudoinverse_permitted: bool
+    pseudoinverse_tolerance: float | None
+    max_failed_month_fraction: float
+    failed_month_handling: str              # "exclude" | "cell_refusal"
+
+    def __post_init__(self) -> None:
+        if self.failed_month_handling not in ("exclude", "cell_refusal"):
+            raise AuditorThresholdError(
+                "auditor.ipca_differential.projection_gate.failed_month_handling "
+                f"(must be 'exclude' or 'cell_refusal'; got {self.failed_month_handling!r})",
+                _IPCA_SECTION,
+            )
+        if self.pseudoinverse_permitted and self.pseudoinverse_tolerance is None:
+            raise AuditorThresholdError(
+                "auditor.ipca_differential.projection_gate.pseudoinverse_tolerance "
+                "(must be a number when pseudoinverse_permitted is true)",
+                _IPCA_SECTION,
+            )
+
+
+def load_ipca_projection_gate(path: str | Path | None = None) -> IPCAProjectionGate:
+    """Read the §6.4 projection gate constants. Raises if unregistered."""
+    block = _ipca_block(path)
+
+    def req(*keys: str) -> object:
+        return _require(block, ("ipca_differential", "projection_gate", *keys), _IPCA_SECTION)
+
+    def dk(*keys: str) -> str:
+        return ".".join(("auditor", "ipca_differential", "projection_gate", *keys))
+
+    tol_raw = req("pseudoinverse_tolerance")
+    tol = None if tol_raw is None else _require_number(
+        tol_raw, dk("pseudoinverse_tolerance"), _IPCA_SECTION
+    )
+    return IPCAProjectionGate(
+        min_cross_section_n=_require_int(
+            req("min_cross_section_n"), dk("min_cross_section_n"), _IPCA_SECTION
+        ),
+        require_rank=_require_int(req("require_rank"), dk("require_rank"), _IPCA_SECTION),
+        max_condition_number=_require_number(
+            req("max_condition_number"), dk("max_condition_number"), _IPCA_SECTION
+        ),
+        pseudoinverse_permitted=_require_bool(
+            req("pseudoinverse_permitted"), dk("pseudoinverse_permitted"), _IPCA_SECTION
+        ),
+        pseudoinverse_tolerance=tol,
+        max_failed_month_fraction=_require_number(
+            req("max_failed_month_fraction"), dk("max_failed_month_fraction"), _IPCA_SECTION
+        ),
+        failed_month_handling=_require_str(
+            req("failed_month_handling"), dk("failed_month_handling"), _IPCA_SECTION
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class IPCAReporting:
+    """The frozen reporting set + emphasis rules (§3.2). No aggregate, no GRS."""
+
+    n_pairs: int
+    anchors: tuple[str, ...]
+    focal_pairs: dict[str, str]             # bias -> anchor, only where a mechanism is registered
+    no_focal_pair: tuple[str, ...]
+    benchmark_overlay_exemption: bool
+
+    def __post_init__(self) -> None:
+        expected = self.n_pairs
+        got = len(set(self.focal_pairs) | set(self.no_focal_pair)) * len(self.anchors)
+        if got != expected:
+            raise AuditorThresholdError(
+                f"auditor.ipca_differential.reporting.n_pairs ({expected}) must equal "
+                f"len(biases) × len(anchors) ({got}); biases = focal_pairs ∪ no_focal_pair",
+                _IPCA_SECTION,
+            )
+
+
+def load_ipca_reporting(path: str | Path | None = None) -> IPCAReporting:
+    """Read the §3.2 reporting set. Raises if unregistered."""
+    block = _ipca_block(path)
+
+    def req(*keys: str) -> object:
+        return _require(block, ("ipca_differential", "reporting", *keys), _IPCA_SECTION)
+
+    def dk(*keys: str) -> str:
+        return ".".join(("auditor", "ipca_differential", "reporting", *keys))
+
+    focal_raw = req("focal_pairs")
+    if not isinstance(focal_raw, dict) or not focal_raw:
+        raise AuditorThresholdError(dk("focal_pairs") + " (not a non-empty mapping)", _IPCA_SECTION)
+    focal = {
+        _require_str(k, dk("focal_pairs", "<key>"), _IPCA_SECTION):
+        _require_str(v, dk("focal_pairs", str(k)), _IPCA_SECTION)
+        for k, v in focal_raw.items()
+    }
+    return IPCAReporting(
+        n_pairs=_require_int(req("n_pairs"), dk("n_pairs"), _IPCA_SECTION),
+        anchors=_require_str_list(req("anchors"), dk("anchors"), _IPCA_SECTION),
+        focal_pairs=focal,
+        no_focal_pair=_require_str_list(req("no_focal_pair"), dk("no_focal_pair"), _IPCA_SECTION),
+        benchmark_overlay_exemption=_require_bool(
+            req("benchmark_overlay_exemption"), dk("benchmark_overlay_exemption"), _IPCA_SECTION
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class IPCAExecutionConfig:
+    """The full pre-registration bundle required before any EXTENSION RUN (§9, §12.7).
+    Only obtainable once `status == 'preregistered_complete'` and the deferred
+    bootstrap/FPR/stability blocks are registered."""
+
+    lam: IPCALambda
+    projection_gate: IPCAProjectionGate
+    reporting: IPCAReporting
+
+
+def load_ipca_execution_config(path: str | Path | None = None) -> IPCAExecutionConfig:
+    """Gate for any reportable / real-data extension run (§9 requires ALL constants
+    registered first; §12.7 is the run). Raises `AuditorThresholdError` unless the block's
+    `status` is `preregistered_complete` AND the deferred bootstrap / randomisation-FPR /
+    stability blocks are present. In the development contract this ALWAYS
+    raises — by design — so a partial pre-registration can never launch a run."""
+    block = _ipca_block(path)
+    status = _require_str(
+        _require(block, ("ipca_differential", "status"), _IPCA_SECTION),
+        "auditor.ipca_differential.status", _IPCA_SECTION,
+    )
+    if status != "preregistered_complete":
+        raise AuditorThresholdError(
+            f"auditor.ipca_differential.status is {status!r}, not 'preregistered_complete' "
+            "— the IPCA differential is a development contract only. The §9 bootstrap / "
+            "randomisation-FPR / stability constants are not yet registered, so no reportable "
+            "or real-data extension run may proceed (execution checklist §12.7)",
+            _IPCA_SECTION,
+        )
+    # status claims completeness: the deferred blocks must then actually exist.
+    for key in ("bootstrap", "randomisation_fpr", "stability_diagnostic"):
+        _require(block, ("ipca_differential", key), _IPCA_SECTION)
+    return IPCAExecutionConfig(
+        lam=load_ipca_lambda(path),
+        projection_gate=load_ipca_projection_gate(path),
+        reporting=load_ipca_reporting(path),
     )
