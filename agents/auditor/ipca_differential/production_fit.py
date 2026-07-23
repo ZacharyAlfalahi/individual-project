@@ -79,3 +79,16 @@ def production_fit(feed: IPCAFeed, lam: IPCALambda) -> FrozenIPCAState:
     else:
         fit = _best_of_m(stats, lam)
     return FrozenIPCAState.freeze(fit, lam)
+
+
+def production_fit_seeded(feed: IPCAFeed, lam: IPCALambda, seed: int) -> FrozenIPCAState:
+    """Fit from ONE seeded random initialisation (not the SVD cold start). Used ONLY by the
+    multi-start range diagnostic to probe ALS local-optimum sensitivity (§5.3) — NOT the production
+    estimator (which is ``production_fit``). Distinct local optima can differ in span, and span
+    differences move alpha; the multi-start range is precisely that detector."""
+    stats = build_sufficient_stats(feed.Z, feed.R, feed.months)
+    T, L, _ = stats.W.shape
+    rng = np.random.default_rng(seed)
+    gamma0, _ = np.linalg.qr(rng.standard_normal((L, lam.factor_count)))
+    F0 = rng.standard_normal((lam.factor_count, T))
+    return FrozenIPCAState.freeze(_fit_once(stats, lam, gamma0=gamma0, F0=F0), lam)

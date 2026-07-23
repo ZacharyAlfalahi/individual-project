@@ -552,6 +552,76 @@ def load_ipca_reporting(path: str | Path | None = None) -> IPCAReporting:
 
 
 @dataclass(frozen=True)
+class IPCABootstrapConfig:
+    """Conditional moving-block bootstrap parameters (§5.3). Fixed blocks, ℓ = max(H_max,
+    block_length_months); ONE common block sequence across all four cells; conditional on the
+    realised fitted states (re-fitting uncertainty not estimated)."""
+
+    n_replicates: int
+    block_length_months: int
+    min_effective_blocks: int
+    holding_period_default: int
+    alpha: float
+    conditioning_label: str
+
+
+def load_ipca_bootstrap_config(path: str | Path | None = None) -> IPCABootstrapConfig:
+    """Read the §5.3 conditional bootstrap constants. Raises if unregistered."""
+    block = _ipca_block(path)
+
+    def req(*keys: str) -> object:
+        return _require(block, ("ipca_differential", "bootstrap", *keys), _IPCA_SECTION)
+
+    def dk(*keys: str) -> str:
+        return ".".join(("auditor", "ipca_differential", "bootstrap", *keys))
+
+    return IPCABootstrapConfig(
+        n_replicates=_require_int(req("n_replicates"), dk("n_replicates"), _IPCA_SECTION),
+        block_length_months=_require_int(req("block_length_months"), dk("block_length_months"), _IPCA_SECTION),
+        min_effective_blocks=_require_int(req("min_effective_blocks"), dk("min_effective_blocks"), _IPCA_SECTION),
+        holding_period_default=_require_int(req("holding_period_default"), dk("holding_period_default"), _IPCA_SECTION),
+        alpha=_require_number(req("alpha"), dk("alpha"), _IPCA_SECTION),
+        conditioning_label=_require_str(req("conditioning_label"), dk("conditioning_label"), _IPCA_SECTION),
+    )
+
+
+@dataclass(frozen=True)
+class IPCAStabilityConfig:
+    """Stability-diagnostic parameters (§5.4). R' outer refits on blocked panel resamples, each
+    under the production rule §5.2; reports SIGN and ORDER-OF-MAGNITUDE survival of I. Never an
+    interval; pre-registered so it cannot become a post-hoc rescue."""
+
+    r_prime: int
+    block_length_months: int
+    min_effective_blocks: int
+    holding_period_default: int
+    order_of_magnitude_factor: float
+    scope: tuple[str, ...]
+
+
+def load_ipca_stability_config(path: str | Path | None = None) -> IPCAStabilityConfig:
+    """Read the §5.4 stability-diagnostic constants. Raises if unregistered."""
+    block = _ipca_block(path)
+
+    def req(*keys: str) -> object:
+        return _require(block, ("ipca_differential", "stability_diagnostic", *keys), _IPCA_SECTION)
+
+    def dk(*keys: str) -> str:
+        return ".".join(("auditor", "ipca_differential", "stability_diagnostic", *keys))
+
+    return IPCAStabilityConfig(
+        r_prime=_require_int(req("r_prime"), dk("r_prime"), _IPCA_SECTION),
+        block_length_months=_require_int(req("block_length_months"), dk("block_length_months"), _IPCA_SECTION),
+        min_effective_blocks=_require_int(req("min_effective_blocks"), dk("min_effective_blocks"), _IPCA_SECTION),
+        holding_period_default=_require_int(req("holding_period_default"), dk("holding_period_default"), _IPCA_SECTION),
+        order_of_magnitude_factor=_require_number(
+            req("order_of_magnitude_factor"), dk("order_of_magnitude_factor"), _IPCA_SECTION
+        ),
+        scope=_require_str_list(req("scope"), dk("scope"), _IPCA_SECTION),
+    )
+
+
+@dataclass(frozen=True)
 class IPCAExecutionConfig:
     """The full pre-registration bundle required before any EXTENSION RUN (§9, §12.7).
     Only obtainable once `status == 'preregistered_complete'` and the deferred

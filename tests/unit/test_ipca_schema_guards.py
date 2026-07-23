@@ -17,7 +17,9 @@ from agents.auditor.ipca_differential.schemas import (
     IPCADifferentialResult,
     IPCASchemaError,
     EffectEstimate,
+    computed_effect,
     deferred_effect,
+    refused_effect,
 )
 
 
@@ -76,6 +78,23 @@ def test_deferred_effect_is_wellformed():
     e = deferred_effect("x_corr", 1.5)
     assert e.interval is None and e.interval_status == "deferred_inc3"
     assert e.conditioning.strip() and e.to_dict()["interval"] is None
+
+
+def test_computed_effect_carries_interval():
+    e = computed_effect("x_corr", 1.0, (0.5, 1.5))
+    assert e.interval_status == INTERVAL_COMPUTED and e.interval == (0.5, 1.5)
+    assert e.to_dict()["interval"] == [0.5, 1.5]
+
+
+def test_refused_effect_has_no_interval_but_keeps_caveat():
+    e = refused_effect("x_corr", 1.0)
+    assert e.interval_status == "refused" and e.interval is None
+    assert e.conditioning.strip()
+
+
+def test_non_computed_status_must_not_carry_interval():
+    with pytest.raises(IPCASchemaError, match="must not carry an interval"):
+        EffectEstimate("x_corr", 0.0, "corr", "deferred_inc3", (0.0, 1.0), "cond")
 
 
 # ---- IPCADifferentialResult: algebra + naming -----------------------------

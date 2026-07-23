@@ -21,9 +21,12 @@ from __future__ import annotations
 
 import pandas as pd
 
+from agents.auditor.checks.bootstrap import BootstrapError
 from agents.auditor.thresholds import (
+    IPCABootstrapConfig,
     IPCALambda,
     IPCAProjectionGate,
+    load_ipca_bootstrap_config,
     load_ipca_lambda,
     load_ipca_projection_gate,
     load_ipca_reporting,
@@ -31,6 +34,7 @@ from agents.auditor.thresholds import (
 from agents.quant.library.bbw_factors import run_bbw_factor
 from agents.quant.library.ipca_feed import IPCAFeed
 
+from .bootstrap import conditional_bootstrap
 from .evaluate import alpha_on, recover_factor_series
 from .frozen_state import FrozenIPCAState
 from .panels import build_cell_feed, panel_states
@@ -38,7 +42,9 @@ from .production_fit import production_fit
 from .schemas import (
     IPCADifferentialCell,
     IPCADifferentialResult,
+    computed_effect,
     deferred_effect,
+    refused_effect,
 )
 
 
@@ -65,13 +71,40 @@ def differential_from_feeds(
     *,
     is_focal: bool = False,
     anchor_b: pd.Series | None = None,
+    bootstrap: IPCABootstrapConfig | None = None,
+    bootstrap_seed: int = 0,
 ) -> IPCADifferentialResult:
     """Compute the 2x2 for one (bias, anchor) from the two panel-state feeds and a fixed anchor
     (a pd.Series indexed by pd.Period over return months). ``anchor_b`` (arm-matched) enables the
-    secondary diagonal end-to-end line; when None it is omitted."""
+    secondary diagonal end-to-end line; when None it is omitted. When ``bootstrap`` is supplied,
+    each effect carries a conditional moving-block bootstrap interval (§5.3); if the common support
+    refuses it, the effects carry an honest 'refused' status instead of a fabricated CI."""
     theta_n = production_fit(feed_n, lam)                       # §5.2 — the only fit call site
     theta_b = production_fit(feed_b, lam)
+    return differential_from_states(
+        bias, anchor_name, feed_n, feed_b, theta_n, theta_b, anchor, gate,
+        is_focal=is_focal, anchor_b=anchor_b, bootstrap=bootstrap, bootstrap_seed=bootstrap_seed,
+    )
 
+
+def differential_from_states(
+    bias: str,
+    anchor_name: str,
+    feed_n: IPCAFeed,
+    feed_b: IPCAFeed,
+    theta_n: FrozenIPCAState,
+    theta_b: FrozenIPCAState,
+    anchor: pd.Series,
+    gate: IPCAProjectionGate,
+    *,
+    is_focal: bool = False,
+    anchor_b: pd.Series | None = None,
+    bootstrap: IPCABootstrapConfig | None = None,
+    bootstrap_seed: int = 0,
+) -> IPCADifferentialResult:
+    """The 2x2 from two ALREADY-frozen fitted states (no fitting here). Used by
+    ``differential_from_feeds`` (after production_fit) and by the multi-start range diagnostic,
+    which injects seeded states to measure ALS local-optimum sensitivity (§5.3)."""
     rec_nn = recover_factor_series(feed_n, theta_n, gate)       # P_N under Θ_N
     rec_nb = recover_factor_series(feed_n, theta_b, gate)       # P_N under Θ_b
     rec_bn = recover_factor_series(feed_b, theta_n, gate)       # P_b under Θ_N
@@ -117,18 +150,49 @@ def differential_from_feeds(
             "b": alpha_on(anchor_b, rec_bb.factors_by_period, b_periods),
         }
 
+    values = {
+        "data_margin_theta_n_corr": d_data_tn,
+        "data_margin_theta_b_corr": d_data_tb,
+        "est_margin_p_n_corr": d_est_pn,
+        "est_margin_p_b_corr": d_est_pb,
+        "total_corr": d_total,
+        "interaction_bracket_raw_corr": bracket,
+        "doe_interaction_effect_corr": bracket / 2.0,
+    }
+
+    # §5.3 conditional bootstrap intervals — conditional on the two realised fitted states.
+    intervals: dict[str, tuple[float, float]] | None = None
+    if bootstrap is not None and periods:
+        cell_factors = {
+            "Y_NN": rec_nn.factors_by_period, "Y_Nb": rec_nb.factors_by_period,
+            "Y_bN": rec_bn.factors_by_period, "Y_bb": rec_bb.factors_by_period,
+        }
+        try:
+            boot = conditional_bootstrap(cell_factors, anchor, periods, bootstrap, seed=bootstrap_seed)
+            intervals = boot.intervals()
+        except BootstrapError:
+            intervals = None                        # support refused the interval — reported honestly, not fabricated
+
+    def _eff(name: str):
+        value = values[name]
+        if bootstrap is None:
+            return deferred_effect(name, value)
+        if intervals is None:
+            return refused_effect(name, value)
+        return computed_effect(name, value, intervals[name])
+
     return IPCADifferentialResult(
         bias=bias,
         anchor=anchor_name,
         is_focal=is_focal,
         cells=cells,
-        data_margin_theta_n=deferred_effect("data_margin_theta_n_corr", d_data_tn),
-        data_margin_theta_b=deferred_effect("data_margin_theta_b_corr", d_data_tb),
-        interaction_bracket_raw=deferred_effect("interaction_bracket_raw_corr", bracket),
-        doe_interaction_effect=deferred_effect("doe_interaction_effect_corr", bracket / 2.0),
-        est_margin_p_n=deferred_effect("est_margin_p_n_corr", d_est_pn),
-        est_margin_p_b=deferred_effect("est_margin_p_b_corr", d_est_pb),
-        total=deferred_effect("total_corr", d_total),
+        data_margin_theta_n=_eff("data_margin_theta_n_corr"),
+        data_margin_theta_b=_eff("data_margin_theta_b_corr"),
+        interaction_bracket_raw=_eff("interaction_bracket_raw_corr"),
+        doe_interaction_effect=_eff("doe_interaction_effect_corr"),
+        est_margin_p_n=_eff("est_margin_p_n_corr"),
+        est_margin_p_b=_eff("est_margin_p_b_corr"),
+        total=_eff("total_corr"),
         secondary_endtoend=secondary,
         common_support_n_months=len(periods),
     )
@@ -152,13 +216,16 @@ def run_differential(
     *,
     lam: IPCALambda | None = None,
     gate: IPCAProjectionGate | None = None,
+    bootstrap: IPCABootstrapConfig | None = None,
+    bootstrap_seed: int = 0,
     thresholds_path=None,
 ) -> IPCADifferentialResult:
     """Real entry point: build (P_N, P_b) via ``panel_states``, their feeds and the fixed anchor
-    from P_N, then the 2x2. Construction biases raise ``ConstructionToggleDeferred`` (see panels.py).
-    Real-data validation lives in the experimentalist build."""
+    from P_N, then the 2x2 with §5.3 conditional bootstrap intervals. Construction biases raise
+    ``ConstructionToggleDeferred`` (see panels.py). Real-data validation lives in the experimentalist build."""
     lam = lam or load_ipca_lambda(thresholds_path)
     gate = gate or load_ipca_projection_gate(thresholds_path)
+    bootstrap = bootstrap or load_ipca_bootstrap_config(thresholds_path)
     reporting = load_ipca_reporting(thresholds_path)
     is_focal = reporting.focal_pairs.get(bias) == anchor_name
 
@@ -169,5 +236,6 @@ def run_differential(
     feed_b = build_cell_feed(p_b, reg, family_b)
     anchor = _anchor_series(p_n, anchor_name)                  # fixed anchor from P_N
     return differential_from_feeds(
-        bias, anchor_name, feed_n, feed_b, anchor, lam, gate, is_focal=is_focal,
+        bias, anchor_name, feed_n, feed_b, anchor, lam, gate,
+        is_focal=is_focal, bootstrap=bootstrap, bootstrap_seed=bootstrap_seed,
     )

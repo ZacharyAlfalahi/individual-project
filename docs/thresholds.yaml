@@ -631,10 +631,34 @@ auditor:
       # Scoped to the IPCA differential evaluation layer; the construction guard stays armed.
       benchmark_overlay_exemption: true
 
-    # -- §9 items 8-9 (bootstrap / randomisation-FPR / stability) are DEFERRED to
-    #    They gate an EXTENSION RUN (the 15-pair execution, §12.7), which
-    #    this contract-only block does not perform. Registered before that run, not now:
-    #    # bootstrap: {n_replicates, block_rule, conditioning_labels}
+    # -- Conditional inference (§5.3). Synchronised moving-block bootstrap over
+    #    the regression sample (months): fixed blocks, ℓ = max(H_max, block_length_months), ONE
+    #    common block sequence across all four cells so contrasts are comonotone. CONDITIONAL on
+    #    the realised fitted states — the recovered factor series are held fixed (no re-fit), so
+    #    only the month subset varies. Re-fitting uncertainty is NOT estimated (§5.3).
+    bootstrap:
+      n_replicates: 1000              # §14 normative count (mirrors the core auditor)
+      block_length_months: 6          # ℓ_data; realised ℓ = max(H_max, 6) [aligns with mom6]
+      min_effective_blocks: 10        # B_min: >= 10 non-overlapping blocks or REFUSE
+      holding_period_default: 1       # H_max for a monthly-rebalanced anchor long-short
+      alpha: 0.05                     # 95% two-sided percentile interval
+      conditioning_label: "conditional on the realised fitted states (Theta_N, Theta_b); re-fitting uncertainty not estimated"
+
+    # -- Stability diagnostic (§5.4). R' outer refits on blocked resamples of the
+    #    REAL panel — SAME block scheme as §5.3 (one resampling universe), each refit under the
+    #    production rule §5.2 — reporting whether the SIGN and ORDER OF MAGNITUDE of I survive
+    #    refitting. Field coupling_stability_diagnostic; NEVER an interval; pre-registered so it
+    #    cannot become a post-hoc rescue. Scope = all five biases (pre-registered).
+    stability_diagnostic:
+      r_prime: 25                     # 20-30 outer refits (compute-contingent)
+      block_length_months: 6          # same scheme as §5.3
+      min_effective_blocks: 10
+      holding_period_default: 1
+      order_of_magnitude_factor: 10.0 # |I_r| "survives" if within [1/f, f] * |I_obs|
+      scope: [meas_err, stale_price, survivorship, lib_gap, lab_trim]
+
+    # -- §9 item 9 (randomisation-FPR) is DEFERRED. It gates the EXTENSION RUN
+    #    (the 15-pair execution, §12.7). Until it is registered AND status flips to
+    #    preregistered_complete, load_ipca_execution_config refuses any real run. Registered then:
     #    # randomisation_fpr: {twin_dgp, placebo_operator, Q, R, alpha_nom, acceptance_band,
     #    #                     reduced_QR_fallback, rename_fallback}
-    #    # stability_diagnostic: {R_prime, scheme, scope}

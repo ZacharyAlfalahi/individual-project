@@ -39,9 +39,12 @@ SINGLE_FREEZING_CAVEAT = (
     "these components separately — the 2x2 table is what does"
 )
 
-# Interval-status vocabulary. "deferred_inc3": the conditional bootstrap (§5.3) is a later increment.
+# Interval-status vocabulary. "deferred_inc3": the conditional bootstrap (§5.3) was not requested.
+# "computed": a bootstrap interval is attached. "refused": a bootstrap was requested but the common
+# support could not support it (block length vs support, §6.2) — an honest refusal, not a fake CI.
 INTERVAL_DEFERRED = "deferred_inc3"
 INTERVAL_COMPUTED = "computed"
+INTERVAL_REFUSED = "refused"
 
 _ALGEBRA_TOL = 1e-9
 
@@ -70,14 +73,18 @@ class EffectEstimate:
             )
         if not self.name.endswith("_corr"):
             raise IPCASchemaError(f"effect name {self.name!r} must carry the _corr suffix (§2.2)")
-        if self.interval_status not in (INTERVAL_DEFERRED, INTERVAL_COMPUTED):
+        if self.interval_status not in (INTERVAL_DEFERRED, INTERVAL_COMPUTED, INTERVAL_REFUSED):
             raise IPCASchemaError(
-                f"effect {self.name!r}: interval_status must be {INTERVAL_DEFERRED!r} or "
-                f"{INTERVAL_COMPUTED!r}; got {self.interval_status!r}"
+                f"effect {self.name!r}: interval_status must be one of {INTERVAL_DEFERRED!r}, "
+                f"{INTERVAL_COMPUTED!r}, {INTERVAL_REFUSED!r}; got {self.interval_status!r}"
             )
         if self.interval_status == INTERVAL_COMPUTED and self.interval is None:
             raise IPCASchemaError(
                 f"effect {self.name!r}: interval_status is 'computed' but no interval was supplied"
+            )
+        if self.interval_status != INTERVAL_COMPUTED and self.interval is not None:
+            raise IPCASchemaError(
+                f"effect {self.name!r}: a non-'computed' status must not carry an interval"
             )
         if not self.conditioning or not self.conditioning.strip():
             raise IPCASchemaError(
@@ -96,15 +103,29 @@ class EffectEstimate:
 
 
 def deferred_effect(name: str, value: float) -> EffectEstimate:
-    """Build a correction-oriented effect whose interval is deferred (the bootstrap),
-    carrying the standard conditioning caveat. The common constructor is shared across the cells."""
+    """A correction-oriented effect whose interval is deferred (no bootstrap requested), carrying
+    the standard conditioning caveat."""
     return EffectEstimate(
-        name=name,
-        value=float(value),
-        orientation="corr",
-        interval_status=INTERVAL_DEFERRED,
-        interval=None,
+        name=name, value=float(value), orientation="corr",
+        interval_status=INTERVAL_DEFERRED, interval=None, conditioning=CONDITIONING_CAVEAT,
+    )
+
+
+def computed_effect(name: str, value: float, interval: tuple[float, float]) -> EffectEstimate:
+    """A correction-oriented effect with a computed conditional bootstrap interval (§5.3)."""
+    return EffectEstimate(
+        name=name, value=float(value), orientation="corr",
+        interval_status=INTERVAL_COMPUTED, interval=(float(interval[0]), float(interval[1])),
         conditioning=CONDITIONING_CAVEAT,
+    )
+
+
+def refused_effect(name: str, value: float) -> EffectEstimate:
+    """A correction-oriented effect whose bootstrap interval was refused by the common support
+    (block length incompatible, §6.2) — honest, not a fabricated CI."""
+    return EffectEstimate(
+        name=name, value=float(value), orientation="corr",
+        interval_status=INTERVAL_REFUSED, interval=None, conditioning=CONDITIONING_CAVEAT,
     )
 
 
