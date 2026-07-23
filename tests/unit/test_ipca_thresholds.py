@@ -15,7 +15,9 @@ import pytest
 from agents.auditor.thresholds import (
     AuditorThresholdError,
     load_ipca_execution_config,
+    load_ipca_fpr_config,
     load_ipca_lambda,
+    load_ipca_perturbation_config,
     load_ipca_projection_gate,
     load_ipca_reporting,
 )
@@ -73,6 +75,29 @@ def test_committed_thresholds_file_is_valid():
     assert gate.pseudoinverse_permitted is False and gate.pseudoinverse_tolerance is None
     rep = load_ipca_reporting()
     assert rep.n_pairs == 15 and set(rep.focal_pairs) == {"lib_gap", "lab_trim", "meas_err"}
+
+
+def test_committed_fpr_and_perturbation_load():
+    """The real docs/thresholds.yaml carries the §6.2/§6.3 constants."""
+    fc = load_ipca_fpr_config()
+    assert (fc.q_permutations, fc.r_datasets) == (49, 50)
+    assert fc.alpha_nominal == 0.05 and fc.acceptance_band_level == 0.95
+    assert (fc.twin_dgp.n_bonds, fc.twin_dgp.n_months) == (40, 72)
+    assert (fc.reduced_q, fc.reduced_r) == (19, 20)
+    pc = load_ipca_perturbation_config()
+    assert pc.n_draws == 200 and pc.noise_sd == 0.02
+
+
+def test_missing_fpr_block_raises(tmp_path):
+    path = _write(tmp_path, DEV)                       # DEV registers no randomisation_fpr block
+    with pytest.raises(AuditorThresholdError, match="randomisation_fpr"):
+        load_ipca_fpr_config(path)
+
+
+def test_missing_perturbation_block_raises(tmp_path):
+    path = _write(tmp_path, DEV)
+    with pytest.raises(AuditorThresholdError, match="perturbation_robustness"):
+        load_ipca_perturbation_config(path)
 
 
 def test_happy_path_reads_all(tmp_path):

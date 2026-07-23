@@ -657,8 +657,32 @@ auditor:
       order_of_magnitude_factor: 10.0 # |I_r| "survives" if within [1/f, f] * |I_obs|
       scope: [meas_err, stale_price, survivorship, lib_gap, lab_trim]
 
-    # -- §9 item 9 (randomisation-FPR) is DEFERRED. It gates the EXTENSION RUN
-    #    (the 15-pair execution, §12.7). Until it is registered AND status flips to
-    #    preregistered_complete, load_ipca_execution_config refuses any real run. Registered then:
-    #    # randomisation_fpr: {twin_dgp, placebo_operator, Q, R, alpha_nom, acceptance_band,
-    #    #                     reduced_QR_fallback, rename_fallback}
+    # -- Randomisation-based FPR (§6.2). The mean-zero-noise "placebo" is WITHDRAWN as a
+    #    null (E[ε]=0 does not give E[I]=0 through a nonlinear fitted model — the mean-zero fallacy the
+    #    project's own EIV mechanism refutes). The valid instrument is EXCHANGEABILITY: a matched-twin
+    #    DGP (each bond has two i.i.d. idiosyncratic draws sharing one characteristic path + loadings),
+    #    a placebo swap operator (which twin an arm sees is exchangeable by construction), label
+    #    re-randomisation Q times under the production rule §5.2, a randomisation p-value, and
+    #    FPR_hat over R independently generated datasets judged against a binomial acceptance band.
+    #    Synthetic-scale (~R(1+Q)M fits). If infeasible: the reduced-(Q,R) fallback; if even that is
+    #    infeasible, the pre-committed RENAME ("stochastic null-invariance calibration"), never "FPR".
+    randomisation_fpr:
+      q_permutations: 49              # Q — label re-randomisations per dataset
+      r_datasets: 50                  # R — independently generated datasets
+      alpha_nominal: 0.05             # α_nom — the nominal test level FPR_hat is judged against
+      acceptance_band_level: 0.95     # binomial acceptance band coverage for FPR_hat
+      twin_dgp:                       # synthetic-scale matched-twin generator
+        n_bonds: 40
+        n_months: 72
+        noise_sd: 0.02
+      reduced_q: 19                   # reduced-(Q,R) fallback, gated on synthetic fit timing
+      reduced_r: 20
+      rename_fallback_label: "stochastic null-invariance calibration"
+
+    # -- Stochastic perturbation robustness (§6.3). The mean-zero-noise run RETAINED
+    #    under its HONEST name: the distribution of I under symmetric perturbation, reported as a
+    #    robustness descriptive with a systematic non-null centre EXPECTED and interpreted as the
+    #    variance/attenuation channel — NEVER called a false positive (is_fpr=False).
+    perturbation_robustness:
+      n_draws: 200
+      noise_sd: 0.02

@@ -622,6 +622,90 @@ def load_ipca_stability_config(path: str | Path | None = None) -> IPCAStabilityC
 
 
 @dataclass(frozen=True)
+class IPCATwinDGP:
+    """Matched-twin DGP parameters (§6.2). Synthetic-scale: each bond has two i.i.d. idiosyncratic
+    draws sharing one characteristic path and loadings — exchangeable by construction."""
+
+    n_bonds: int
+    n_months: int
+    noise_sd: float
+
+
+@dataclass(frozen=True)
+class IPCAFprConfig:
+    """Randomisation-based FPR parameters (§6.2). The mean-zero placebo is withdrawn; the instrument
+    is exchangeability (label re-randomisation under the production rule §5.2)."""
+
+    q_permutations: int              # Q
+    r_datasets: int                  # R
+    alpha_nominal: float             # α_nom
+    acceptance_band_level: float     # binomial acceptance band coverage
+    twin_dgp: IPCATwinDGP
+    reduced_q: int
+    reduced_r: int
+    rename_fallback_label: str
+
+
+def load_ipca_fpr_config(path: str | Path | None = None) -> IPCAFprConfig:
+    """Read the §6.2 randomisation-FPR constants. Raises if unregistered."""
+    block = _ipca_block(path)
+
+    def req(*keys: str) -> object:
+        return _require(block, ("ipca_differential", "randomisation_fpr", *keys), _IPCA_SECTION)
+
+    def dk(*keys: str) -> str:
+        return ".".join(("auditor", "ipca_differential", "randomisation_fpr", *keys))
+
+    twin = req("twin_dgp")
+    if not isinstance(twin, dict):
+        raise AuditorThresholdError(dk("twin_dgp") + " (not a mapping)", _IPCA_SECTION)
+    twin_dgp = IPCATwinDGP(
+        n_bonds=_require_int(twin.get("n_bonds"), dk("twin_dgp", "n_bonds"), _IPCA_SECTION),
+        n_months=_require_int(twin.get("n_months"), dk("twin_dgp", "n_months"), _IPCA_SECTION),
+        noise_sd=_require_number(twin.get("noise_sd"), dk("twin_dgp", "noise_sd"), _IPCA_SECTION),
+    )
+    return IPCAFprConfig(
+        q_permutations=_require_int(req("q_permutations"), dk("q_permutations"), _IPCA_SECTION),
+        r_datasets=_require_int(req("r_datasets"), dk("r_datasets"), _IPCA_SECTION),
+        alpha_nominal=_require_number(req("alpha_nominal"), dk("alpha_nominal"), _IPCA_SECTION),
+        acceptance_band_level=_require_number(
+            req("acceptance_band_level"), dk("acceptance_band_level"), _IPCA_SECTION
+        ),
+        twin_dgp=twin_dgp,
+        reduced_q=_require_int(req("reduced_q"), dk("reduced_q"), _IPCA_SECTION),
+        reduced_r=_require_int(req("reduced_r"), dk("reduced_r"), _IPCA_SECTION),
+        rename_fallback_label=_require_str(
+            req("rename_fallback_label"), dk("rename_fallback_label"), _IPCA_SECTION
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class IPCAPerturbationConfig:
+    """Stochastic perturbation robustness parameters (§6.3). The mean-zero-noise run under its honest
+    name — a robustness descriptive, never an FPR."""
+
+    n_draws: int
+    noise_sd: float
+
+
+def load_ipca_perturbation_config(path: str | Path | None = None) -> IPCAPerturbationConfig:
+    """Read the §6.3 perturbation-robustness constants. Raises if unregistered."""
+    block = _ipca_block(path)
+
+    def req(*keys: str) -> object:
+        return _require(block, ("ipca_differential", "perturbation_robustness", *keys), _IPCA_SECTION)
+
+    def dk(*keys: str) -> str:
+        return ".".join(("auditor", "ipca_differential", "perturbation_robustness", *keys))
+
+    return IPCAPerturbationConfig(
+        n_draws=_require_int(req("n_draws"), dk("n_draws"), _IPCA_SECTION),
+        noise_sd=_require_number(req("noise_sd"), dk("noise_sd"), _IPCA_SECTION),
+    )
+
+
+@dataclass(frozen=True)
 class IPCAExecutionConfig:
     """The full pre-registration bundle required before any EXTENSION RUN (§9, §12.7).
     Only obtainable once `status == 'preregistered_complete'` and the deferred
