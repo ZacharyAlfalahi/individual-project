@@ -109,6 +109,8 @@ def conditional_bootstrap(
             f"only {eff} effective blocks (ℓ={ell}, T_common={t}); need "
             f">= {cfg.min_effective_blocks} (§4.2/§6.2)"
         )
+    if not anchor.index.is_unique:
+        raise BootstrapError("anchor index has duplicate periods — cannot align the regression sample")
 
     # Aligned arrays over the common support (built once; conditioning on the fixed factors).
     y = np.array([float(anchor.loc[p]) for p in periods], dtype=np.float64)
@@ -136,6 +138,12 @@ def conditional_bootstrap(
         "interaction_bracket_raw_corr": bracket,
         "doe_interaction_effect_corr": bracket / 2.0,
     }
+    assert set(draws) == set(_EFFECTS), "bootstrap draw keys drifted from _EFFECTS"
+    # Tripwire: a "computed" interval must be finite. Recovered factors on gate-valid periods and
+    # finite anchor values make this unreachable today; if it ever fires, the differential catches
+    # BootstrapError and REFUSES the interval rather than minting a fabricated (nan, nan) CI (§6.2).
+    if not all(np.all(np.isfinite(d)) for d in draws.values()):
+        raise BootstrapError("non-finite bootstrap draw — interval refused, not fabricated (§6.2)")
     return ConditionalBootstrapResult(
         n_replicates=cfg.n_replicates,
         block_length=ell,

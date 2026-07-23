@@ -81,3 +81,20 @@ def test_refuses_small_support():
         feed_n, feed_b, anchor = _setup(36)                 # 36/6 = 6 < 10 blocks
         with pytest.raises(BootstrapError):
             stability_diagnostic("meas_err", "str", feed_n, feed_b, anchor, LAM, GATE, SCFG, seed=1)
+
+
+@pytest.mark.parametrize("t_n,t_b", [(78, 66), (66, 78)])
+def test_handles_mismatched_arm_month_counts(t_n, t_b):
+    """Regression (C1): P_N and P_{N\\b} routinely differ in surviving months on real panels. The
+    diagnostic must resample the SHARED month support — never crash, never resample one arm over the
+    other's index space."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        feed_n, _ = make_synthetic_feed(K=LAM.factor_count, L=LAM.instrument_count, T=t_n, n=30, seed=1, noise_sd=0.02)
+        feed_b, _ = make_synthetic_feed(K=LAM.factor_count, L=LAM.instrument_count, T=t_b, n=30, seed=2, noise_sd=0.02)
+        per = pd.PeriodIndex([pd.Period(ordinal=m, freq="M") for m in range(1, max(t_n, t_b) + 1)])
+        anchor = pd.Series(np.random.default_rng(3).normal(0, 0.01, len(per)), index=per)
+        sd = stability_diagnostic("meas_err", "str", feed_n, feed_b, anchor, LAM, GATE, SCFG, seed=1)
+    assert sd.t_common == min(t_n, t_b)                     # resampled on the intersection
+    assert sd.n_usable_refits >= 1
+    assert 0.0 <= sd.sign_survival <= 1.0

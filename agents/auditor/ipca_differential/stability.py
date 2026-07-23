@@ -91,6 +91,22 @@ def _resample_anchor(anchor_arr: np.ndarray, pos: np.ndarray) -> pd.Series:
     return pd.Series(anchor_arr[pos], index=per)
 
 
+def _restrict_feed(feed: IPCAFeed, common_months: list[int]) -> IPCAFeed:
+    """Restrict a feed to ``common_months`` (a subset of feed.months), in the given order, keeping
+    the original month labels. Used to align the two arms onto their shared calendar support before
+    resampling, so one resample sequence refers to the SAME calendar month in both arms."""
+    pos_of = {int(m): i for i, m in enumerate(feed.months)}
+    idx = [pos_of[int(m)] for m in common_months]
+    return feed._replace(
+        Z=[feed.Z[i] for i in idx],
+        R=[feed.R[i] for i in idx],
+        months=np.asarray([int(feed.months[i]) for i in idx], dtype=np.int64),
+        asof=np.asarray([int(feed.asof[i]) for i in idx], dtype=np.int64),
+        vol_scaler=[feed.vol_scaler[i] for i in idx],
+        cusips=[feed.cusips[i] for i in idx],
+    )
+
+
 def stability_diagnostic(
     bias: str,
     anchor_name: str,
@@ -107,32 +123,43 @@ def stability_diagnostic(
     """Run R' blocked-resample refits and report sign/order-of-magnitude survival of I.
 
     Raises ``BootstrapError`` if the block length is incompatible with the common support."""
-    t = len(feed_n.months)
+    # ONE resampling universe = the return months SHARED by both arms. P_N and P_{N\b} are
+    # different panels (survivorship reintroduction, stale masking) and generally differ in their
+    # surviving months, so we must resample on the intersection — otherwise a positional index would
+    # refer to different calendar months in the two arms (or overrun the shorter arm).
+    common = sorted(set(int(m) for m in feed_n.months) & set(int(m) for m in feed_b.months))
+    if not common:
+        raise BootstrapError("no common return-month support between the two arms — cannot resample")
+    feed_n_c = _restrict_feed(feed_n, common)
+    feed_b_c = _restrict_feed(feed_b, common)
+
+    t = len(common)
     ell = block_length(cfg.holding_period_default, cfg.block_length_months)
     if ell >= t:
-        raise BootstrapError(f"block length ℓ={ell} >= T={t} (§6.2 refusal)")
+        raise BootstrapError(f"block length ℓ={ell} >= T_common={t} (§6.2 refusal)")
     eff = effective_blocks(t, ell)
     if eff < cfg.min_effective_blocks:
         raise BootstrapError(
-            f"only {eff} effective blocks (ℓ={ell}, T={t}); need >= {cfg.min_effective_blocks}"
+            f"only {eff} effective blocks (ℓ={ell}, T_common={t}); need >= {cfg.min_effective_blocks}"
         )
 
-    # Anchor aligned to feed_n's return-month positions (the resampling universe).
-    per_n = [pd.Period(ordinal=int(m), freq="M") for m in feed_n.months]
-    anchor_arr = np.array([float(anchor.loc[p]) for p in per_n], dtype=np.float64)
+    # Anchor aligned to the common return-month support (the resampling universe).
+    anchor_arr = np.array(
+        [float(anchor.loc[pd.Period(ordinal=m, freq="M")]) for m in common], dtype=np.float64
+    )
 
     if i_obs is None:
-        obs = differential_from_feeds(bias, anchor_name, feed_n, feed_b, anchor, lam, gate)
+        obs = differential_from_feeds(bias, anchor_name, feed_n_c, feed_b_c, anchor, lam, gate)
         i_obs = obs.interaction_bracket_raw.value
 
     rng = np.random.default_rng(seed)
     draws: list[float] = []
     for _ in range(cfg.r_prime):
-        pos = circular_block_indices(t, ell, rng)          # one resampling universe (both arms)
+        pos = circular_block_indices(t, ell, rng)          # one common sequence over the shared support
         try:
             res_r = differential_from_feeds(
                 bias, anchor_name,
-                _resample_feed(feed_n, pos), _resample_feed(feed_b, pos),
+                _resample_feed(feed_n_c, pos), _resample_feed(feed_b_c, pos),
                 _resample_anchor(anchor_arr, pos), lam, gate,
             )
             draws.append(res_r.interaction_bracket_raw.value)

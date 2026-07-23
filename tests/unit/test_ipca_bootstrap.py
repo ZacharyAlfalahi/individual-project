@@ -79,3 +79,19 @@ def test_refuses_when_block_exceeds_support():
     cell_factors, anchor, periods = _inputs(4, seed=1)      # T < ℓ=6
     with pytest.raises(BootstrapError, match="block length"):
         conditional_bootstrap(cell_factors, anchor, periods, CFG, seed=0)
+
+
+def test_refuses_duplicate_anchor_index():
+    """N1 guard: a duplicate-period anchor cannot align the regression sample — refuse, don't crash."""
+    cell_factors, anchor, periods = _inputs(72, seed=1)
+    dup = pd.concat([anchor, anchor.iloc[[0]]])             # inject a duplicate period label
+    with pytest.raises(BootstrapError, match="duplicate"):
+        conditional_bootstrap(cell_factors, dup, periods, CFG, seed=0)
+
+
+def test_draw_keys_match_effects_contract():
+    """L2: the draw set is exactly the seven serialized effect names (no drift)."""
+    from agents.auditor.ipca_differential.bootstrap import _EFFECTS
+    cell_factors, anchor, periods = _inputs(72, seed=1)
+    res = conditional_bootstrap(cell_factors, anchor, periods, CFG, seed=0)
+    assert set(res.draws) == set(_EFFECTS)

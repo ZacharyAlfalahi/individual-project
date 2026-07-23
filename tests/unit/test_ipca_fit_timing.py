@@ -63,3 +63,18 @@ def test_multistart_range_is_a_nonneg_noninterval_diagnostic():
     assert ms.n_usable == 3
     assert ms.i_range >= 0.0
     assert ms.to_dict()["multistart_range"]["is_interval"] is False
+
+
+def test_seed_zero_sentinel_uses_the_production_optimum():
+    """M1: seed 0 must anchor to the production (SVD cold) start, so its I equals the production
+    differential's I — the range then includes the production optimum, as the docstring promises."""
+    from agents.auditor.ipca_differential.differential import differential_from_feeds
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fn, fb, anchor = _feeds_and_anchor()
+        production_i = differential_from_feeds(
+            "meas_err", "str", fn, fb, anchor, LAM, GATE
+        ).interaction_bracket_raw.value
+        ms = multistart_range("meas_err", "str", fn, fb, anchor, LAM, GATE, seeds=[0])
+    assert ms.i_values[0] == production_i                    # seed 0 == production, not a random start

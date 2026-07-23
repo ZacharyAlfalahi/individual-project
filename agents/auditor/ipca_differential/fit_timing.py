@@ -112,12 +112,16 @@ def multistart_range(
     *,
     seeds: Sequence[int],
 ) -> MultistartRange:
-    """Fit both arms from each seeded random start, recompute I, and report the range across starts.
-    Seed 0 in ``seeds`` may be passed as a sentinel for the production (SVD cold) start."""
+    """Fit both arms from each start, recompute I, and report the range across starts. Seed ``0`` is
+    the sentinel for the PRODUCTION (SVD cold) start (``production_fit``), so the range includes the
+    production optimum; every other seed is an independent random start (``production_fit_seeded``)."""
+    def _fit(feed, s):
+        return production_fit(feed, lam) if s == 0 else production_fit_seeded(feed, lam, s)
+
     i_values: list[float] = []
     for s in seeds:
-        theta_n = production_fit_seeded(feed_n, lam, s)
-        theta_b = production_fit_seeded(feed_b, lam, s)
+        theta_n = _fit(feed_n, s)
+        theta_b = _fit(feed_b, s)
         res = differential_from_states(bias, anchor_name, feed_n, feed_b, theta_n, theta_b, anchor, gate)
         i_values.append(res.interaction_bracket_raw.value)
     finite = [v for v in i_values if v == v]
