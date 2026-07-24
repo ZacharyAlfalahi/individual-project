@@ -179,10 +179,33 @@ COMPLETE = DEV.replace(
     "status: preregistered_complete\n"
     "        bootstrap:\n"
     "          n_replicates: 500\n"
-    "        randomisation_fpr:\n"
-    "          q: 49\n"
+    "          block_length_months: 6\n"
+    "          min_effective_blocks: 10\n"
+    "          holding_period_default: 1\n"
+    "          alpha: 0.05\n"
+    "          conditioning_label: cond\n"
     "        stability_diagnostic:\n"
-    "          r_prime: 25",
+    "          r_prime: 25\n"
+    "          block_length_months: 6\n"
+    "          min_effective_blocks: 10\n"
+    "          holding_period_default: 1\n"
+    "          order_of_magnitude_factor: 10.0\n"
+    "          scope: [meas_err, stale_price, survivorship, lib_gap, lab_trim]\n"
+    "        randomisation_fpr:\n"
+    "          q_permutations: 49\n"
+    "          r_datasets: 50\n"
+    "          alpha_nominal: 0.05\n"
+    "          acceptance_band_level: 0.95\n"
+    "          twin_dgp:\n"
+    "            n_bonds: 40\n"
+    "            n_months: 72\n"
+    "            noise_sd: 0.02\n"
+    "          reduced_q: 19\n"
+    "          reduced_r: 20\n"
+    "          rename_fallback_label: rename\n"
+    "        perturbation_robustness:\n"
+    "          n_draws: 200\n"
+    "          noise_sd: 0.02",
 )
 
 
@@ -192,3 +215,19 @@ def test_execution_config_succeeds_when_complete(tmp_path):
     assert cfg.lam.factor_count == 5
     assert cfg.projection_gate.require_rank == 5
     assert cfg.reporting.n_pairs == 15
+    # the gate now returns the fully-loaded blocks the run consumes (not just key presence)
+    assert cfg.bootstrap.n_replicates == 500
+    assert cfg.stability.r_prime == 25
+    assert cfg.fpr.q_permutations == 49 and cfg.fpr.twin_dgp.n_bonds == 40
+    assert cfg.perturbation.n_draws == 200
+
+
+def test_execution_config_rejects_malformed_fpr_block(tmp_path):
+    """M1 regression: a status flip with a present-but-MALFORMED FPR block (wrong keys) must fail
+    the gate here, not silently certify a run that breaks at run time."""
+    malformed = COMPLETE.replace(
+        "          q_permutations: 49\n", "          q: 49\n"      # wrong key name
+    )
+    path = _write(tmp_path, malformed)
+    with pytest.raises(AuditorThresholdError, match="q_permutations"):
+        load_ipca_execution_config(path)

@@ -708,20 +708,24 @@ def load_ipca_perturbation_config(path: str | Path | None = None) -> IPCAPerturb
 @dataclass(frozen=True)
 class IPCAExecutionConfig:
     """The full pre-registration bundle required before any EXTENSION RUN (§9, §12.7).
-    Only obtainable once `status == 'preregistered_complete'` and the deferred
-    bootstrap/FPR/stability blocks are registered."""
+    Only obtainable once `status == 'preregistered_complete'` and every block the run consumes
+    is present AND schema-valid."""
 
     lam: IPCALambda
     projection_gate: IPCAProjectionGate
     reporting: IPCAReporting
+    bootstrap: IPCABootstrapConfig
+    stability: IPCAStabilityConfig
+    fpr: IPCAFprConfig
+    perturbation: IPCAPerturbationConfig
 
 
 def load_ipca_execution_config(path: str | Path | None = None) -> IPCAExecutionConfig:
     """Gate for any reportable / real-data extension run (§9 requires ALL constants
     registered first; §12.7 is the run). Raises `AuditorThresholdError` unless the block's
-    `status` is `preregistered_complete` AND the deferred bootstrap / randomisation-FPR /
-    stability blocks are present. In the development contract this ALWAYS
-    raises — by design — so a partial pre-registration can never launch a run."""
+    `status` is `preregistered_complete` AND every block the run consumes actually LOADS
+    (schema-valid, not merely key-present). In the development contract this ALWAYS raises — by
+    design — so a partial or malformed pre-registration can never launch a run."""
     block = _ipca_block(path)
     status = _require_str(
         _require(block, ("ipca_differential", "status"), _IPCA_SECTION),
@@ -730,16 +734,20 @@ def load_ipca_execution_config(path: str | Path | None = None) -> IPCAExecutionC
     if status != "preregistered_complete":
         raise AuditorThresholdError(
             f"auditor.ipca_differential.status is {status!r}, not 'preregistered_complete' "
-            "— the IPCA differential is a development contract only. The §9 bootstrap / "
-            "randomisation-FPR / stability constants are not yet registered, so no reportable "
-            "or real-data extension run may proceed (execution checklist §12.7)",
+            "— the IPCA differential is a development contract only. Flip the status (and git-tag "
+            "the pre-registration) only once every §9 block is registered; no reportable or "
+            "real-data extension run may proceed until then (execution checklist §12.7)",
             _IPCA_SECTION,
         )
-    # status claims completeness: the deferred blocks must then actually exist.
-    for key in ("bootstrap", "randomisation_fpr", "stability_diagnostic"):
-        _require(block, ("ipca_differential", key), _IPCA_SECTION)
+    # status claims completeness: every block the run consumes must actually LOAD (a bare key-
+    # existence check would let a malformed FPR/stability block certify a run and fail only at
+    # run time — the pre-registration gate must validate the actual constants).
     return IPCAExecutionConfig(
         lam=load_ipca_lambda(path),
         projection_gate=load_ipca_projection_gate(path),
         reporting=load_ipca_reporting(path),
+        bootstrap=load_ipca_bootstrap_config(path),
+        stability=load_ipca_stability_config(path),
+        fpr=load_ipca_fpr_config(path),
+        perturbation=load_ipca_perturbation_config(path),
     )

@@ -167,6 +167,8 @@ def bootstrap_zero_coverage(
         lo, hi = eff.interval
         if lo <= 0.0 <= hi:
             n_cover += 1
+    # Over-coverage (fraction > 1−α) is EXPECTED here, not a miscalibration: under the exchangeable
+    # null I ≈ 0 with tiny magnitude, so the conditional interval sits astride zero conservatively.
     coverage = (n_cover / n_usable) if n_usable else float("nan")
     return ZeroCoverage(
         r_datasets=n_r, alpha=bootstrap_cfg.alpha, n_cover=n_cover,

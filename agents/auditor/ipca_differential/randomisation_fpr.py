@@ -115,6 +115,10 @@ def randomisation_pvalue(
 ) -> tuple[float, float, tuple[float, ...]]:
     """One dataset's randomisation p-value (§6.2 steps 3-5): I_obs at σ=0, Q permuted labels, then
     p = (1 + #{|I^perm| ≥ |I_obs|})/(Q+1). Returns (p, i_obs, i_perms)."""
+    # Note (§6.2): |I| is invariant under the global label complement σ ↔ 1−σ, because
+    # I = Y_NN − Y_bN − Y_Nb + Y_bb is symmetric under the arm relabeling N↔b. The effective
+    # permutation support is therefore 2^(n−1), not 2^n — immaterial at these (n, Q) (collision
+    # probability ~0), but it is why some |I^perm| pairs coincide.
     n = twin.n_bonds
     i_obs = _bracket_under_label(twin, np.zeros(n, dtype=int), lam, gate)
     rng = np.random.default_rng(seed)
@@ -196,6 +200,8 @@ def randomisation_fpr(
     when even reduced compute is infeasible — the result is then NEVER called an empirical FPR."""
     n_r = cfg.r_datasets if r is None else r
     n_q = cfg.q_permutations if q is None else q
+    if n_r < 1:
+        raise ValueError(f"randomisation FPR needs r >= 1 datasets; got {n_r}")
     pvals: list[float] = []
     for rr in range(n_r):
         twin = make_matched_twin_dataset(cfg.twin_dgp, lam, seed=seed + rr)
