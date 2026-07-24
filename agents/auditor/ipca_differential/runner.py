@@ -16,10 +16,17 @@ import yaml
 
 from agents.auditor.thresholds import (
     IPCAExecutionPairs,
+    load_ipca_bootstrap_config,
     load_ipca_execution_pairs,
+    load_ipca_lambda,
+    load_ipca_projection_gate,
+    load_ipca_reporting,
+    load_ipca_stability_config,
 )
 
-from .differential import run_differential
+from .differential import _anchor_series, differential_from_feeds, run_differential
+from .panels import build_cell_feed, panel_states
+from .stability import StabilityDiagnostic, stability_diagnostic
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEV = REPO_ROOT / "data" / "development"
@@ -100,3 +107,40 @@ def run_runnable_pairs(
             )
         )
     return results
+
+
+def run_pair_full(
+    bias: str,
+    anchor: str,
+    maximal: pd.DataFrame,
+    signals: pd.DataFrame,
+    reg: dict,
+    *,
+    thresholds_path=None,
+    bootstrap_seed: int = 20260612,
+    stability_seed: int = 20260612,
+):
+    """Build one runnable pair ONCE (panels → feeds → anchor) and return both the 2x2 differential
+    (with §5.3 bootstrap) and the §5.4 coupling stability diagnostic, reusing the same feeds — so the
+    stability refits are not paid twice for feed construction."""
+    lam = load_ipca_lambda(thresholds_path)
+    gate = load_ipca_projection_gate(thresholds_path)
+    bootstrap = load_ipca_bootstrap_config(thresholds_path)
+    stab_cfg = load_ipca_stability_config(thresholds_path)
+    is_focal = load_ipca_reporting(thresholds_path).focal_pairs.get(bias) == anchor
+
+    p_n, p_b = panel_states(bias, maximal, signals)
+    family_b = "raw" if bias == "meas_err" else "corr"
+    feed_n = build_cell_feed(p_n, reg, "corr", recompute_signals=True, thresholds_path=thresholds_path)
+    feed_b = build_cell_feed(p_b, reg, family_b, recompute_signals=True, thresholds_path=thresholds_path)
+    anchor_series = _anchor_series(p_n, anchor, thresholds_path=thresholds_path)
+
+    result = differential_from_feeds(
+        bias, anchor, feed_n, feed_b, anchor_series, lam, gate,
+        is_focal=is_focal, bootstrap=bootstrap, bootstrap_seed=bootstrap_seed,
+    )
+    stab: StabilityDiagnostic = stability_diagnostic(
+        bias, anchor, feed_n, feed_b, anchor_series, lam, gate, stab_cfg,
+        i_obs=result.interaction_bracket_raw.value, seed=stability_seed,
+    )
+    return result, stab

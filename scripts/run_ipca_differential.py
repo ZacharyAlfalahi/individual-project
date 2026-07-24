@@ -136,42 +136,65 @@ def _config_hash() -> str:
     return hashlib.sha256(yaml.safe_dump(block, sort_keys=True).encode()).hexdigest()[:16]
 
 
+def _mdc_bp(ci) -> float | None:
+    """Minimum detectable coupling ≈ conditional-bootstrap CI half-width, in bp/month (no new runs)."""
+    return None if ci is None else round((ci[1] - ci[0]) / 2 * 1e4, 4)
+
+
 def run_all(out_dir: Path | None = None) -> int:
     from datetime import datetime, timezone
 
+    from agents.auditor.ipca_differential.runner import run_pair_full
+
     pairs = load_ipca_execution_pairs()
     maximal, signals, reg = load_dev_inputs()
-    print(f"[all] running {len(pairs.runnable_pairs())} runnable pairs (recompute per panel state) ...", flush=True)
-    results = run_runnable_pairs(maximal, signals, reg)
-    runnable = [r.to_dict() for r in results]
+    print(f"[all] running {len(pairs.runnable_pairs())} runnable pairs "
+          f"(recompute + §5.4 coupling stability) ...", flush=True)
+    runnable, stability = [], []
+    for bias, anchor in pairs.runnable_pairs():
+        res, stab = run_pair_full(bias, anchor, maximal, signals, reg)
+        runnable.append(res.to_dict())
+        stability.append(stab.to_dict()["coupling_stability_diagnostic"])
+        print(f"  {bias}×{anchor}: I={res.interaction_bracket_raw.value * 1e4:+.3f}bp  "
+              f"MDC={_mdc_bp(res.interaction_bracket_raw.interval)}bp  "
+              f"sign_surv={stab.sign_survival}  usable={stab.n_usable_refits}", flush=True)
+
     refused = [
         {"bias": b, "anchor": a, "status": "refused",
          "reason": pairs.refused.reason, "note": pairs.refused.note}
         for (b, a) in pairs.refused_pairs()
     ]
-    # The 5x3 matrix (bracket I): 3 runnable bias-rows shown, 2 refused rows typed.
-    matrix = {
-        r["bias"] + "×" + r["anchor"]: {
+    stab_by_pair = {s["bias"] + "×" + s["anchor"]: s for s in stability}
+    matrix = {}
+    for r in runnable:
+        key = r["bias"] + "×" + r["anchor"]
+        s = stab_by_pair[key]
+        matrix[key] = {
             "I": r["interaction_bracket_raw"]["value"],
             "I_ci": r["interaction_bracket_raw"]["interval"],
+            "mdc_bp": _mdc_bp(r["interaction_bracket_raw"]["interval"]),
             "data_margin_theta_n": r["data_margin_theta_n_corr"]["value"],
+            "stability_sign_survival": s["sign_survival"],
+            "stability_magnitude_survival": s["magnitude_survival"],
+            "stability_n_usable_refits": s["n_usable_refits"],
             "n_months": r["common_support_n_months"], "is_focal": r["is_focal"],
         }
-        for r in runnable
-    }
     run_log = {
         "run_utc": datetime.now(timezone.utc).isoformat(),
         "git_commit": _git_short(),
         "prereg_tag": "ipca-differential-prereg",
         "thresholds_ipca_hash": _config_hash(),
         "window": "development 2002-2021 (holdout untouched)",
-        "signal_propagation": "recompute var/vol/mom6 per panel state; gamma_illiq daily-sourced, membership-only",
-        "signal_recompute_note": "verified numerically inert on the dev panel: stale_price masks 0 incremental bond-months (theta=30d), survivorship is membership-dominated",
+        "signal_propagation": "recompute var/vol/mom6 per panel state (D-A55); gamma_illiq daily-sourced, membership-only",
+        "signal_recompute_note": "verified numerically inert on the dev panel: stale_price masks 0 incremental bond-months (theta=30d, four cells bit-equal), survivorship is membership-dominated",
         "anchors": "str = value-weighted decile reversal sort on xret; mom6 = equal-weighted decile momentum with Jostova skip=1 + staggered holding=6 (canonical build_mom6); drf = bivariate var_5pct×rating (BBW)",
-        "bootstrap_seed": 20260612,
+        "stability_diagnostic": "ran (§5.4, R'=25 blocked-resample refits per pair; sign/magnitude survival reported; degenerate for stale_price where I≡0)",
+        "mdc_definition": "minimum detectable coupling ≈ conditional-bootstrap CI half-width in bp/month (D-A56; computed from stored draws, no new runs)",
+        "bootstrap_seed": 20260612, "stability_seed": 20260612,
         "n_runnable": len(runnable), "n_refused": len(refused),
     }
-    payload = {"run_log": run_log, "matrix": matrix, "runnable": runnable, "refused": refused}
+    payload = {"run_log": run_log, "matrix": matrix, "runnable": runnable, "refused": refused,
+               "stability": stability}
     out_dir = out_dir or (REPO_ROOT / "results" / "ipca_differential" / f"run_{_git_short()}")
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "results_9pairs.json").write_text(json.dumps(payload, indent=2, default=str))
