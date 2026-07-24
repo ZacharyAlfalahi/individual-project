@@ -205,7 +205,21 @@ COMPLETE = DEV.replace(
     "          rename_fallback_label: rename\n"
     "        perturbation_robustness:\n"
     "          n_draws: 200\n"
-    "          noise_sd: 0.02",
+    "          noise_sd: 0.02\n"
+    "        execution:\n"
+    "          runnable_biases: [meas_err, stale_price, survivorship]\n"
+    "          runnable_anchors: [str, mom6, drf]\n"
+    "          refused:\n"
+    "            biases: [lib_gap, lab_trim]\n"
+    "            anchors: [str, mom6, drf]\n"
+    "            reason: FEED_OFF_STATE_UNDEFINED\n"
+    "            note: undefined off-state\n"
+    "          smoke_pair: [meas_err, drf]\n"
+    "          signal_propagation:\n"
+    "            primary: recompute_per_panel_state\n"
+    "            spike_timebox_hours: 4\n"
+    "            fallback: frozen_at_pn_partial_channel_renamed\n"
+    "          smoke_is_engineering_only: true",
 )
 
 
@@ -220,6 +234,9 @@ def test_execution_config_succeeds_when_complete(tmp_path):
     assert cfg.stability.r_prime == 25
     assert cfg.fpr.q_permutations == 49 and cfg.fpr.twin_dgp.n_bonds == 40
     assert cfg.perturbation.n_draws == 200
+    assert len(cfg.pairs.runnable_pairs()) == 9 and len(cfg.pairs.refused_pairs()) == 6
+    assert cfg.pairs.refused.reason == "FEED_OFF_STATE_UNDEFINED"
+    assert cfg.pairs.smoke_pair == ("meas_err", "drf")
 
 
 def test_execution_config_rejects_malformed_fpr_block(tmp_path):

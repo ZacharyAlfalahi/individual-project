@@ -706,6 +706,91 @@ def load_ipca_perturbation_config(path: str | Path | None = None) -> IPCAPerturb
 
 
 @dataclass(frozen=True)
+class IPCARefusedPairs:
+    """The typed-refused (bias, anchor) pairs (§12.7, D-A50 amendment). The construction-layer
+    toggles have no published IPCA implementation, so their OFF state is UNDEFINED — refused, not
+    defaulted."""
+
+    biases: tuple[str, ...]
+    anchors: tuple[str, ...]
+    reason: str
+    note: str
+
+
+@dataclass(frozen=True)
+class IPCASignalPropagation:
+    """The signal-propagation branch rule (decision b). ``primary`` recomputes signals per panel
+    state; the ``fallback`` (frozen-at-P_N, renamed partial-channel) fires only if the spike says the
+    rebuild is infeasible — decided by measurement, not preference."""
+
+    primary: str
+    spike_timebox_hours: int
+    fallback: str
+
+
+@dataclass(frozen=True)
+class IPCAExecutionPairs:
+    """The amended execution pair set (§12.7): 9 runnable + 6 typed-refused, frozen pre-result."""
+
+    runnable_biases: tuple[str, ...]
+    runnable_anchors: tuple[str, ...]
+    refused: IPCARefusedPairs
+    smoke_pair: tuple[str, str]
+    signal_propagation: IPCASignalPropagation
+    smoke_is_engineering_only: bool
+
+    def runnable_pairs(self) -> list[tuple[str, str]]:
+        return [(b, a) for b in self.runnable_biases for a in self.runnable_anchors]
+
+    def refused_pairs(self) -> list[tuple[str, str]]:
+        return [(b, a) for b in self.refused.biases for a in self.refused.anchors]
+
+
+def load_ipca_execution_pairs(path: str | Path | None = None) -> IPCAExecutionPairs:
+    """Read the §12.7 amended pair set + signal-propagation branch rule. Raises if unregistered."""
+    block = _ipca_block(path)
+
+    def req(*keys: str) -> object:
+        return _require(block, ("ipca_differential", "execution", *keys), _IPCA_SECTION)
+
+    def dk(*keys: str) -> str:
+        return ".".join(("auditor", "ipca_differential", "execution", *keys))
+
+    ref = req("refused")
+    if not isinstance(ref, dict):
+        raise AuditorThresholdError(dk("refused") + " (not a mapping)", _IPCA_SECTION)
+    refused = IPCARefusedPairs(
+        biases=_require_str_list(ref.get("biases"), dk("refused", "biases"), _IPCA_SECTION),
+        anchors=_require_str_list(ref.get("anchors"), dk("refused", "anchors"), _IPCA_SECTION),
+        reason=_require_str(ref.get("reason"), dk("refused", "reason"), _IPCA_SECTION),
+        note=_require_str(ref.get("note"), dk("refused", "note"), _IPCA_SECTION),
+    )
+    sig = req("signal_propagation")
+    if not isinstance(sig, dict):
+        raise AuditorThresholdError(dk("signal_propagation") + " (not a mapping)", _IPCA_SECTION)
+    signal_propagation = IPCASignalPropagation(
+        primary=_require_str(sig.get("primary"), dk("signal_propagation", "primary"), _IPCA_SECTION),
+        spike_timebox_hours=_require_int(
+            sig.get("spike_timebox_hours"), dk("signal_propagation", "spike_timebox_hours"), _IPCA_SECTION
+        ),
+        fallback=_require_str(sig.get("fallback"), dk("signal_propagation", "fallback"), _IPCA_SECTION),
+    )
+    smoke = _require_str_list(req("smoke_pair"), dk("smoke_pair"), _IPCA_SECTION)
+    if len(smoke) != 2:
+        raise AuditorThresholdError(dk("smoke_pair") + " (must be a [bias, anchor] pair)", _IPCA_SECTION)
+    return IPCAExecutionPairs(
+        runnable_biases=_require_str_list(req("runnable_biases"), dk("runnable_biases"), _IPCA_SECTION),
+        runnable_anchors=_require_str_list(req("runnable_anchors"), dk("runnable_anchors"), _IPCA_SECTION),
+        refused=refused,
+        smoke_pair=(smoke[0], smoke[1]),
+        signal_propagation=signal_propagation,
+        smoke_is_engineering_only=_require_bool(
+            req("smoke_is_engineering_only"), dk("smoke_is_engineering_only"), _IPCA_SECTION
+        ),
+    )
+
+
+@dataclass(frozen=True)
 class IPCAExecutionConfig:
     """The full pre-registration bundle required before any EXTENSION RUN (§9, §12.7).
     Only obtainable once `status == 'preregistered_complete'` and every block the run consumes
@@ -718,6 +803,7 @@ class IPCAExecutionConfig:
     stability: IPCAStabilityConfig
     fpr: IPCAFprConfig
     perturbation: IPCAPerturbationConfig
+    pairs: IPCAExecutionPairs
 
 
 def load_ipca_execution_config(path: str | Path | None = None) -> IPCAExecutionConfig:
@@ -750,4 +836,5 @@ def load_ipca_execution_config(path: str | Path | None = None) -> IPCAExecutionC
         stability=load_ipca_stability_config(path),
         fpr=load_ipca_fpr_config(path),
         perturbation=load_ipca_perturbation_config(path),
+        pairs=load_ipca_execution_pairs(path),
     )

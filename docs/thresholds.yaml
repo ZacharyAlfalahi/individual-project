@@ -567,15 +567,16 @@ auditor:
   # Loaders: agents/auditor/thresholds.py::load_ipca_lambda / _projection_gate /
   #          _reporting / _execution_config (all fail-loud).
   #
-  # STATUS DISCIPLINE: this block instantiates ONLY the constants the development
-  # contract + 2x2 engine consume (§9 items 1-7, 10, 11). The bootstrap/FPR/stability
-  # constants (§9 items 8-9) are DEFERRED to their increments. `status` is therefore
-  # `development_contract_only`: load_ipca_execution_config refuses to run any
-  # reportable / real-data extension until status == preregistered_complete AND the
-  # deferred constants are present. A partial block can never masquerade as final.
+  # STATUS DISCIPLINE: every §9 constant (items 1-11, incl. bootstrap/FPR/stability/
+  # perturbation) is now registered. `status` is `preregistered_complete` as of the
+  # Registration commit (git-tagged) — the pre-registration FREEZE before any
+  # real-data cell exists. load_ipca_execution_config LOADS every block (not just checks
+  # keys), so a malformed block still fails the gate. The `execution` sub-block below records
+  # the amended pair set (9 runnable + 6 typed-refused) and the signal-propagation branch rule;
+  # narrative pre-registration: docs/auditor/ipca_differential_execution_preregistration.md.
   # =========================================================================
   ipca_differential:
-    status: development_contract_only
+    status: preregistered_complete
 
     # -- λ, category-4 registered constants (mirror kpp_ipca.yaml / ipca_instruments.yaml,
     #    re-registered here as the extension's own pre-registration).
@@ -686,3 +687,37 @@ auditor:
     perturbation_robustness:
       n_draws: 200
       noise_sd: 0.02
+
+    # -- Execution pre-registration (§12.7). Amended pair set + the signal-propagation
+    #    branch rule, frozen and git-tagged BEFORE any real-data cell exists (including the smoke's).
+    #    Narrative: docs/auditor/ipca_differential_execution_preregistration.md.
+    execution:
+      # The 15 estimand TYPES split into 9 runnable + 6 typed-refused. The refusal is condition-2
+      # discipline (D-A50): no published IPCA implementation of the construction-layer toggles exists,
+      # so their as-published (OFF) state is UNDEFINED — not defaultable. Defaulting it would
+      # manufacture the differential, the exact researcher DoF the project exposes.
+      runnable_biases: [meas_err, stale_price, survivorship]   # panel_view biases
+      runnable_anchors: [str, mom6, drf]                       # 3 × 3 = 9 runnable pairs
+      refused:
+        biases: [lib_gap, lab_trim]
+        anchors: [str, mom6, drf]                              # 2 × 3 = 6 refused pairs
+        reason: FEED_OFF_STATE_UNDEFINED
+        note: >
+          No published IPCA implementation exists to define the as-published state of
+          construction-layer toggles for the characteristic feed. A future REGISTERED mapping
+          may unlock a subset (lab_trim where the paper's trim rule is bond-level); named as
+          not implemented here.
+      # One focal pair survives the refusal: meas_err→drf (the strongest for the laundering
+      # hypothesis — EIV attenuation is the canonical channel by which estimation reacts to noisy
+      # data). The §3.2 emphasis rules apply unchanged to a 1-focal + 8-cross-test 3×3 matrix.
+      smoke_pair: [meas_err, drf]
+      # Signal propagation for stale_price / survivorship (decision b). Recompute per
+      # panel state is PRIMARY, gated by a <=half-day spike; the fallback is the renamed passthrough
+      # (never bare). Decided by MEASUREMENT (the spike), not preference — the escape-hatch discipline.
+      signal_propagation:
+        primary: recompute_per_panel_state
+        spike_timebox_hours: 4
+        fallback: frozen_at_pn_partial_channel_renamed   # [ret+mem] variants + inventory exception
+      # Smoke is engineering-only: a surprising alpha SHIPS; only a DEFECT triggers fix-document-rerun
+      # (no silent iteration). Full criteria in the pre-registration doc.
+      smoke_is_engineering_only: true
