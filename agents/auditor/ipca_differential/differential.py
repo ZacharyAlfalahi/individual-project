@@ -238,11 +238,13 @@ def run_differential(
     gate: IPCAProjectionGate | None = None,
     bootstrap: IPCABootstrapConfig | None = None,
     bootstrap_seed: int = 0,
+    recompute_signals: bool = True,
     thresholds_path=None,
 ) -> IPCADifferentialResult:
     """Real entry point: build (P_N, P_b) via ``panel_states``, their feeds and the fixed anchor
-    from P_N, then the 2x2 with §5.3 conditional bootstrap intervals. Construction biases raise
-    ``ConstructionToggleDeferred`` (see panels.py). Real-data validation lives in the experimentalist build."""
+    from P_N, then the 2x2 with §5.3 conditional bootstrap intervals. ``recompute_signals`` (the
+    default) recomputes var/vol/mom6 per panel state. Construction biases raise
+    ``ConstructionToggleDeferred`` (see panels.py)."""
     lam = lam or load_ipca_lambda(thresholds_path)
     gate = gate or load_ipca_projection_gate(thresholds_path)
     bootstrap = bootstrap or load_ipca_bootstrap_config(thresholds_path)
@@ -252,8 +254,8 @@ def run_differential(
     p_n, p_b = panel_states(bias, maximal, signals)
     family_n = "corr"
     family_b = "raw" if bias == "meas_err" else "corr"
-    feed_n = build_cell_feed(p_n, reg, family_n)
-    feed_b = build_cell_feed(p_b, reg, family_b)
+    feed_n = build_cell_feed(p_n, reg, family_n, recompute_signals=recompute_signals, thresholds_path=thresholds_path)
+    feed_b = build_cell_feed(p_b, reg, family_b, recompute_signals=recompute_signals, thresholds_path=thresholds_path)
     anchor = _anchor_series(p_n, anchor_name)                  # fixed anchor from P_N
     return differential_from_feeds(
         bias, anchor_name, feed_n, feed_b, anchor, lam, gate,

@@ -102,8 +102,22 @@ def to_merged(view_panel: pd.DataFrame) -> pd.DataFrame:
     })
 
 
-def build_cell_feed(view_panel: pd.DataFrame, reg: dict, family: str) -> IPCAFeed:
-    """view() panel → canonical merged frame → build_ipca_feed → per-month matrices (IPCAFeed)."""
+def build_cell_feed(
+    view_panel: pd.DataFrame,
+    reg: dict,
+    family: str,
+    *,
+    recompute_signals: bool = False,
+    thresholds_path=None,
+) -> IPCAFeed:
+    """view() panel → canonical merged frame → build_ipca_feed → per-month matrices (IPCAFeed).
+
+    When ``recompute_signals`` (real runs), var_5pct/bond_vol/mom6 are recomputed from the
+    panel state's own toggle-applied returns before to_merged, so stale_price/survivorship propagate
+    into the characteristics (gamma_illiq is daily-sourced and left as-is; see signal_recompute)."""
+    if recompute_signals:
+        from .signal_recompute import recompute_signals as _recompute
+        view_panel = _recompute(view_panel, thresholds_path=thresholds_path)
     merged = to_merged(view_panel)
     out, _ = build_ipca_feed(merged, reg, family, validate=True)
     return feed_matrices(out)

@@ -121,10 +121,60 @@ def run_smoke() -> int:
     return 0 if verdict["PASS"] else 1
 
 
-def run_all() -> int:
+def _git_short() -> str:
+    import subprocess
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT).decode().strip()
+    except Exception:
+        return "unknown"
+
+
+def _config_hash() -> str:
+    import hashlib
+    import yaml
+    block = yaml.safe_load((REPO_ROOT / "docs" / "thresholds.yaml").read_text())["auditor"]["ipca_differential"]
+    return hashlib.sha256(yaml.safe_dump(block, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def run_all(out_dir: Path | None = None) -> int:
+    from datetime import datetime, timezone
+
+    pairs = load_ipca_execution_pairs()
     maximal, signals, reg = load_dev_inputs()
+    print(f"[all] running {len(pairs.runnable_pairs())} runnable pairs (recompute per panel state) ...", flush=True)
     results = run_runnable_pairs(maximal, signals, reg)
-    print(json.dumps([_shipping_numbers(r) for r in results], indent=2, default=str))
+    runnable = [r.to_dict() for r in results]
+    refused = [
+        {"bias": b, "anchor": a, "status": "refused",
+         "reason": pairs.refused.reason, "note": pairs.refused.note}
+        for (b, a) in pairs.refused_pairs()
+    ]
+    # The 5x3 matrix (bracket I): 3 runnable bias-rows shown, 2 refused rows typed.
+    matrix = {
+        r["bias"] + "×" + r["anchor"]: {
+            "I": r["interaction_bracket_raw"]["value"],
+            "I_ci": r["interaction_bracket_raw"]["interval"],
+            "data_margin_theta_n": r["data_margin_theta_n_corr"]["value"],
+            "n_months": r["common_support_n_months"], "is_focal": r["is_focal"],
+        }
+        for r in runnable
+    }
+    run_log = {
+        "run_utc": datetime.now(timezone.utc).isoformat(),
+        "git_commit": _git_short(),
+        "prereg_tag": "ipca-differential-prereg",
+        "thresholds_ipca_hash": _config_hash(),
+        "window": "development 2002-2021 (holdout untouched)",
+        "signal_propagation": "recompute var/vol/mom6 per panel state; gamma_illiq daily-sourced, membership-only",
+        "signal_recompute_note": "verified numerically inert on the dev panel: stale_price masks 0 incremental bond-months (theta=30d), survivorship is membership-dominated",
+        "n_runnable": len(runnable), "n_refused": len(refused),
+    }
+    payload = {"run_log": run_log, "matrix": matrix, "runnable": runnable, "refused": refused}
+    out_dir = out_dir or (REPO_ROOT / "results" / "ipca_differential" / f"run_{_git_short()}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "results_9pairs.json").write_text(json.dumps(payload, indent=2, default=str))
+    print(json.dumps({"run_log": run_log, "matrix": matrix}, indent=2, default=str))
+    print(f"\n[all] wrote {out_dir / 'results_9pairs.json'}")
     return 0
 
 
