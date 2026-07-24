@@ -167,6 +167,8 @@ def run_all(out_dir: Path | None = None) -> int:
         "window": "development 2002-2021 (holdout untouched)",
         "signal_propagation": "recompute var/vol/mom6 per panel state; gamma_illiq daily-sourced, membership-only",
         "signal_recompute_note": "verified numerically inert on the dev panel: stale_price masks 0 incremental bond-months (theta=30d), survivorship is membership-dominated",
+        "anchors": "str = value-weighted decile reversal sort on xret; mom6 = equal-weighted decile momentum with Jostova skip=1 + staggered holding=6 (canonical build_mom6); drf = bivariate var_5pct×rating (BBW)",
+        "bootstrap_seed": 20260612,
         "n_runnable": len(runnable), "n_refused": len(refused),
     }
     payload = {"run_log": run_log, "matrix": matrix, "runnable": runnable, "refused": refused}

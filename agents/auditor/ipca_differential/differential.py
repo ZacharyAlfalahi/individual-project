@@ -31,9 +31,14 @@ from agents.auditor.thresholds import (
     load_ipca_projection_gate,
     load_ipca_reporting,
 )
+from pathlib import Path
+
+import yaml
+
 from agents.quant.library.bbw_factors import run_bbw_factor
 from agents.quant.library.characteristic_sort import run_characteristic_sort
 from agents.quant.library.ipca_feed import IPCAFeed
+from agents.quant.library.overlap import run_with_holding_period
 
 from .bootstrap import conditional_bootstrap
 from .evaluate import alpha_on, recover_factor_series
@@ -47,6 +52,8 @@ from .schemas import (
     deferred_effect,
     refused_effect,
 )
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _cell(label: str, panel_state: str, fitted_state: str, value: float,
@@ -199,30 +206,46 @@ def differential_from_states(
     )
 
 
-# Single-sort anchor rulebooks (from the gold specs), routed through the audited engine. drf is a
-# bivariate BBW factor (run_bbw_factor). Defaults give long top group / short bottom group (P10/P1).
-#   str  (DRR-2026, Table 1 Panel A col 1): single decile sort on the reversal signal
-#        prior_1m_excess_return → xret (D27 concept→column table), value-weighted.
-#   mom6 (JNPS-2013): single decile sort on the 6-month momentum signal, EQUAL-weighted.
-_ANCHOR_RULEBOOKS: dict[str, dict] = {
-    "str":  {"score": "xret", "groups": 10, "weighting": "by_size"},
-    "mom6": {"score": "mom6", "groups": 10, "weighting": "equal"},
+# Anchor definitions, routed through the AUDITED engine to match each gold spec exactly.
+#   str  (DRR-2026 Table 1 Panel A col 1): single decile sort on the reversal signal
+#        prior_1m_excess_return → xret, value-weighted, long P10 / short P1, 1-month hold.
+#   mom6 (JNPS-2013): decile sort on the 6-month momentum signal, EQUAL-weighted, with the
+#        Jostova SKIP (signal_lag = skip_months) and STAGGERED holding (holding_months) — the same
+#        run_with_holding_period construction as the canonical build_mom6 factor, NOT a plain
+#        1-month no-skip sort (which is a materially different, opposite-signed series).
+#   drf  (BBW-2019): bivariate var_5pct × rating, value-weighted (run_bbw_factor).
+_STR_RULEBOOK: dict = {
+    "score": "xret", "groups": 10, "weighting": "by_size", "long_group": 9, "short_group": 0,
 }
 
 
-def _anchor_series(view_panel: pd.DataFrame, anchor_name: str) -> pd.Series:
+def _mom6_config(thresholds_path: str | Path | None = None) -> dict:
+    return yaml.safe_load(Path(thresholds_path or _REPO_ROOT / "docs" / "thresholds.yaml").read_text())["signals"]["mom6"]
+
+
+def _anchor_series(
+    view_panel: pd.DataFrame, anchor_name: str, *, thresholds_path: str | Path | None = None
+) -> pd.Series:
     """Build a fixed anchor long-short return series (indexed by return-month pd.Period) from a
-    view() panel via the audited characteristic-sort engine. drf routes through run_bbw_factor
-    (bivariate); str/mom6 through run_characteristic_sort (single sort) per their gold specs."""
-    if anchor_name == "drf":
-        result = run_bbw_factor(view_panel, "drf")
-    elif anchor_name in _ANCHOR_RULEBOOKS:
-        result = run_characteristic_sort(view_panel, dict(_ANCHOR_RULEBOOKS[anchor_name]))
-    else:
-        raise ValueError(
-            f"unknown anchor {anchor_name!r}; known: {['str', 'mom6', 'drf']}"
+    view() panel via the audited engine, faithful to each gold spec (str/drf single/bivariate sorts;
+    mom6 the Jostova skip + staggered-holding factor)."""
+    if anchor_name == "str":
+        mr = run_characteristic_sort(view_panel, dict(_STR_RULEBOOK))["monthly_returns"]
+    elif anchor_name == "mom6":
+        c = _mom6_config(thresholds_path)
+        rulebook = {
+            "score": "mom6", "groups": int(c["n_groups"]), "weighting": c["weighting"],
+            "long_group": int(c["n_groups"]) - 1, "short_group": 0,
+            "signal_lag": int(c["skip_months"]), "nw_lags": None,
+        }
+        mr = run_with_holding_period(
+            view_panel[["cusip", "date", "ret", "size", "mom6"]], rulebook,
+            holding_period=int(c["holding_months"]),
         )
-    mr = result["monthly_returns"]
+    elif anchor_name == "drf":
+        mr = run_bbw_factor(view_panel, "drf")["monthly_returns"]
+    else:
+        raise ValueError(f"unknown anchor {anchor_name!r}; known: {['str', 'mom6', 'drf']}")
     periods = pd.PeriodIndex(pd.to_datetime(mr["date"]), freq="M")
     return pd.Series(mr["strategy_ret"].to_numpy(), index=periods)
 
@@ -256,7 +279,7 @@ def run_differential(
     family_b = "raw" if bias == "meas_err" else "corr"
     feed_n = build_cell_feed(p_n, reg, family_n, recompute_signals=recompute_signals, thresholds_path=thresholds_path)
     feed_b = build_cell_feed(p_b, reg, family_b, recompute_signals=recompute_signals, thresholds_path=thresholds_path)
-    anchor = _anchor_series(p_n, anchor_name)                  # fixed anchor from P_N
+    anchor = _anchor_series(p_n, anchor_name, thresholds_path=thresholds_path)   # fixed anchor from P_N
     return differential_from_feeds(
         bias, anchor_name, feed_n, feed_b, anchor, lam, gate,
         is_focal=is_focal, bootstrap=bootstrap, bootstrap_seed=bootstrap_seed,

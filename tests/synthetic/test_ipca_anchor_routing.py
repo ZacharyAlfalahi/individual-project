@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from agents.auditor.ipca_differential.differential import _ANCHOR_RULEBOOKS, _anchor_series
+from agents.auditor.ipca_differential.differential import _STR_RULEBOOK, _anchor_series, _mom6_config
 
 
 def _sortable_panel(n_bonds: int = 120, n_months: int = 18, seed: int = 0) -> pd.DataFrame:
@@ -40,9 +40,17 @@ def test_anchor_routes_to_a_monthly_series(anchor):
     assert np.isfinite(s.to_numpy()).all()
 
 
-def test_str_and_mom6_rulebooks_are_decile_sorts():
-    assert _ANCHOR_RULEBOOKS["str"]["groups"] == 10 and _ANCHOR_RULEBOOKS["str"]["score"] == "xret"
-    assert _ANCHOR_RULEBOOKS["mom6"]["groups"] == 10 and _ANCHOR_RULEBOOKS["mom6"]["weighting"] == "equal"
+def test_str_rulebook_is_a_value_weighted_decile_sort():
+    assert _STR_RULEBOOK["score"] == "xret" and _STR_RULEBOOK["groups"] == 10
+    assert _STR_RULEBOOK["weighting"] == "by_size"
+    assert _STR_RULEBOOK["long_group"] == 9 and _STR_RULEBOOK["short_group"] == 0   # P10/P1 explicit
+
+
+def test_mom6_anchor_uses_jostova_skip_and_staggered_holding():
+    """H1 regression: mom6 must be the canonical skip+staggered factor, not a plain 1-month sort."""
+    c = _mom6_config()
+    assert c["skip_months"] == 1 and c["holding_months"] == 6
+    assert c["n_groups"] == 10 and c["weighting"] == "equal"
 
 
 def test_unknown_anchor_raises():
