@@ -32,6 +32,7 @@ from agents.auditor.thresholds import (
     load_ipca_reporting,
 )
 from agents.quant.library.bbw_factors import run_bbw_factor
+from agents.quant.library.characteristic_sort import run_characteristic_sort
 from agents.quant.library.ipca_feed import IPCAFeed
 
 from .bootstrap import conditional_bootstrap
@@ -198,10 +199,29 @@ def differential_from_states(
     )
 
 
+# Single-sort anchor rulebooks (from the gold specs), routed through the audited engine. drf is a
+# bivariate BBW factor (run_bbw_factor). Defaults give long top group / short bottom group (P10/P1).
+#   str  (DRR-2026, Table 1 Panel A col 1): single decile sort on the reversal signal
+#        prior_1m_excess_return → xret (D27 concept→column table), value-weighted.
+#   mom6 (JNPS-2013): single decile sort on the 6-month momentum signal, EQUAL-weighted.
+_ANCHOR_RULEBOOKS: dict[str, dict] = {
+    "str":  {"score": "xret", "groups": 10, "weighting": "by_size"},
+    "mom6": {"score": "mom6", "groups": 10, "weighting": "equal"},
+}
+
+
 def _anchor_series(view_panel: pd.DataFrame, anchor_name: str) -> pd.Series:
     """Build a fixed anchor long-short return series (indexed by return-month pd.Period) from a
-    view() panel via the audited characteristic-sort engine."""
-    result = run_bbw_factor(view_panel, anchor_name)
+    view() panel via the audited characteristic-sort engine. drf routes through run_bbw_factor
+    (bivariate); str/mom6 through run_characteristic_sort (single sort) per their gold specs."""
+    if anchor_name == "drf":
+        result = run_bbw_factor(view_panel, "drf")
+    elif anchor_name in _ANCHOR_RULEBOOKS:
+        result = run_characteristic_sort(view_panel, dict(_ANCHOR_RULEBOOKS[anchor_name]))
+    else:
+        raise ValueError(
+            f"unknown anchor {anchor_name!r}; known: {['str', 'mom6', 'drf']}"
+        )
     mr = result["monthly_returns"]
     periods = pd.PeriodIndex(pd.to_datetime(mr["date"]), freq="M")
     return pd.Series(mr["strategy_ret"].to_numpy(), index=periods)
