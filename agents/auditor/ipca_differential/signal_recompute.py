@@ -11,10 +11,13 @@ it reuses the CANONICAL compute functions from the build scripts (no reimplement
   * bond_vol : KPP 24-month std of `xret`                 (build_bond_vol.compute_bond_vol)
   * mom6     : JNPS 6-month cumulative return of `ret`     (build_mom6_signal.compute_mom6_signal)
 
-**gamma_illiq is NOT recomputed** — a spike finding: the code shows it is a *daily-sourced*
-within-month autocovariance (from the trace daily panels), not a monthly-return-history functional, so
-the monthly stale/terminal toggles do not feed its value; it propagates correctly through membership
-(feed complete-case). Not recomputing it is faithful, not a truncation.
+**gamma_illiq is INVARIANT under both panel-view toggles by construction** (a spike finding, now
+asserted once in `tests/synthetic/test_ipca_gamma_invariance.py`): the code shows it is a *daily-sourced*
+within-month autocovariance (from the trace daily panels), whose source data lies OUTSIDE both toggles'
+registered primitives (monthly price_eom for stale_price; monthly terminal rows for survivorship). So its
+per-state recompute is identically equal to the shared value — nothing the toggles reach feeds it, hence
+nothing is truncated. Not recomputing it is therefore a reclassification, NOT a membership-only fallback
+(that earlier phrasing is withdrawn as understating the invariance).
 
 The existing on-disk signal parquets embody the UNMASKED maximal panel (the spike's defect finding);
 recomputing on the view panel's returns fixes the P_N signal/return inconsistency.
@@ -41,7 +44,7 @@ _THRESHOLDS = _REPO / "docs" / "thresholds.yaml"
 
 # The return-history signals recomputed per panel state, and the return column each consumes.
 RECOMPUTED_SIGNALS: tuple[str, ...] = ("var_5pct", "bond_vol", "mom6")
-# gamma_illiq is daily-sourced → membership-only propagation → not recomputed (see module docstring).
+# gamma_illiq is daily-sourced → invariant under both toggles by construction → not recomputed (see docstring).
 
 
 def _signals_cfg(thresholds_path: str | Path | None = None) -> dict:
