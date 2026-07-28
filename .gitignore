@@ -52,9 +52,6 @@ tasks/
 .env
 runs/
 
-# Working docs, notes, decision logs, registers — kept local, not pushed to the remote.
-# Untracked from the tip onward (2026-07-28); past commits still contain docs/ and the
-# repo is private, so history is not being rewritten. Root-anchored so code-adjacent
-# agents/**/data/ and any nested docs/ dirs are unaffected.
+# Working docs, notes, decision logs, registers
 /docs/
 
