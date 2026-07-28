@@ -6,7 +6,7 @@ Every implementation is validated and verifiable.
 RQ1 — Librarian extraction fidelity on the gold-standard set (BBW, KPP, DG): field-level per-field accuracy, multi-model agreement rate, failure taxonomy (field-level reconstruction, NOT strategy-class routing).
 RQ2 — Quant compilation fidelity + coverage: anchor fidelity per the hierarchical gates (evaluation contract §7); layered coverage C_semantic / C_binding / C_execution / C_end-to-end over the frozen candidate set; FIR (headline safety) beside FRR; fraction of the corpus implementable via audited families vs correctly refused (typed refusal taxonomy).
 RQ3 — Bias prevalence (Auditor), differential: each strategy run uncorrected (as-published) vs corrected, bias = the gap; effect sizes with CIs (survival counts secondary); conservative lower bound on artefact; clean on the anchor set + traded-liquidity negative control, scale layer weaker/confounded.
-RQ4 — Repair rate (Scientist): fraction of proposals that repair failing strategies, retain in-sample alpha, survive BH-FDR, show positive OOS Sharpe on 2022–2025 holdout.
+RQ4 — Repair rate (Scientist): fraction of proposals that repair failing strategies, retain in-sample alpha, survive BH-FDR, show positive OOS Sharpe on the 2022–2024 holdout (the locked evaluation split; the data-ingest partition boundary `holdout_end_year: 2025` is separate).
 Each RQ has a structurally independent validation path — failure in one component cannot contaminate another.
 
 ## Data Rules (inviolable)
@@ -17,14 +17,14 @@ Each RQ has a structurally independent validation path — failure in one compon
 ## Repository Key Paths
 /agents/quant/library/     — ipca.py, characteristic_sort.py, bbw_factors.py (hand-implemented; LLM configures, NEVER modifies; correction-agnostic — run identically on the uncorrected and corrected panels the data layer emits); DNN family deferred (unbuilt)
 /agents/auditor/checks/    — deterministic only; zero LLM calls permitted here
-/schema/                   — Changes to it are deliberate, reviewed migrations
+/agents/librarian/schema/  — StrategySpec schema (v1.1, built + shipped); JSON field schemas live in /agents/librarian/data/schemas/. Changes to it are deliberate, reviewed migrations
 /docs/thresholds.yaml      — ALL numerical thresholds; never hard-code values in agent code
-/docs/inference_rules.md   — enumerated rules permitting INFERRED provenance
+/docs/librarian/specs/inference_rules.md — enumerated rules permitting INFERRED provenance (path reserved; rules not yet authored — see docs/backlog/remaining_work.md)
 /data/holdout/             — READ NEVER during development
 
 ## Agent Hard Constraints
 
-**Librarian**: dual LLM extraction (stack TBD — see Open Decisions). A field is STATED only if both models agree on value AND verbatim quote. No self-reported confidence scores. UNKNOWN is a valid value, not an error.
+**Librarian**: dual LLM extraction (stack committed — see D4 / `docs/thresholds.yaml` `librarian.model_stack`). A field is STATED only if both models agree on value AND verbatim quote. No self-reported confidence scores. UNKNOWN is a valid value, not an error.
 
 **Quant**: deterministic compilation — StrategySpec → adapter → QuantConfig → audited runner. Routing is deterministic (closed-enum family table + typed refusal); an LLM appears only as a post-refusal explainer over typed outcomes. The 8-iteration cap applies to the Librarian's retrieval loop if and when the contract's §3.6 gate triggers it. Modifications to /agents/quant/library/ require manual review + all regression tests passing.
 
@@ -35,7 +35,7 @@ Each RQ has a structurally independent validation path — failure in one compon
 **Reporter**: NEVER regenerates numbers from prose. Every numeric token in the output is asserted against typed pipeline output by verifier.py before commit.
 
 ## StrategySpec Schema
-Every fact-bearing field is an `Inherited[T]` carrying value, tag (STATED | INFERRED | DESIGN | UNKNOWN), and evidence (STATED requires a verbatim quote + locator; INFERRED requires a rule ID from /docs/inference_rules.md — path reserved, rules not yet authored; DESIGN marks deliberate project substitutions). Schema v1.1 is built and shipped (`agents/librarian/schema/`).
+Every fact-bearing field is an `Inherited[T]` carrying value, tag (STATED | INFERRED | DESIGN | UNKNOWN), and evidence (STATED requires a verbatim quote + locator; INFERRED requires a rule ID from docs/librarian/specs/inference_rules.md — path reserved, rules not yet authored; DESIGN marks deliberate project substitutions). Schema v1.1 is built and shipped (`agents/librarian/schema/`).
 
 ## Replication Success Criterion
 **Superseded (2026-07-13): the ±15% primary criterion is retired → evaluation contract §7 hierarchical gates (see RQ2). The paragraph below is retained as history.**
@@ -46,6 +46,6 @@ Applies to the data-matched anchors (BBW, str, momentum) on the uncorrected/as-p
 - Auditor: synthetic bias injection tests verifying 100% recall for every injected bias type
 - Library modules: unit test on synthetic data with known analytical answer + regression test against paper headline metric (data-matched anchors) or published procedure (KPP)
 
-## Open Decisions (resolve before Librarian v1 runs on any corpus paper)
-D4 — LLM stack: commit chosen stack to thresholds.yaml before first Librarian run. Candidate: Claude Sonnet 4.6 + GPT-4o for anchor-layer dual extraction; cost-optimised single-model for scale corpus.
-D5 — Dickerson 2026 label availability. If available: Auditor check 5 uses exact name matching against /data/dickerson_zoo/names.csv. If unavailable: check 5 uses t-stat band + free-parameter count only; record outcome in /docs/citations_verified.md.
+## Open Decisions
+D4 — RESOLVED (stack committed to `docs/thresholds.yaml` → `librarian.model_stack`; rationale in `docs/librarian/registers/decision-log_librarian.md` D33). Two-phase dual pair: phase_d (free dev, non-reportable) = Gemini 3.1-flash-lite + Mistral-small; phase_f (reported figures, gated on SKU/cost authorization) = Claude Sonnet 4.6 + Gemini 3.5-flash. The earlier "Sonnet 4.6 + GPT-4o" candidate was NOT adopted.
+D5 — OPEN. Dickerson 2026 label availability. If available: Auditor check 5 uses exact name matching against /data/dickerson_zoo/names.csv. If unavailable: check 5 uses t-stat band + free-parameter count only; record outcome in `docs/data/registers/citations_verified.md` (§2 stub — still OPEN).

@@ -31,7 +31,8 @@ locator, an ambiguous locator -> a clear ``GoldParseError``. The loader NEVER
 emits a wrong STATED value or a fabricated locator.
 
 ``is_binding(anchor_id)`` reports whether the anchor's locators index a FROZEN
-canonical text (str, drf -> True) or a pending-freeze parse (mom6 -> False).
+canonical text -> True for all three anchors (str/drf frozen; mom6's JNPS text
+frozen 2026-07-15).
 """
 
 from __future__ import annotations
@@ -72,7 +73,7 @@ class GoldParseError(ValueError):
 # ---------------------------------------------------------------------------
 # Anchor registry: id -> (gold filename, locator-table spec key, binding?).
 #   binding = the locators index a FROZEN canonical text (real D6 locators).
-#   str / drf are frozen; mom6 is a pending-freeze parse (provisional offsets).
+#   str / drf / mom6 are all frozen (mom6's JNPS text frozen 2026-07-15) -> binding.
 # ---------------------------------------------------------------------------
 
 _HERE = Path(__file__).resolve().parent
@@ -96,7 +97,7 @@ _MARKER_RE = re.compile(r"^\s*(?:\[[A-Z]+\]|◇|⚠)?\s*")
 
 def is_binding(anchor_id: str) -> bool:
     """True iff the anchor's locators index a FROZEN canonical text (binding D6
-    locators): str / drf -> True, mom6 -> False (pending JNPS freeze)."""
+    locators): str / drf / mom6 -> True (mom6's JNPS text frozen 2026-07-15)."""
     try:
         return bool(_ANCHORS[anchor_id]["binding"])
     except KeyError:
