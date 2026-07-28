@@ -25,6 +25,13 @@ venv/
 dist/
 build/
 
+# Tool caches (type-checker / linter / test runner) — regenerable, machine-local.
+# Present on disk; ignored explicitly so a fresh clone on any machine can never commit them
+# (they were otherwise covered only by a per-user global excludesfile — not portable).
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
 # Coverage artefacts (test-time only)
 .coverage
 .coverage.*
@@ -44,4 +51,10 @@ tasks/
 # API keys for live Librarian extraction — NEVER commit (see .env.example)
 .env
 runs/
+
+# Working docs, notes, decision logs, registers — kept local, not pushed to the remote.
+# Untracked from the tip onward (2026-07-28); past commits still contain docs/ and the
+# repo is private, so history is not being rewritten. Root-anchored so code-adjacent
+# agents/**/data/ and any nested docs/ dirs are unaffected.
+/docs/
 
