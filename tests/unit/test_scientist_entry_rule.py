@@ -227,10 +227,22 @@ def test_build_case_fails_loud_on_missing_coordinate():
 # load_entry_rule_params — fail-loud + reference resolution
 # =========================================================================================
 
-def test_loader_fails_loud_when_scientist_block_absent():
-    # The real docs/thresholds.yaml has no `scientist:` block yet -> must raise, never default.
+def test_loader_fails_loud_when_scientist_block_absent(tmp_path):
+    # A thresholds file with NO `scientist:` block must raise, never default — the fail-loud
+    # guarantee. (The real file now HAS the block; see the resolution test below.)
+    p = tmp_path / "thresholds.yaml"
+    p.write_text("auditor:\n  fdr:\n    q: 0.10\n")
     with pytest.raises(ScientistThresholdError):
-        load_entry_rule_params()
+        load_entry_rule_params(p)
+
+
+def test_loader_resolves_references_on_real_file():
+    # The committed `scientist:` block references the auditor block (R3); on the REAL
+    # docs/thresholds.yaml the loader resolves theta = auditor.practical_significance.vartheta
+    # (0.001) and q = auditor.fdr.q (0.10) — the numbers are stated once, never restated here.
+    params = load_entry_rule_params()
+    assert params.theta == pytest.approx(0.001)
+    assert params.q == pytest.approx(0.10)
 
 
 def test_loader_resolves_references_without_restating_numbers(tmp_path):

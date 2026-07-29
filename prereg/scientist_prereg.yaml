@@ -1,0 +1,83 @@
+# prereg/scientist_prereg.yaml
+# =============================================================================================
+# TRACKED pre-registration register for the Scientist (RQ4). This file is version-controlled;
+# the working copies of the protocol it mirrors (docs/scientist_protocol.yaml,
+# docs/extension_1_config.yaml, the docs/thresholds.yaml `scientist:` block) live in the
+# gitignored docs/ tree. This register puts the FROZEN CONSTANTS in git so the numbers are not
+# recorded only in a commit message (mirrors + strengthens the auditor-prereg mechanism).
+#
+# A consistency test (tests/unit/test_scientist_prereg_register.py) asserts these values equal
+# the working-copy values, so the tracked record and the untracked docs cannot silently drift.
+#
+# STATUS: DRAFT_pending_census. `generation.proposals_per_strategy.per_strategy` is filled by
+# the eligibility census; the git tag `scientist-prereg` is applied THEN, not now.
+# After tagging, every change is a logged amendment (see docs/scientist_protocol.yaml).
+# =============================================================================================
+
+register_version: 1.0.0
+protocol_version: 1.0.0
+estimand: post_correction_extension_survival
+status: DRAFT_pending_census
+
+# Verified against data/development/factors/bbw_factors.parquet + monthly_panel_corrected.
+windows:
+  panel_development:   {start: 2002-07, end: 2021-12, n_months: 234}
+  primary_inference:   {start: 2004-08, end: 2021-12, n_months: 209}   # T (DRF/CRF-bound)
+  evaluation_holdout:  {start: 2022-01, end: 2024-12, n_months: 36}
+
+entry_rule:
+  # Stated once in the auditor block, referenced (R3). Resolved values recorded for the record.
+  materiality_threshold_ref: auditor.practical_significance.vartheta
+  fdr_q_ref: auditor.fdr.q
+  resolved_theta: 0.001
+  resolved_q: 0.10
+  tier: within_strategy_bh_adjusted_p
+
+generation:
+  proposals_per_strategy:
+    default: 6
+    per_strategy: PENDING_CENSUS      # filled by the eligibility census, before the tag
+  seeds_k: 5
+  economic_execution_seed: 0
+
+inference:
+  bh_fdr_q: 0.10
+
+cpcv:
+  n_groups: 8
+  test_groups: 2
+  purge: per_candidate_information_span
+  embargo: {rule: holding_period_months, floor_months: 1}
+  ddof: 1
+
+deflated_sharpe:
+  n_trials: per_strategy_m
+
+pbo: {scope: realised_family_only, status: supplementary_caveated}
+
+costs:
+  round_trip_bps: {investment_grade: 40, high_yield: 80}
+  source: UNRESOLVED_pending_citation      # deferred; resolve before the real run
+
+selection:
+  rule: lexicographic
+
+holdout:
+  advance: all_cpcv_qualified_survivors
+  cap: 3
+  accesses: 1
+  gate: artefact_conditions_not_self_opening_date
+
+extension_1:
+  regime_variable: baa_aaa_spread
+  units: percentage_points
+  median_window: {start: 2002-07, end: 2021-12}
+  median_baa_aaa_spread_pp: 0.935          # panel-dev (project decision); 0.920 = inference-win
+
+# MDE bounds at (m=6, q=0.10, T=209), reproducible via scripts/generate_scientist_mde.py.
+mde:
+  m: 6
+  q: 0.10
+  T: 209
+  rank_1_ann_sharpe: 0.57
+  rank_m_ann_sharpe: 0.39
