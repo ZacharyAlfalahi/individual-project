@@ -1,0 +1,27 @@
+mechanism_id: mech_006
+version: 1.0.0
+title: Discrete volatility regimes with sign-flipping returns
+claim: >
+  The corporate bond market cycles through distinct hidden volatility regimes across which the
+  sign of returns flips; a carry- or momentum-type signal's predictive strength is therefore
+  conditional on the prevailing (lagged) volatility regime rather than constant through time.
+sources:
+  - source_id: DG_2025
+    kind: primary
+    quote: "three distinct well-defined market states"
+    verification:
+      extractor: pymupdf
+      text: "papers/pdf/Deep Learning for Corporate Bonds (DG).pdf"
+      locate_level: L1
+      page: 2
+      cite: "Duraj & Giesecke (2025), 'Deep Learning for Corporate Bonds', Introduction p.2; HMM analysis §4 p.21"
+    status: VERIFIED
+applicability:
+  strategy_families: [CHARACTERISTIC_SORT, IPCA]
+  required_inputs:
+    - {variable_family: macro_regime_indicator, timing_rule: observed_before_formation}
+allowed_templates: [lagged_binary_regime_interaction_v1, lagged_continuous_interaction_v1]
+forbidden_uses:
+  - threshold_selected_on_performance
+  - contemporaneous_regime_data
+  - look_ahead_regime_classification

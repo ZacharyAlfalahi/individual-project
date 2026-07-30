@@ -1,0 +1,26 @@
+mechanism_id: mech_007
+version: 1.0.0
+title: Nonlinear characteristic interactions in bond returns
+claim: >
+  Expected corporate-bond returns depend nonlinearly and interactively on bond characteristics,
+  so a signal conditioned (double-sorted) within a second registered characteristic outperforms
+  an additive/linear treatment; a predictor's strength varies with the level of that characteristic.
+sources:
+  - source_id: DG_2025
+    kind: primary
+    quote: "non-linearities in the characteristics are generally important"
+    verification:
+      extractor: pymupdf
+      text: "papers/pdf/Deep Learning for Corporate Bonds (DG).pdf"
+      locate_level: L1
+      page: 3
+      cite: "Duraj & Giesecke (2025), 'Deep Learning for Corporate Bonds', p.3"
+    status: VERIFIED
+applicability:
+  strategy_families: [CHARACTERISTIC_SORT]
+  required_inputs:
+    - {variable_family: bond_characteristic, timing_rule: observed_before_formation}
+allowed_templates: [signal_characteristic_interaction_v1]
+forbidden_uses:
+  - threshold_selected_on_performance
+  - contemporaneous_conditioning_data

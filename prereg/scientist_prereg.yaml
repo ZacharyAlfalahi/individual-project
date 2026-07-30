@@ -17,7 +17,7 @@
 register_version: 1.0.0
 protocol_version: 1.0.0
 estimand: post_correction_extension_survival
-status: DRAFT_pending_census
+status: DRAFT_census_complete_tag_pending
 
 # Verified against data/development/factors/bbw_factors.parquet + monthly_panel_corrected.
 windows:
@@ -36,7 +36,11 @@ entry_rule:
 generation:
   proposals_per_strategy:
     default: 6
-    per_strategy: PENDING_CENSUS      # filled by the eligibility census, before the tag
+    per_strategy: {str: 6, mom6: 6, drf: 6}   # census: 9 distinct eligible >= 8 gate -> m=6 each
+  mechanism_library:
+    distinct_mechanisms: 9            # honest yield (3 KPP + 1 GKX + 3 DG + 2 BPW); >= 8 gate,
+                                      #   < §6 15-25 target (SC-SCI-6, not padded). Version-locked
+                                      #   by the library sha (agents/scientist/researcher/library).
   seeds_k: 5
   economic_execution_seed: 0
 

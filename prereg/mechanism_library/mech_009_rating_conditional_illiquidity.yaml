@@ -1,0 +1,35 @@
+mechanism_id: mech_009
+version: 1.0.0
+title: Rating-conditional illiquidity importance
+claim: >
+  Illiquidity's role in pricing is state-dependent on credit quality: it is the dominant driver
+  for high-rated bonds, whereas for low-rated/junk bonds credit risk dominates and illiquidity is
+  subordinate. A liquidity-keyed signal should thus be conditioned on the rating segment
+  (activated in the high-rated segment) — equivalently a rating x illiquidity interaction.
+sources:
+  - source_id: BPW_2011
+    kind: primary
+    quote: "illiquidity plays an important role in explaining the monthly changes in yield spreads for high-rated bonds"
+    verification:
+      extractor: pymupdf
+      text: "papers/pdf/BPW.pdf"
+      locate_level: L1
+      page: 16
+      cite: "Bao, Pan & Wang (2011), J. Finance 66(3), §III.A, p.927"
+    status: VERIFIED
+caveats:
+  - >
+    BPW's estimation window is April 2003 - June 2009, and the MAGNITUDE of illiquidity's
+    dominance over credit for high-rated bonds is partly a 2008-crisis artefact: pre-2008, BPW
+    find illiquidity and credit roughly equally important for high-rated spreads, with
+    illiquidity's dominance emerging strongly only once 2008-2009 enters. The DIRECTION
+    (illiquidity matters more for high-rated, credit more for junk) holds in normal times; the
+    DEGREE is crisis-inflated. Do not present the dominance magnitude as broadly established.
+applicability:
+  strategy_families: [CHARACTERISTIC_SORT]
+  required_inputs:
+    - {variable_family: rating_segment, timing_rule: observed_before_formation}
+allowed_templates: [ex_ante_universe_conditioning_v1, signal_characteristic_interaction_v1]
+forbidden_uses:
+  - threshold_selected_on_performance
+  - contemporaneous_conditioning_data
