@@ -1,0 +1,25 @@
+# Template 2 — lagged_continuous_interaction_v1  (spec §7 line 454; enums AUTHORED HERE)
+# signal × continuous conditioning variable, lagged. §7 names this template but specifies no
+# enum, so the permitted_fields below are project-defined, not spec-given — flagged in the census
+# (F5), an open design decision. Drafted as the CONTINUOUS-MACRO parallel to template 1 (same three macro
+# regime variables, entered continuously rather than split at a median). Whether bond-level
+# continuous characteristics (bond_vol, gamma_illiq, var_5pct, size, time_to_maturity) also
+# belong here — enlarging the reachable space — is an open design decision, NOT resolved here.
+template_id: lagged_continuous_interaction_v1
+kind: interaction
+supported_families: [CHARACTERISTIC_SORT, IPCA]
+permitted_fields:
+  conditioning_variable: {type: enum, allowed: [baa_aaa_spread, vix, term_spread]}
+  conditioning_lag_months: {type: int, allowed: [1, 2, 3]}
+  interaction_form: {type: enum, allowed: [continuous_zscore_interaction]}
+required_invariants: [sort_signal, n_groups, weighting, universe_rule,
+                      return_definition, holding_period]
+forbidden_changes: [sample_start, sample_end, holdout_path, any_bias_toggle]
+parameter_provenance:
+  conditioning_standardisation:
+    rule: expanding_window_past_only
+    minimum_window_months: 60
+information_span:
+  signal_lookback_months: inherit_from_base
+  holding_period_months: inherit_from_base
+  conditioning_lag_months: from_config_delta

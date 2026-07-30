@@ -1,0 +1,25 @@
+# Template 3 — ex_ante_universe_conditioning_v1  (spec §7 line 455; enums AUTHORED HERE)
+# Restrict the tradable universe to a rating or liquidity segment defined EX ANTE (observed
+# before formation) — not an interaction; the signal is unchanged, the universe narrows. §7
+# names this template but gives no enum, so permitted_fields are project-defined (F5, an open design decision).
+# This is one of the two homes for the bond-level characteristics excluded from template 1:
+# rating / investment_grade define rating segments, gamma_illiq defines a liquidity segment.
+template_id: ex_ante_universe_conditioning_v1
+kind: universe_restriction
+supported_families: [CHARACTERISTIC_SORT, IPCA]
+permitted_fields:
+  conditioning_variable: {type: enum, allowed: [rating, investment_grade, gamma_illiq]}
+  conditioning_lag_months: {type: int, allowed: [1]}
+  interaction_form: {type: enum, allowed: [restrict_investment_grade, restrict_high_yield,
+                                           restrict_top_liquidity_tercile,
+                                           restrict_bottom_liquidity_tercile]}
+required_invariants: [sort_signal, n_groups, weighting, return_definition, holding_period]
+forbidden_changes: [sample_start, sample_end, holdout_path, any_bias_toggle, signal_definition]
+parameter_provenance:
+  segment_boundary:
+    rule: ex_ante_committed                 # rating grades / IG-HY cut are exogenous, not fit
+    minimum_window_months: 0
+information_span:
+  signal_lookback_months: inherit_from_base
+  holding_period_months: inherit_from_base
+  conditioning_lag_months: from_config_delta

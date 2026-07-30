@@ -1,0 +1,29 @@
+# Template 4 — signal_characteristic_interaction_v1  (spec §7 line 456; enums AUTHORED HERE)
+# signal × a second registered panel characteristic (double sort). §7 names this template but
+# gives no enum, so permitted_fields are project-defined (F5, an open design decision). This is the primary home
+# for the bond-level characteristics excluded from template 1's macro-only enum — var_5pct,
+# bond_vol, gamma_illiq, size, time_to_maturity, rating are all available (panel + signals/) and
+# timing-feasible at lag 1. If any belongs elsewhere / is missing, that is an open design decision.
+template_id: signal_characteristic_interaction_v1
+kind: interaction
+supported_families: [CHARACTERISTIC_SORT]
+permitted_fields:
+  conditioning_variable: {type: enum, allowed: [var_5pct, bond_vol, gamma_illiq, size,
+                                                time_to_maturity, rating]}
+  conditioning_lag_months: {type: int, allowed: [1]}
+  # F5(b): was discretised-only [double_sort_*]. A continuous form is added so bond × CONTINUOUS
+  # conditioning is reachable HERE (the two-axis partition's bond-continuous cell), NOT by moving
+  # bond variables into T2 (which would collapse T2 into T4 and corrupt the duplicate-rate metric).
+  interaction_form: {type: enum, allowed: [double_sort_independent, double_sort_conditional,
+                                           continuous_zscore_interaction]}
+required_invariants: [sort_signal, n_groups, weighting, universe_rule,
+                      return_definition, holding_period]
+forbidden_changes: [sample_start, sample_end, holdout_path, any_bias_toggle, signal_definition]
+parameter_provenance:
+  second_sort_breakpoints:
+    rule: expanding_window_past_only
+    minimum_window_months: 60
+information_span:
+  signal_lookback_months: inherit_from_base
+  holding_period_months: inherit_from_base
+  conditioning_lag_months: from_config_delta

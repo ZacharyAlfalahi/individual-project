@@ -1,0 +1,23 @@
+# Template 1 — lagged_binary_regime_interaction_v1  (spec §7, authored VERBATIM)
+# signal × binary regime indicator, lagged. permitted_fields are EXACTLY the §7 example — the
+# enum is macro-regime-only by the spec. See prereg/reachability_census.md finding F5: the
+# bond-level characteristics (gamma_illiq, var_5pct, bond_vol, rating) are deliberately NOT here
+# (this is a MACRO-regime template); they are reachable via templates 3 and 4.
+template_id: lagged_binary_regime_interaction_v1
+kind: interaction
+supported_families: [CHARACTERISTIC_SORT, IPCA]
+permitted_fields:
+  conditioning_variable: {type: enum, allowed: [baa_aaa_spread, vix, term_spread]}
+  conditioning_lag_months: {type: int, allowed: [1, 2, 3]}
+  interaction_form: {type: enum, allowed: [binary_above_historical_median]}
+required_invariants: [sort_signal, n_groups, weighting, universe_rule,
+                      return_definition, holding_period]
+forbidden_changes: [sample_start, sample_end, holdout_path, any_bias_toggle]
+parameter_provenance:                       # INVARIANT 3
+  conditioning_threshold:
+    rule: expanding_window_past_only        # | ex_ante_committed
+    minimum_window_months: 60
+information_span:                           # feeds the CPCV purge contract
+  signal_lookback_months: inherit_from_base
+  holding_period_months: inherit_from_base
+  conditioning_lag_months: from_config_delta

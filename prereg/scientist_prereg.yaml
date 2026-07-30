@@ -42,6 +42,12 @@ generation:
 
 inference:
   bh_fdr_q: 0.10
+  secondary_benchmark: DFPS4        # SC-SCI-5 (point 11): reported alongside primary BBW-4; both
+                                    #   in the tag; DFPS-4 built with the G3 inference gate.
+
+# F6: macro conditioning series ingested from >= 1997-07 warms the expanding-window threshold, so
+# effective T stays 209 for every template (T1/T2 would otherwise be ~174). See scope_changes.md.
+t_warming: macro_ingested_from_1997_07_keeps_T_209_uniform
 
 cpcv:
   n_groups: 8
