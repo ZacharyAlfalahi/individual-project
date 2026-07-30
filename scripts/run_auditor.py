@@ -43,6 +43,10 @@ from agents.auditor.checks.orchestrator import AuditRefused, run_audit  # noqa: 
 from agents.auditor.ipca_differential.runner import load_dev_inputs  # noqa: E402
 from agents.auditor.schemas.audit_core import AuditCore  # noqa: E402
 from agents.auditor.schemas.toggle import TOGGLE_IDS, ToggleFacts  # noqa: E402
+from agents.librarian.registries.standing_substitutions import (  # noqa: E402
+    STANDING_SUBS_V1_SHA256,
+    load_standing_substitutions,
+)
 
 # The pre-registration tag stamped on every core AuditCore (README §14; thresholds:auditor).
 AUDITOR_PREREG_TAG = "auditor-prereg-2026-07-22"
@@ -64,14 +68,27 @@ DEFAULT_TOL = 1e-9
 # --------------------------------------------------------------------------
 
 def load_anchor_strategy(anchor_id: str):
-    """The runnable strategy the lattice consumes: gold spec -> adapted per-leg calls.
+    """The runnable strategy the lattice consumes: gold spec -> adapted per-leg calls,
+    WITH the pre-registered standing-substitution conventions (contract §6) applied.
 
-    `load_gold_spec` + `adapt_spec` are the same chain the G2 harness and the anchor
-    no-false-positive gate use; this is their first use on a real audit run."""
+    `load_gold_spec` + `adapt_spec` are the same chain the G2 harness uses
+    (`evaluation/harness/round_trip.py:81`), and like that harness this passes the real
+    standing-subs table. Without it the value-weighted / ex-post-trimmed anchors REFUSE:
+    `weighting_base=market_value` -> par via `par_weighting_v1`, and `expost_trim=truncate`
+    -> none via `lab_trim_delegation_v1`. The file hash is asserted against the recorded
+    pre-registration constant (the §6 temporal bright line) so an absent/edited table is
+    caught fail-loud, never silently applied."""
     from agents.librarian.adapter.adapt import adapt_spec
     from evaluation.gold_specs.gold_loader import load_gold_spec
 
-    return adapt_spec(load_gold_spec(anchor_id))
+    standing_subs = load_standing_substitutions()
+    if not standing_subs.verify_hash(STANDING_SUBS_V1_SHA256):
+        raise ValueError(
+            "standing-substitutions file hash does not match STANDING_SUBS_V1_SHA256 "
+            "(contract §6): refusing to adapt anchors -- the §6 conventions must match the "
+            "recorded pre-registration before any real audit run."
+        )
+    return adapt_spec(load_gold_spec(anchor_id), standing_subs=standing_subs)
 
 
 def default_anchor_facts() -> list[ToggleFacts]:
@@ -242,6 +259,7 @@ def run_all(
         "git_commit": _git_short(),
         "auditor_prereg_tag": AUDITOR_PREREG_TAG,
         "thresholds_auditor_hash": _auditor_config_hash(),
+        "standing_subs_sha256": STANDING_SUBS_V1_SHA256,
         "window": "development 2002-2021 (holdout untouched)",
         "check": "core-sync-1",
         "tol": tol,

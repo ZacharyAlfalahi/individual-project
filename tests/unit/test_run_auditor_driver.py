@@ -27,6 +27,7 @@ from run_auditor import (
     audit_anchor,
     core_sync_1_verdict,
     default_anchor_facts,
+    load_anchor_strategy,
     stale_invariance_note,
 )
 
@@ -99,3 +100,29 @@ def test_stale_injection_fails_core_sync_1():
     verdict = core_sync_1_verdict(core.saturated.doe)
     assert verdict["passed"] is False
     assert abs(core.saturated.doe[_STALE]) > run_auditor.DEFAULT_TOL
+
+
+# --------------------------------------------------------------------------
+# 3. the adapt path applies the §6 standing subs (regression: the driver once
+#    called adapt_spec WITHOUT the standing-subs table, so `str` and `mom6`
+#    refused on the real panel — weighting_base=market_value / expost_trim=truncate).
+#    No panel needed: this pins the gold-spec -> adapt_spec half of the real path.
+# --------------------------------------------------------------------------
+
+def test_load_anchor_strategy_applies_standing_subs():
+    """`str` and `mom6` are ONLY runnable once the pre-registered §6 conventions are
+    applied; the driver must pass the standing-subs table (contract §6). `drf` needs no
+    sub. A refusal here would mean the driver dropped the standing-subs wiring again."""
+    cases = {
+        "str": "par_weighting_v1",       # weighting_base market_value -> par
+        "mom6": "lab_trim_delegation_v1",  # expost_trim truncate -> none (delegated to lab_trim)
+    }
+    for anchor, sub_id in cases.items():
+        strat = load_anchor_strategy(anchor)
+        assert not strat.refused, f"{anchor} refused despite §6 standing subs"
+        applied = {a.substitution_id for a in strat.standing_subs_applied}
+        assert sub_id in applied, f"{anchor} did not apply {sub_id}; applied={applied}"
+
+    # drf (BBW) is runnable with no standing substitution.
+    drf = load_anchor_strategy("drf")
+    assert not drf.refused and not drf.standing_subs_applied
