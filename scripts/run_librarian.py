@@ -8,7 +8,7 @@ enumeration -> per-field dual-model extraction (D9 merge + quote gate) ->
 stamp + fail-closed validate -> emit.
 
 Phases (docs/thresholds.yaml -> librarian.model_stack, D33 two-phase policy):
-  --phase dev   Phase-D free pair (Gemini 2.5 Flash + Mistral free tier). Needs
+  --phase dev   Phase-D free pair (Gemini 3.1-flash-lite + Mistral free tier). Needs
                 GEMINI_API_KEY + MISTRAL_API_KEY (see .env.example). Non-reportable.
   --phase report  Phase-F reported pair (Claude Sonnet + Gemini). Gated on SKU
                 authorization (D33); needs ANTHROPIC_API_KEY too.
