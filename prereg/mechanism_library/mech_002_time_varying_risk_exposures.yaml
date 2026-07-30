@@ -1,0 +1,44 @@
+mechanism_id: mech_002
+version: 1.0.0
+title: Time-varying (conditional) risk exposures
+claim: >
+  Risk exposures fluctuate substantially over time, so the predictive relation between a signal
+  and future returns is state-dependent; conditioning a signal on a lagged, time-varying regime
+  indicator captures variation that an unconditional (static-beta) model misses.
+sources:
+  - source_id: KPP_2023
+    kind: primary
+    quote: >-
+      a large literature documents that risk exposures tend to fluctuate rather dramatically over
+      time.
+    verification:
+      extractor: frozen_canonical
+      text: evaluation/canonical_texts/kpp_2023.frozen.yaml
+      locate_level: L1
+      page: 1
+      cite: "Kelly, Palhares & Pruitt (2023), J. Finance 78(4), p.1968, Introduction"
+    status: VERIFIED
+  # SURVEY source — exercises the survey-chaining schema: Giglio, Kelly & Xiu is a survey, so it
+  # must chain to the primary methodology it cites (Kelly, Pruitt & Su 2019, the IPCA paper).
+  - source_id: GKX_2022
+    kind: survey
+    quote: "A limitation of PCA is that it only applies to static factor models."
+    verification:
+      extractor: pymupdf
+      text: "papers/pdf/Factor models, ML, and asset pricing.pdf"
+      locate_level: L2
+      page: 8
+      cite: "Giglio, Kelly & Xiu (2022), Ann. Rev. Financial Economics 14, §3.2.4"
+    chains_to:
+      source_id: KPS_2019
+      cite: "Kelly, Pruitt & Su (2019), 'Characteristics are covariances', J. Financial Economics 134(3)"
+    status: VERIFIED
+applicability:
+  strategy_families: [CHARACTERISTIC_SORT, IPCA]
+  required_inputs:
+    - {variable_family: macro_regime_indicator, timing_rule: observed_before_formation}
+allowed_templates: [lagged_binary_regime_interaction_v1, lagged_continuous_interaction_v1]
+forbidden_uses:
+  - threshold_selected_on_performance
+  - contemporaneous_regime_data
+  - look_ahead_regime_classification

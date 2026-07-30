@@ -1,0 +1,29 @@
+mechanism_id: mech_001
+version: 1.0.0
+title: Characteristic-instrumented conditional betas
+claim: >
+  A bond's factor risk exposures are not static but vary with observable firm and bond
+  characteristics; a characteristic can therefore instrument a time-varying conditional beta,
+  making the predictive strength of a return signal depend on a second registered bond
+  characteristic (a signal x characteristic interaction).
+sources:
+  - source_id: KPP_2023
+    kind: primary
+    quote: >-
+      we parameterize factor betas to depend on observable firm and bond characteristics. These
+      serve as instruments that make it possible to estimate time-varying conditional betas.
+    verification:
+      extractor: frozen_canonical
+      text: evaluation/canonical_texts/kpp_2023.frozen.yaml
+      locate_level: L1
+      page: 1
+      cite: "Kelly, Palhares & Pruitt (2023), J. Finance 78(4), p.1968, Introduction"
+    status: VERIFIED
+applicability:
+  strategy_families: [CHARACTERISTIC_SORT, IPCA]
+  required_inputs:
+    - {variable_family: bond_characteristic, timing_rule: observed_before_formation}
+allowed_templates: [signal_characteristic_interaction_v1]
+forbidden_uses:
+  - threshold_selected_on_performance
+  - contemporaneous_conditioning_data

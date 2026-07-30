@@ -1,0 +1,12 @@
+# Variable-family registry — maps a mechanism's required-input `variable_family` to the concrete
+# conditioning variables that satisfy it. Consumed by the eligibility filter (INVARIANT 4: every
+# field has a deterministic consumer). Only variables that are (a) present in the panel / signals
+# / macro conditioning set and (b) reachable through some template enum (see
+# prereg/reachability_census.md) may appear here — the library is authored backwards from the
+# census, so every mechanism is executable by construction.
+variable_families:
+  macro_regime_indicator: [baa_aaa_spread, vix, term_spread]
+  credit_regime_indicator: [baa_aaa_spread]
+  bond_characteristic: [var_5pct, bond_vol, gamma_illiq, size, time_to_maturity, rating]
+  rating_segment: [rating, investment_grade]
+  liquidity_measure: [gamma_illiq]
