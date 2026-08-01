@@ -27,6 +27,7 @@ from typing import Callable, Protocol
 
 import numpy as np
 
+from ..schemas.equivalence import equivalence_key as _equivalence_key
 from ..schemas.proposal import ExtensionProposal, decode_proposal
 from ..schemas.proposal_set import ProposalSet
 from .context_builder import TOGGLE_DEFINITIONS
@@ -212,12 +213,6 @@ def minilm_embedder() -> Callable[[list[str]], np.ndarray]:
 
 
 # ---- the generation loop (§8.2) -----------------------------------------------------------
-
-def _equivalence_key(p: ExtensionProposal) -> tuple:
-    cd = p.config_delta
-    return (p.mechanism_ref, p.template_ref, cd.conditioning_variable,
-            cd.conditioning_lag_months, cd.interaction_form)
-
 
 @dataclass(frozen=True)
 class GenerationResult:
