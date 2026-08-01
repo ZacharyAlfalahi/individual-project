@@ -44,10 +44,21 @@ def _sha(payload) -> str:
 def load_library(lib_dir: Path | str = LIB_DIR, templates_dir: Path | str = TEMPLATES_DIR) -> MechanismLibrary:
     lib_dir, templates_dir = Path(lib_dir), Path(templates_dir)
     mechanisms = tuple(yaml.safe_load(p.read_text()) for p in sorted(lib_dir.glob("mech_*.yaml")))
+    # Fail loud rather than silently return an empty / malformed library (a zero-mechanism library
+    # would make every strategy trivially fail the eligibility gate with no error).
+    if not mechanisms:
+        raise ValueError(f"no mechanism entries (mech_*.yaml) under {lib_dir}")
+    for m in mechanisms:
+        if not isinstance(m, dict) or "mechanism_id" not in m:
+            raise ValueError(f"malformed mechanism entry (need a mapping with mechanism_id): {m!r}")
     templates = {}
     for p in sorted(templates_dir.glob("*.yaml")):
         t = yaml.safe_load(p.read_text())
+        if not isinstance(t, dict) or "template_id" not in t:
+            raise ValueError(f"malformed template (need a mapping with template_id): {p}")
         templates[t["template_id"]] = t
+    if not templates:
+        raise ValueError(f"no templates (*.yaml) under {templates_dir}")
     variable_families = yaml.safe_load((lib_dir / "variable_families.yaml").read_text())["variable_families"]
     version_hash = _sha([list(mechanisms), dict(sorted(templates.items())), variable_families])
     return MechanismLibrary(mechanisms, templates, variable_families, version_hash)

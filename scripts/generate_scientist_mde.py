@@ -124,7 +124,7 @@ def render(m_values: list[int], q: float, n_months: int) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--m", type=int, help="family size (repeatable via comma list)")
+    ap.add_argument("--m", type=int, help="family size (single int; use with --q and --T)")
     ap.add_argument("--q", type=float, help="BH-FDR level")
     ap.add_argument("--T", type=int, help="primary-inference months")
     ap.add_argument("--stdout", action="store_true", help="print only; do not write the file")

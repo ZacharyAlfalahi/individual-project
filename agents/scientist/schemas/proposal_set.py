@@ -35,6 +35,18 @@ def _canonical_hash(payload: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _proposal_for_hash(p: ExtensionProposal) -> dict:
+    """A proposal dump for the CONTENT HASH, with the per-proposal wall-clock stamp
+    (`generation.generated_at`) removed. The fingerprint must be reproducible (§5.3 / R5): the
+    top-level `generated_at` is already excluded, and the nested per-proposal one must be too, or
+    an identical set generated at a different time would hash differently."""
+    dump = p.model_dump(mode="json")
+    generation = dump.get("generation")
+    if isinstance(generation, dict):
+        generation.pop("generated_at", None)
+    return dump
+
+
 @dataclass(frozen=True)
 class ProposalSet:
     case_id: str
@@ -70,7 +82,7 @@ class ProposalSet:
             "model": model,
             "prompt_version": prompt_version,
             "library_version": library_version,
-            "proposals": [p.model_dump(mode="json") for p in proposals],
+            "proposals": [_proposal_for_hash(p) for p in proposals],
         }
         return cls(
             case_id=case_id,

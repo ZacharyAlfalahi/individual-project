@@ -55,6 +55,14 @@ def enumerate_proposal_space(
     for r in eligible_results:
         if not r.eligible:
             continue
+        # ConfigDelta conditions on ONE variable; a multi-required-input mechanism would need the
+        # inputs crossed. None exist in the library today — fail loud rather than silently emit a
+        # proposal that satisfies only one input (see review m5).
+        if len(r.reachable) != 1:
+            raise NotImplementedError(
+                f"{r.mechanism_id}: multi-required-input mechanisms are not modeled "
+                f"(saw families {sorted(r.reachable)})"
+            )
         for _fam, options in r.reachable.items():
             for tid, var in options:
                 t = library.templates[tid]
@@ -67,6 +75,11 @@ def enumerate_proposal_space(
 def _first_config(r: EligibilityResult, library: MechanismLibrary) -> ProposalSpec:
     """The deterministic 'default template' config for a mechanism (§8.1 retrieval_only): the
     first reachable (template, variable) in canonical order, first lag, first form."""
+    if len(r.reachable) != 1:
+        raise NotImplementedError(
+            f"{r.mechanism_id}: multi-required-input mechanisms are not modeled "
+            f"(saw families {sorted(r.reachable)})"
+        )
     for _fam, options in sorted(r.reachable.items()):
         if options:
             tid, var = sorted(options)[0]

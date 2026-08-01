@@ -40,12 +40,16 @@ def load_config() -> dict:
 
 def download_fred_series(url: str) -> pd.DataFrame:
     print(f"Downloading: {url}")
+    # -f: fail (nonzero exit) on HTTP 4xx/5xx so an error page never flows into read_csv;
+    # -S: still show the error under -s; --retry 3: tolerate transient network blips.
     result = subprocess.run(
-        ["curl", "-s", "--max-time", "60", url],
+        ["curl", "-fsS", "--retry", "3", "--max-time", "60", url],
         capture_output=True,
         text=True,
         check=True,
     )
+    if not result.stdout.lstrip().startswith("observation_date"):
+        raise ValueError(f"unexpected FRED response (no observation_date header) from {url}")
     return pd.read_csv(io.StringIO(result.stdout), na_values=[".", ""])
 
 
@@ -80,6 +84,8 @@ def build_spread_parquet(cfg: dict) -> int:
     # Cap at the development boundary — never let holdout-era rows into a dev artefact.
     dev_end = _dev_boundary_period(REPO_ROOT)
     out = out[pd.PeriodIndex(out["year_month"], freq="M") <= dev_end].reset_index(drop=True)
+    if out.empty:
+        raise ValueError(f"BAA-AAA: zero rows at/before the dev boundary {dev_end} — check the pull")
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pandas(out, preserve_index=False)
     tmp = OUT_FILE.with_suffix(".parquet.tmp")

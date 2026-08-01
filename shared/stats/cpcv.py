@@ -83,6 +83,8 @@ def cpcv_folds(
     """All C(n_groups, test_groups) (train, test) index folds, with purge + embargo applied to
     each train set. Test indices are the union of the chosen groups; train is everything else
     minus purged/embargoed observations."""
+    if purge < 0 or embargo < 0:
+        raise ValueError(f"purge and embargo must be >= 0; got purge={purge}, embargo={embargo}")
     groups = partition_groups(n_obs, n_groups)
     all_pos = np.arange(n_obs)
     folds: list[tuple[np.ndarray, np.ndarray]] = []

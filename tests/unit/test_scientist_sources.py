@@ -138,6 +138,18 @@ def test_invalid_and_duplicate_are_counted_never_regenerated():
 
 # ---- persist all seeds (R5) ---------------------------------------------------------------
 
+def test_content_hash_reproducible_across_generated_at():
+    # M3: identical content at a different wall-clock time must hash identically — the per-proposal
+    # generation.generated_at must be excluded from the content hash, not just the top-level one.
+    src, case, elig = S.RandomEligibleSource(), _case(), _elig()
+    a = S.run_generation(src, case, elig, LIB, seed=0, m=6, model="d", prompt_version="v0",
+                         generated_at="2026-08-01T00:00:00Z")
+    b = S.run_generation(src, case, elig, LIB, seed=0, m=6, model="d", prompt_version="v0",
+                         generated_at="2027-01-01T12:34:56Z")
+    assert a.proposal_set.content_hash == b.proposal_set.content_hash
+    assert a.proposal_set.generated_at != b.proposal_set.generated_at   # stamp still differs
+
+
 def test_run_all_seeds_persists_every_seed():
     results = S.run_all_seeds(S.RandomEligibleSource(), _case(), _elig(), LIB, k=5, m=6,
                               model="d", prompt_version="v0", generated_at=GEN_AT)

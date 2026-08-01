@@ -36,13 +36,15 @@ def load_config() -> dict:
 def download_fred_series(url: str) -> pd.DataFrame:
     print(f"Downloading: {url}")
     result = subprocess.run(
-        ["curl", "-s", "--max-time", "60", url],
+        # -f fails on HTTP 4xx/5xx (no error page into read_csv); -S shows it under -s; --retry 3.
+        ["curl", "-fsS", "--retry", "3", "--max-time", "60", url],
         capture_output=True,
         text=True,
         check=True,
     )
-    df = pd.read_csv(io.StringIO(result.stdout), na_values=[".", ""])
-    return df
+    if not result.stdout.lstrip().startswith("observation_date"):
+        raise ValueError(f"unexpected FRED response (no observation_date header) from {url}")
+    return pd.read_csv(io.StringIO(result.stdout), na_values=[".", ""])
 
 
 def build_rf_parquet(cfg: dict) -> int:
