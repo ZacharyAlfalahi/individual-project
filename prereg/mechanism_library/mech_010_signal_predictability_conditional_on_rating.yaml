@@ -1,0 +1,27 @@
+mechanism_id: mech_010
+version: 1.0.0
+title: Signal predictability conditional on credit rating
+claim: >
+  A characteristic-signal's cross-sectional predictive strength can depend on credit rating: KPP
+  embed an explicit bond-momentum x rating interaction instrument, encoding that momentum's (and
+  by extension a signal's) payoff is conditional on the rating segment. A signal should therefore
+  be conditioned on rating (a rating x signal double-sort or an ex-ante rating segment).
+sources:
+  - source_id: KPP_2023
+    kind: primary
+    quote: "mom. 6m × ratings is bond return momentum times the numerical rating"
+    verification:
+      extractor: frozen_canonical
+      text: evaluation/canonical_texts/kpp_2023.frozen.yaml
+      locate_level: L1
+      page: 35
+      cite: "Kelly, Palhares & Pruitt (2023), J. Finance 78(4), Appendix A / Table AI item 14, p.2002-03; interaction from Avramov, Chordia, Jostova & Philipov (2007), 'Momentum and Credit Rating'"
+    status: VERIFIED
+applicability:
+  strategy_families: [CHARACTERISTIC_SORT]
+  required_inputs:
+    - {variable_family: rating_segment, timing_rule: observed_before_formation}
+allowed_templates: [signal_characteristic_interaction_v1, ex_ante_universe_conditioning_v1]
+forbidden_uses:
+  - threshold_selected_on_performance
+  - contemporaneous_conditioning_data

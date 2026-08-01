@@ -58,7 +58,7 @@ An entry may also carry a `caveats:` list — source-fidelity limitations record
 the BPW 2003–2009 crisis-dominated sample). Consumed by the context builder (surfaced to the
 researcher) and the write-up.
 
-## Entries (9 distinct mechanisms)
+## Entries (11 distinct mechanisms)
 
 | id | mechanism | source (chain) | conditioning | templates |
 |---|---|---|---|---|
@@ -71,17 +71,33 @@ researcher) and the write-up.
 | mech_007 | Nonlinear characteristic interactions | DG 2025 | bond characteristic | T4 |
 | mech_008 | Within-rating illiquidity premium (robust off-crisis) | BPW 2011 | gamma_illiq | T3, T4 |
 | mech_009 | Rating-conditional illiquidity importance (degree crisis-inflated) | BPW 2011 | rating segment | T3, T4 |
+| mech_010 | Signal predictability conditional on credit rating | KPP 2023 (orig. Avramov et al. 2007) | rating segment | T3, T4 |
+| mech_011 | Structural nonlinear dependence on macro state | GKX survey → Campbell–Cochrane 1999 (+3) | macro regime | T1, T2 |
 
 Verified by `tests/unit/test_scientist_mechanism_library.py` (quotes re-locate; survey chains;
 reachable per census) and exercised by `tests/unit/test_scientist_researcher.py` (eligibility +
-wall). The **≥ 8 gate is on conceptually DISTINCT mechanisms, not entry count** — met at **9**.
+wall). The **≥ 8 gate is on conceptually DISTINCT mechanisms, not entry count** — met at **11**.
 
-## Honest yield (spec §6 target 15–25; NOT padded)
+## Honest yield (spec §6 target 15–25; NOT padded) — after an exhaustive full-paper sweep
 
-The honest yield across the mechanism sources (KPP, GKX, DG, BPW) is **9 distinct mechanisms** —
-above the ≥ 8 eligibility gate but below §6's 15–25 target. Per the build directive, entries are
-**not manufactured** to reach 15; the number is reported and any amendment to §6's target is
-**a project decision**, logged in `docs/data/registers/scope_changes.md` (SC-SCI-6). BBW 2019 is
-excluded as a mechanism source (retracted, point 11); DRR/Jostova are bias/anchor sources, not
-extension-mechanism sources; the GKX maturity mechanism was dropped as redundant (it chains back
-to KPP, so it is not conceptually distinct from the KPP cluster).
+Each of the four mechanism sources was read end-to-end a second time to enumerate EVERY distinct
+conditioning mechanism (`scope_changes.md` SC-SCI-6). Honest yield = **11 distinct mechanisms**
+(3 KPP + 2 GKX-survey + 3 DG + 2 BPW + 1 KPP-momentum) — above the ≥ 8 gate, below §6's 15–25
+target. Entries are **not manufactured** to reach 15.
+
+**Deliberately excluded / dropped (with reasons):**
+- **KPP debt-equity (Merton hedge-ratio) conditioning** — a headline KPP mechanism, but it
+  conditions on **distance-to-default**, which is **not in the panel** (equity-derived, absent).
+  Authoring it would produce an *ineligible* entry (violating authored-backwards); recorded here
+  as a **data-gated exclusion**, not a library entry.
+- **BBW 2019** as a mechanism source — retracted (point 11).
+- **GKX nonlinear-characteristic-loading variants** (nonparametric betas; conditional autoencoder;
+  ML tree/NN interactions) — collapse into mech_007 (nonlinear characteristic conditioning).
+- **GKX LSTM macro-SDF** — same claim as mech_004 with an ML implementation.
+- **GKX maturity roll-down** — chains back to KPP (not distinct from the KPP cluster).
+- **BPW crisis-vs-normal regime** — inseparable from mech_009's crisis caveat; rests on one
+  crisis episode, not cleanly OOS-implementable. **BPW systematic-illiquidity-as-priced-factor**
+  — explicitly declined by BPW. **BPW sign-of-return reversal asymmetry** — conditions on an
+  out-of-scope state (sign of recent price move), not a registered conditioning variable.
+- **DG liquidity/size regime-exposure** (p22) — an ex-post sample-robustness rationalization, not
+  a predictive-strength interaction.
