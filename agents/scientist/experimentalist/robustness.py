@@ -20,6 +20,7 @@ import pandas as pd
 from agents.quant.library.characteristic_sort import summarize_returns
 
 from shared.evaluation.crowding import crowding_diagnostic
+from shared.evaluation.crowding_l2 import ipca_crowding_diagnostic
 from shared.evaluation.thresholds import load_crowding_config
 from shared.stats import cpcv_evaluate, deflated_sharpe_ratio
 
@@ -41,6 +42,7 @@ def robustness_g4(
     test_groups: int = 2,
     crowding_config=None,
     crowding_factors=None,
+    ipca_factors=None,
 ):
     embargo = max(1, holding_period)
     cpcv = cpcv_evaluate(candidate_returns, n_groups=n_groups, test_groups=test_groups,
@@ -59,7 +61,11 @@ def robustness_g4(
     # Layer-1 crowding (measurement only). Real run loads the factor bundle from the config;
     # tests inject `crowding_factors`.
     config = crowding_config if crowding_config is not None else load_crowding_config()
-    crowd = crowding_diagnostic(candidate_returns, config=config, factors=crowding_factors)
+    crowd = dict(crowding_diagnostic(candidate_returns, config=config, factors=crowding_factors))
+    # Layer 2 (recursive-OOS IPCA spanning) — a SECOND lens, merged in beside Layer 1 when the
+    # recursive-OOS IPCA factor frame is supplied (measurement only, never gating).
+    if ipca_factors is not None:
+        crowd.update(ipca_crowding_diagnostic(candidate_returns, ipca_factors, nw_lags=nw_lags))
 
     measurements = Measurements(gross=gross, cpcv=cpcv.to_dict(), deflated_sharpe=dsr, crowding=crowd)
     return (GateOutcome("G4", passed=cpcv_qualified, booleans={"cpcv_qualified": cpcv_qualified}),
