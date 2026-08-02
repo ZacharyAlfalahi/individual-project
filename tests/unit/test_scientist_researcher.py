@@ -56,7 +56,7 @@ def test_library_version_hash_is_stable():
 
 def test_characteristic_sort_meets_the_distinct_mechanism_gate():
     elig = eligible_mechanisms(
-        LIB.mechanisms, strategy_family="CHARACTERISTIC_SORT", templates=LIB.templates,
+        LIB.mechanisms, strategy_family="CHARACTERISTIC_SORT", holding_period=1, templates=LIB.templates,
         variable_families=LIB.variable_families, available_variables=AVAILABLE,
     )
     # >= 8 conceptually-distinct mechanisms (spec §6 gate) — measured on distinct titles.
@@ -67,7 +67,7 @@ def test_characteristic_sort_meets_the_distinct_mechanism_gate():
 def test_wrong_family_is_ineligible():
     # mech_007 (nonlinear characteristic interactions) is CHARACTERISTIC_SORT only.
     m = LIB.mechanism("mech_007")
-    r = evaluate(m, strategy_family="IPCA", templates=LIB.templates,
+    r = evaluate(m, strategy_family="IPCA", holding_period=1, templates=LIB.templates,
                  variable_families=LIB.variable_families, available_variables=AVAILABLE)
     assert not r.eligible
     assert any("not supported" in reason for reason in r.reasons)
@@ -76,7 +76,7 @@ def test_wrong_family_is_ineligible():
 def test_missing_variable_makes_ineligible_with_reason():
     # Remove gamma_illiq from availability -> mech_008 (needs liquidity_measure) becomes ineligible.
     avail = AVAILABLE - {"gamma_illiq"}
-    r = evaluate(LIB.mechanism("mech_008"), strategy_family="CHARACTERISTIC_SORT",
+    r = evaluate(LIB.mechanism("mech_008"), strategy_family="CHARACTERISTIC_SORT", holding_period=1,
                  templates=LIB.templates, variable_families=LIB.variable_families,
                  available_variables=avail)
     assert not r.eligible
@@ -84,7 +84,7 @@ def test_missing_variable_makes_ineligible_with_reason():
 
 
 def test_eligible_mechanism_has_reachable_options():
-    r = evaluate(LIB.mechanism("mech_003"), strategy_family="CHARACTERISTIC_SORT",
+    r = evaluate(LIB.mechanism("mech_003"), strategy_family="CHARACTERISTIC_SORT", holding_period=1,
                  templates=LIB.templates, variable_families=LIB.variable_families,
                  available_variables=AVAILABLE)
     assert r.eligible
@@ -93,12 +93,25 @@ def test_eligible_mechanism_has_reachable_options():
     assert opts and all(v == "baa_aaa_spread" for _, v in opts)
 
 
+def test_f8_mom6_holding6_excludes_t4_only_mechanisms():
+    # F8: at holding_period=6 the native double-sort (T4) is refused, so T4-only mechanisms
+    # (mech_001, mech_007) are ineligible; the panel-transform templates keep the rest eligible.
+    def elig(hp):
+        return {m["mechanism_id"] for m in eligible_mechanisms(
+            LIB.mechanisms, strategy_family="CHARACTERISTIC_SORT", holding_period=hp,
+            templates=LIB.templates, variable_families=LIB.variable_families,
+            available_variables=AVAILABLE)}
+    at6, at1 = elig(6), elig(1)
+    assert {"mech_001", "mech_007"}.isdisjoint(at6)
+    assert len(at6) == 9 and len(at1) == 11
+
+
 # ---- the wall (INVARIANT 1) ---------------------------------------------------------------
 
 def test_context_contains_only_allow_listed_fields_and_no_magnitudes():
     case = _case()
     results = [
-        evaluate(m, strategy_family="CHARACTERISTIC_SORT", templates=LIB.templates,
+        evaluate(m, strategy_family="CHARACTERISTIC_SORT", holding_period=1, templates=LIB.templates,
                  variable_families=LIB.variable_families, available_variables=AVAILABLE)
         for m in LIB.mechanisms
     ]

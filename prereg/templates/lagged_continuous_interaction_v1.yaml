@@ -8,6 +8,13 @@
 template_id: lagged_continuous_interaction_v1
 kind: interaction
 supported_families: [CHARACTERISTIC_SORT, IPCA]
+# F8: realised as a MONTH FILTER on the corrected panel (same family as T1 — condition on the
+# lagged macro regime). Panel-view operation; engine unmodified. Same G2 obligations as T1.
+execution:
+  mode: month_filter
+  native_engine: false
+  panel_transform: true
+  g2_check: month_filter_lag_and_expanding_window
 permitted_fields:
   conditioning_variable: {type: enum, allowed: [baa_aaa_spread, vix, term_spread]}
   conditioning_lag_months: {type: int, allowed: [1, 2, 3]}

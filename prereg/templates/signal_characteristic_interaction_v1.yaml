@@ -7,6 +7,17 @@
 template_id: signal_characteristic_interaction_v1
 kind: interaction
 supported_families: [CHARACTERISTIC_SORT]
+# F8: NATIVELY executed by the audited engine — the `control` / `control_groups` double-sort
+# (independent / fully-crossed only; a conditional/nested sort is an ASSUMPTION_MISMATCH). The
+# engine refuses a double-sort held for more than one month (UNSUPPORTED_COMBINATION), so this
+# template is executable ONLY for a holding_period=1 strategy (str, drf) — NOT mom6 (holding 6).
+execution:
+  mode: double_sort
+  native_engine: true
+  panel_transform: false
+  requires_holding_period: 1
+  variant: independent_only
+  g2_check: double_sort_native
 permitted_fields:
   conditioning_variable: {type: enum, allowed: [var_5pct, bond_vol, gamma_illiq, size,
                                                 time_to_maturity, rating]}

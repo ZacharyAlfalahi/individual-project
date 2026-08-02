@@ -7,6 +7,16 @@
 template_id: ex_ante_universe_conditioning_v1
 kind: universe_restriction
 supported_families: [CHARACTERISTIC_SORT, IPCA]
+# F8: the audited engine has no segment filter, so this is realised as a ROW FILTER on the
+# corrected panel (restrict to an ex-ante rating/liquidity segment before the sort) — a panel-view
+# operation leaving agents/quant/library/ unmodified. The sort is unchanged; only WHICH ROWS
+# (bonds) enter differs. G2 must verify the row filter is EX-ANTE (observed at formation) and
+# never keys off a realised-return field.
+execution:
+  mode: row_filter
+  native_engine: false
+  panel_transform: true
+  g2_check: row_filter_ex_ante_provenance
 permitted_fields:
   conditioning_variable: {type: enum, allowed: [rating, investment_grade, gamma_illiq]}
   conditioning_lag_months: {type: int, allowed: [1]}

@@ -28,9 +28,10 @@ _BANNED = {"sharpe", "alpha", "t_stat", "p_value", "p_raw", "p_bh", "effect", "d
            "bh_adjusted_p", "mean_return"}
 
 
-def _elig(strategy_family="CHARACTERISTIC_SORT"):
-    return [evaluate(m, strategy_family=strategy_family, templates=LIB.templates,
-                     variable_families=LIB.variable_families, available_variables=AVAILABLE)
+def _elig(strategy_family="CHARACTERISTIC_SORT", holding_period=1):
+    return [evaluate(m, strategy_family=strategy_family, holding_period=holding_period,
+                     templates=LIB.templates, variable_families=LIB.variable_families,
+                     available_variables=AVAILABLE)
             for m in LIB.mechanisms]
 
 

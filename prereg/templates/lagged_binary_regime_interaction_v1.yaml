@@ -6,6 +6,16 @@
 template_id: lagged_binary_regime_interaction_v1
 kind: interaction
 supported_families: [CHARACTERISTIC_SORT, IPCA]
+# F8: the audited engine has no regime input, so this is realised as a MONTH FILTER on the
+# corrected panel (partition months by the lagged regime, run the sort in each) — a panel-view
+# operation leaving agents/quant/library/ unmodified. The sort is unchanged; only WHICH MONTHS
+# enter differs. G2 must verify the month filter is lagged AND its threshold is an expanding
+# past-only window, never a full-sample median (a look-ahead the extension itself could introduce).
+execution:
+  mode: month_filter
+  native_engine: false
+  panel_transform: true
+  g2_check: month_filter_lag_and_expanding_window
 permitted_fields:
   conditioning_variable: {type: enum, allowed: [baa_aaa_spread, vix, term_spread]}
   conditioning_lag_months: {type: int, allowed: [1, 2, 3]}
