@@ -71,7 +71,17 @@ def test_g4_negative_candidate_not_cpcv_qualified():
     out, meas = robustness_g4(y, GrossMeasurements(), n_trials=6, information_span=2,
                               holding_period=1, sr_std=0.5, crowding_config=_cfg(),
                               crowding_factors=_factors())
-    assert not out.passed and not out.booleans["cpcv_qualified"]
+    assert not out.passed and not out.booleans["cpcv_qualified"]   # direction=+1 (default)
+
+
+def test_g4_directional_cpcv_qualifies_a_negative_premium_strategy():
+    # SC-SCI-8: the SAME negative-median candidate IS CPCV-qualified for a negative-premium
+    # strategy (direction=-1) -> the latent str sign bug is fixed.
+    y = _candidate(mean=-0.02)
+    out, meas = robustness_g4(y, GrossMeasurements(), n_trials=6, information_span=2,
+                              holding_period=1, sr_std=0.5, direction=-1, crowding_config=_cfg(),
+                              crowding_factors=_factors())
+    assert out.passed and out.booleans["cpcv_qualified"]
 
 
 # ---- G5 (lexicographic) -------------------------------------------------------------------

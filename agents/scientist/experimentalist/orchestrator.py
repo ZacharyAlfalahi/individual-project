@@ -41,6 +41,8 @@ class ExperimentReport:
     records: tuple                       # EvaluationRecord per proposal (input order)
     advanced: tuple                      # proposal_ids advanced to holdout (G5)
     funnel: dict                         # final_outcome -> count (denominators visible, §12)
+    wrong_signed: int = 0                # SC-SCI-8: BH-rejected but wrong-signed (worsened) — a
+                                         #   reported RQ4 finding, NOT a separate outcome label
 
 
 def _booleans(g0_bools=None, **over) -> Booleans:
@@ -72,6 +74,7 @@ def run_experimentalist(
     sr_std: float = 0.5,
     q: float = 0.10,
     cap: int = 3,
+    direction: int = 1,               # strategy's CLAIMED premium sign (+1; -1 for str reversal)
     crowding_config=None,
     crowding_factors=None,
     reporting_delays=None,
@@ -120,14 +123,20 @@ def run_experimentalist(
 
     # ---- Phase C: G3 outcome + G4 robustness (BH survivors only) ----------------------------
     survivors: list = []
+    wrong_signed = 0                                  # SC-SCI-8: rejected but in the WRONG direction
     for p, cand, compiled, g0_bools in audit_clean:
         reg = reg_by_id[p.proposal_id]
         decision = fdr.decisions[p.proposal_id]
         summ = summarize_returns(cand, nw_lags, months_per_year)
+        # SC-SCI-8 — sign-aware survivor: two-sided BH rejection AND alpha in the claimed direction.
+        bh_survived = decision.rejected and (direction * reg["alpha"] > 0.0)
         gross = GrossMeasurements(mean_return=summ["average"], sharpe=summ["sharpe"],
                                   alpha_bbw4=reg["alpha"], t_stat=reg["alpha_t"],
-                                  p_raw=family[p.proposal_id], p_bh=decision.adjusted_p)
-        if not decision.rejected:                     # NO_DEVELOPMENT_EVIDENCE
+                                  p_raw=family[p.proposal_id], p_bh=decision.adjusted_p,
+                                  bh_rejected=decision.rejected)
+        if not bh_survived:                           # NO_DEVELOPMENT_EVIDENCE
+            if decision.rejected:                     # rejected but wrong sign = reliably WORSENED
+                wrong_signed += 1
             stored[p.proposal_id] = (
                 _booleans(g0_bools, compiled=True, execution_verified=True, audit_clean=True,
                           bh_survived=False), None, Measurements(gross=gross))
@@ -136,8 +145,9 @@ def run_experimentalist(
             g4, meas = robustness_g4(
                 cand, gross, n_trials=m,
                 information_span=_info_span(compiled, signal_lookback, holding_period),
-                holding_period=holding_period, sr_std=sr_std, crowding_config=crowding_config,
-                crowding_factors=crowding_factors, months_per_year=months_per_year, nw_lags=nw_lags)
+                holding_period=holding_period, sr_std=sr_std, direction=direction,
+                crowding_config=crowding_config, crowding_factors=crowding_factors,
+                months_per_year=months_per_year, nw_lags=nw_lags)
             cpcv_q = g4.booleans["cpcv_qualified"]
         except Exception:                              # per-proposal isolation: one cannot crash the batch
             cpcv_q, meas = False, Measurements(gross=gross)
@@ -157,4 +167,5 @@ def run_experimentalist(
         for p in proposals
     )
     funnel = dict(Counter(r.final_outcome.value for r in records))
-    return ExperimentReport(records=records, advanced=tuple(advanced), funnel=funnel)
+    return ExperimentReport(records=records, advanced=tuple(advanced), funnel=funnel,
+                            wrong_signed=wrong_signed)

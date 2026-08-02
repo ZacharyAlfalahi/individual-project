@@ -140,6 +140,18 @@ def test_g3_bh_fdr_is_joint_across_the_family():
     assert gross.p_bh >= gross.p_raw                          # adjusted p never below raw
 
 
+def test_g3_sign_aware_survivor_for_negative_premium_strategy():
+    # SC-SCI-8: for a negative-premium strategy (direction=-1, e.g. str winners-losers), a
+    # significant NEGATIVE alpha is a survivor; a significant POSITIVE alpha is REJECTED but not a
+    # survivor (it moved the wrong way).
+    factors, y_neg = _factors_and_y(alpha=-0.008)
+    out, gross = inference_g3(y_neg, factors, proposal_id="p1", q=0.10, nw_lags=0, direction=-1)
+    assert gross.bh_rejected and out.booleans["bh_survived"]
+    _, y_pos = _factors_and_y(alpha=0.008)
+    out2, gross2 = inference_g3(y_pos, factors, proposal_id="p1", q=0.10, nw_lags=0, direction=-1)
+    assert gross2.bh_rejected and not out2.booleans["bh_survived"]   # rejected, wrong sign
+
+
 def test_two_sided_p_matches_normal():
     assert two_sided_p(1.96) == pytest.approx(0.05, abs=2e-3)
     assert two_sided_p(0.0) == pytest.approx(1.0)

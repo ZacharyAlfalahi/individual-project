@@ -40,6 +40,7 @@ def robustness_g4(
     nw_lags: int | None = None,
     n_groups: int = 8,
     test_groups: int = 2,
+    direction: int = 1,
     crowding_config=None,
     crowding_factors=None,
     ipca_factors=None,
@@ -57,7 +58,11 @@ def robustness_g4(
     else:
         cpcv = cpcv_evaluate(candidate_returns, n_groups=n_groups, test_groups=test_groups,
                              purge=information_span, embargo=embargo, months_per_year=months_per_year)
-        cpcv_qualified = math.isfinite(cpcv.median_sharpe) and cpcv.median_sharpe > 0.0
+        # SC-SCI-8 — DIRECTIONAL: a positive median OOS-fold Sharpe IN THE STRATEGY'S CLAIMED
+        # DIRECTION. A negative-premium strategy (str, winners-losers) has negative Sharpes, so a
+        # sign-agnostic `median > 0` would silently fail every str extension (the latent bug).
+        cpcv_qualified = (math.isfinite(cpcv.median_sharpe)
+                          and direction * cpcv.median_sharpe > 0.0)
         cpcv_summary = cpcv.to_dict()
 
     # Deflated Sharpe — per-period Sharpe deflated against the m-trial max (measurement only).

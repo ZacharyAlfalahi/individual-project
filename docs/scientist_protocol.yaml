@@ -189,3 +189,13 @@ amendments:                      # logged amendments appended here post-tag (see
       all >= 8, so proposals_per_strategy stays 6/6/6 (reason corrected, not the number).
       G2 gains: row-filter ex-ante provenance; month-filter lag + expanding-window (never
       full-sample median). See prereg/design_findings.md, prereg/executability_census.md.
+  - id: SC-SCI-8
+    date: 2026-08-02
+    summary: >
+      Sign-aware survivors + directional CPCV gate. The pre-registered two-sided primary test and
+      the BH family are UNCHANGED; the survivor label is narrowed to bh_rejected AND alpha in the
+      strategy's claimed direction (direction=+1, or -1 for str winners-losers), and G4's CPCV gate
+      uses direction*median_sharpe>0 (fixing the latent bug that silently failed every negative-
+      premium str extension). Strictly conservative (can only reduce survivors). The two-sided
+      bh_rejected is retained as a measurement; rejected-but-wrong-signed extensions are reported as
+      wrong_signed (a real RQ4 finding), NOT a 7th outcome label.

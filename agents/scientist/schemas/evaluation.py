@@ -73,6 +73,9 @@ class GrossMeasurements:
     t_stat: float | None = None
     p_raw: float | None = None
     p_bh: float | None = None
+    bh_rejected: bool | None = None    # two-sided BH rejection (SC-SCI-8) — beside the sign-aware
+                                       #   `bh_survived` boolean; a rejected-but-wrong-signed
+                                       #   candidate is bh_rejected=True yet bh_survived=False.
 
     def to_dict(self) -> dict:
         return {
@@ -83,6 +86,7 @@ class GrossMeasurements:
             "t_stat": self.t_stat,
             "p_raw": self.p_raw,
             "p_bh": self.p_bh,
+            "bh_rejected": self.bh_rejected,
         }
 
 

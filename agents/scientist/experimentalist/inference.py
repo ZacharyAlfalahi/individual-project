@@ -38,9 +38,17 @@ def inference_g3(
     q: float = 0.10,
     nw_lags: int | None = None,
     months_per_year: int = 12,
+    direction: int = 1,
 ):
     """Return (GateOutcome, GrossMeasurements). `family_pvalues` are the OTHER valid proposals'
-    raw p-values (this proposal is added to the family for the joint BH-FDR)."""
+    raw p-values (this proposal is added to the family for the joint BH-FDR).
+
+    SC-SCI-8 — `bh_survived` is SIGN-AWARE: the two-sided BH rejection (`bh_rejected`) AND the alpha
+    in the strategy's CLAIMED DIRECTION (`direction` = +1, or -1 for a negative-premium strategy
+    like str's winners-losers reversal). The two-sided test and BH family are unchanged; the
+    survivor LABEL is narrowed to correctly-signed rejections (strictly conservative), consistent
+    with G4's directional CPCV gate. A rejected-but-wrong-signed extension (it reliably WORSENED
+    the strategy) is bh_rejected=True, bh_survived=False."""
     reg = regress_on_benchmark(candidate_returns, bbw4_factors, nw_lags)
     alpha, alpha_t = reg["alpha"], reg["alpha_t"]
     p_raw = two_sided_p(alpha_t)
@@ -50,10 +58,10 @@ def inference_g3(
     family[proposal_id] = p_raw                              # all valid proposals counted (§9)
     report = run_fdr(family, q, scope="within_strategy")
     decision = report.decisions[proposal_id]
+    bh_survived = decision.rejected and (direction * alpha > 0.0)
 
     gross = GrossMeasurements(
         mean_return=summ["average"], sharpe=summ["sharpe"], alpha_bbw4=alpha,
-        t_stat=alpha_t, p_raw=p_raw, p_bh=decision.adjusted_p,
+        t_stat=alpha_t, p_raw=p_raw, p_bh=decision.adjusted_p, bh_rejected=decision.rejected,
     )
-    return (GateOutcome("G3", passed=decision.rejected, booleans={"bh_survived": decision.rejected}),
-            gross)
+    return (GateOutcome("G3", passed=bh_survived, booleans={"bh_survived": bh_survived}), gross)
