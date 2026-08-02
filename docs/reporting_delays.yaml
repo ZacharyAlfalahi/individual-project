@@ -1,0 +1,58 @@
+# reporting_delays.yaml — conditioning-variable publication / reporting lags (R7).
+#
+# PURPOSE
+#   The Scientist's G2 audit-clean gate (spec §9 / INVARIANT 3.2) verifies that every NEW
+#   conditioning variable a proposal introduces is lagged by at least the conservative minimum
+#   below before it may inform portfolio formation. A variable that is used contemporaneously
+#   (or under-lagged) leaks future information and is a NEW_TIMING_VIOLATION. This file is the
+#   single source of truth for those minimum lags; the numbers live here, never in code
+#   (prohibition 1 — no invented thresholds).
+#
+# SCHEMA
+#   reporting_delays:
+#     <variable_name>:
+#       lag_months: int     # REQUIRED. Conservative minimum whole months a proposal must lag
+#                           #   this variable before formation. Never 0 — even a real-time FRED
+#                           #   series takes >=1 month as the required floor (INVARIANT 3.2).
+#       source: str         # REQUIRED. Provenance of the series and its release cadence.
+#       note: str           # REQUIRED. Why this lag is a safe conservative minimum.
+#
+#   A loader (G2, not implemented here) reads `reporting_delays[variable].lag_months` and refuse
+#   any proposal whose `config_delta.conditioning_lag_months` is below it, or whose variable is
+#   absent from this file (an unknown variable has no defensible lag -> refuse, never default).
+#
+# CONSUMER
+#   agents/scientist/experimentalist/audit_checks.py (G2 lag verification) — later.
+#
+# EXTENDING
+#   Add an entry per new conditioning variable a template permits (see §7 template registry:
+#   conditioning_variable allowed-set). Every macro series is effectively real-time from FRED /
+#   CBOE; the 1-month floor is the required minimum, not a measured release lag.
+
+reporting_delays:
+
+  baa_aaa_spread:
+    lag_months: 1
+    source: >
+      FRED — Moody's Seasoned Baa (BAA) minus Aaa (AAA) corporate bond yields; the
+      credit-cycle regime variable for extension_1 (docs/extension_1_config.yaml).
+    note: >
+      Effectively real-time from FRED (daily/monthly yields, negligible release lag). A
+      one-month lag is safely conservative and is the required minimum per INVARIANT 3.2 —
+      BAA-AAA is never used at lag 0.
+
+  vix:
+    lag_months: 1
+    source: CBOE Volatility Index (VIX) — real-time equity-implied-volatility index.
+    note: >
+      Published in real time; a one-month lag is conservative for monthly formation and matches
+      the shared floor. No macro series enters below one month.
+
+  term_spread:
+    lag_months: 1
+    source: >
+      FRED — 10-year minus 3-month constant-maturity Treasury yields (DGS10 - DGS3MO /
+      GS10 - GS3M), daily Treasury data.
+    note: >
+      Daily Treasury yields are real-time; a one-month lag is the conservative required minimum
+      for a monthly-formation conditioning variable.

@@ -1,0 +1,35 @@
+# docs/extension_1_config.yaml
+# =============================================================================================
+# extension_1 — the pre-registered baseline arm: BAA-AAA credit-cycle regime conditioning for
+# the `binary_above_historical_median` template. The committed median splits high- vs low-spread
+# months. Computed on DEVELOPMENT ONLY (inviolable data rule) and committed before the holdout
+# opens; the SAME fixed median is applied on the 2022-2024 holdout (so there is no holdout
+# look-ahead — the split threshold is frozen from development).
+#
+# STATUS: DRAFT — not final. The decision flagged below (which window defines the
+# median). Git-tagged with the rest of the pre-registration (`scientist-prereg`, after census).
+# =============================================================================================
+
+version: 1.0.0
+regime_variable: baa_aaa_spread
+units: percentage_points                 # BAA yield - AAA yield, both annualised %
+source: "FRED — Moody's Seasoned Baa/Aaa Corporate Bond Yields (ids BAA, AAA)"
+data_artefact: data/development/baa_aaa_spread.parquet
+computed_by: scripts/download_baa_aaa_spread.py
+lag_months_ref: reporting_delays.baa_aaa_spread.lag_months   # = 1; BAA-AAA never used at lag 0
+
+# The committed split threshold. `development` here = the full panel development window
+# (2002-07..2021-12), the literal reading of "computed on /data/development/".
+median_split:
+  window: {start: 2002-07, end: 2021-12, n_months: 234}
+  median_baa_aaa_spread_pp: 0.935
+  # DECISION: alternative = the primary-inference window (2004-08..2021-12, the T=209
+  # window where alpha is actually measured), whose median is 0.920. Difference is 0.015 pp.
+  # Committed to the panel-dev value 0.935; the inference-window sensitivity is recorded here.
+  sensitivity_primary_inference_window:
+    window: {start: 2004-08, end: 2021-12, n_months: 209}
+    median_baa_aaa_spread_pp: 0.920
+
+# Holdout: the 2022-2024 BAA-AAA slice needed to classify holdout months is NOT stored under
+# data/development/ — it is built inside the one-shot holdout frozen holdout inventory using this SAME frozen
+# 0.935 threshold. The development artefact above is capped at 2021-12 (no holdout-era rows).

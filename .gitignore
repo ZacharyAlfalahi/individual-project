@@ -52,6 +52,6 @@ tasks/
 .env
 runs/
 
-# Working docs, notes, decision logs, registers
-/docs/
+# Working docs, notes, decision logs, registers — TRACKED (re-tracked 2026-08-02) so spec and
+# decision edits leave a git trail. Licensed data stays banned via /data/ above + the pre-commit hook.
 

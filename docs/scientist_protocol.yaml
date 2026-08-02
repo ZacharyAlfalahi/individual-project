@@ -1,0 +1,191 @@
+# docs/scientist_protocol.yaml
+# =============================================================================================
+# Pre-registration protocol for the Scientist (RQ4 — post-correction extension survival).
+# Committed and git-tagged (`scientist-prereg`) BEFORE the first real generation run
+# (spec §4; §13 prohibition 1). Store PARAMETERS; DERIVE thresholds in code — never store a
+# derived value. Design source: docs/scientist/scientist_spec_v1.md (design-locked).
+#
+# STATUS: committed and tagged (`scientist-prereg`), after the eligibility census filled
+# generation.proposals_per_strategy.per_strategy. One item remains open:
+#   * costs.source is UNRESOLVED (see the costs block) — must be cited before a live run.
+#
+# AMENDMENTS TO THE DESIGN-LOCKED SPEC §4 (each supersedes the cited passage; logged here so a
+# reader sees exactly where implementation departs from the spec text and why):
+#   A1  Two windows named explicitly + T = 209. Spec §4 named no window; §4.1 used ~234 (the
+#       PANEL length). The primary-inference length is 209 months — DRF/CRF are NaN until
+#       2004-08 (24-month rolling burn-in). Verified against
+#       data/development/factors/bbw_factors.parquet.
+#   A2  proposals_per_strategy is a per-strategy MAPPING, not the scalar 6 (spec §4). The
+#       eligibility census (§6) may force m < 6 for a strategy; a scalar mispropagates.
+#   A3  deflated_sharpe.n_trials = that strategy's m (mapping), not a global 6 — same reason.
+#   A4  CPCV embargo is in MONTHS, not blocks (spec §4 embargo_blocks: 1). At T = 209 a "1
+#       block" embargo (~26 mo) plus two test blocks strips ~half the sample per split.
+#   A5  Holdout opening is gated on ARTEFACT CONDITIONS, not a self-opening date (spec §4
+#       opens: 2026-08-03, derived from the retired 2-Aug lock). A bare date opens itself.
+#   A6  seeds.k = 5, holdout.cap = 3 (spec left both OPEN — §16 O1/O2).
+#
+# amendment_policy: >
+#   Once git-tagged, every change is a LOGGED amendment appended to `amendments` below (date +
+#   rationale) — never a silent edit. The tag's force is entirely that it precedes the results.
+# =============================================================================================
+
+version: 1.0.0
+estimand: post_correction_extension_survival
+
+windows:
+  # Verified against data/development/factors/bbw_factors.parquet + monthly_panel_corrected.
+  panel_development:
+    start: 2002-07
+    end: 2021-12
+    n_months: 234
+    note: monthly_panel_corrected span; the calibration/development set (2002-2021).
+  primary_inference:
+    start: 2004-08
+    end: 2021-12
+    n_months: 209                # T — the ONLY length used for MDE / BH / DSR / CPCV geometry.
+    binding_factors: [drf_corr, crf_corr]
+    note: >
+      BBW-4 joint corrected window: DRF and CRF are NaN until 2004-08 (24-month rolling
+      burn-in); MKT_Bond and LRF span the full 233. NOT 234, NOT the panel start.
+    warming: >
+      F6 (burn-in). T1/T2 templates use expanding_window_past_only (min 60 months). The macro
+      conditioning series (baa_aaa_spread, vix, term_spread) are ingested from >= 1997-07
+      (>= 60 months before the 2002-07 panel start) so the expanding window is fully warm at
+      2004-08 and effective T stays 209 for EVERY template — otherwise a panel-resident window
+      would make T1/T2 candidates' first valid threshold ~2007-07 (T ~ 174) and the MDE bars
+      would move by sqrt(209/174) ~ 1.10. This uses pre-sample macro data (1997-2001, outside the
+      2002-2021 development window) PURELY to warm a threshold; it is NOT a holdout violation (the
+      holdout is forward, 2022-2024). Recorded here + in docs/data/registers/scope_changes.md so
+      an auditor reads it in a spec, not discovers it in a script.
+  evaluation_holdout:
+    start: 2022-01
+    end: 2024-12
+    n_months: 36
+    note: >
+      The locked out-of-sample split (the evaluation window). DISTINCT from the data-ingest
+      partition boundary holdout_end_year=2025 in thresholds.yaml: the /data/holdout/ PARTITION
+      runs to 2025, but the EVALUATION window is 2022-2024. Never write "2022-2025" for this.
+
+entry:
+  condition: failed_at_least_one_auditor_check
+  evaluated_at: corrected_lattice_point
+  refused_strategies: excluded_from_numerator_counted_in_denominator
+  # O8 — interaction-borne entry fallback (spec §16 open item; committed now so it is not
+  # invented after seeing a result). The per-toggle first-order rule (thresholds.yaml
+  # scientist.entry_rule) is primary; expected incidence here is zero (all three anchors are
+  # main-effect-dominated).
+  endpoint_gap_fallback: >
+    A strategy whose individual toggle effects are each sub-threshold but whose saturated
+    endpoint contrast Y(all-ON) - Y(all-OFF) is materially performance-reducing enters via the
+    endpoint gap, applying the SAME materiality_threshold_ref and sign direction (< 0) to that
+    saturated contrast as the first-order rule applies per toggle.
+
+generation:
+  # A2 — per-strategy mapping. `per_strategy` is FILLED BY the eligibility census:
+  # {strategy_id: min(default, n_eligible)}, requiring >= 8 eligible mechanisms or a documented
+  # cut. Until then every strategy uses `default`.
+  proposals_per_strategy:
+    default: 6                   # m — spec §4 default
+    # FILLED BY CENSUS (2026-07-30; exhaustive sweep 2026-08-01): the eligibility census yields 11
+    # conceptually-distinct mechanisms for CHARACTERISTIC_SORT (>= the 8 gate), so m = min(6, 11)
+    # = 6 for each anchor. The actual ENTRY set (which anchors are correction-sensitive) is
+    # Auditor-gated; m is set.
+    per_strategy: {str: 6, mom6: 6, drf: 6}
+  seeds:
+    k: 5                         # A6 / O1 — ~30 proposals/strategy for the generation-quality arm
+  economic_execution_seed: 0
+  structured_decoding: true
+  invalid_proposals: counted_never_regenerated
+
+equivalence:
+  key: [mechanism_id, template_id, canonicalised_config_delta]
+
+inference:
+  primary_test:
+    statistic: benchmark_alpha
+    factor_set: BBW4
+    sided: two
+    hac: newey_west
+    lag_rule: floor_T_pow_0.25
+  secondary_benchmark:
+    # POINT-11 ESCALATION. BBW-4 (Bai-Bali-Wen 2019) is retracted (retraction notice JFE 150(3),
+    # 2023). If DFPS show DRF/CRF/LRF are spanned by MKT_Bond, then alpha vs BBW-4 approximates
+    # alpha vs MKT_Bond alone — a weak benchmark makes extension alpha easier and INFLATES the
+    # RQ4 endpoint (a bias in the primary endpoint, not a write-up caveat). BBW-4 stays PRIMARY
+    # (changing it breaks the replication chain to the corpus strategies); this secondary
+    # benchmark is reported ALONGSIDE it, and BOTH go in the tag so neither is chosen post-hoc.
+    factor_set: DFPS4
+    source: "Dick-Nielsen, Feldhutter, Pedersen & Stolborg (2026), papers/pdf/Corporate bond factors replication crisis.pdf"
+    status: pre_registered_build_pending      # constructed with the G3 inference gate
+  secondary_test: paired_difference_vs_corrected_parent
+  descriptive_only: comparison_vs_as_published
+  bh_fdr_q: 0.10                 # proposal-family BH level. Coincides with auditor.fdr.q by
+                                 #   design (§7.2) but is the Scientist's OWN inference
+                                 #   parameter over a NEW family (proposals) — distinct from the
+                                 #   entry-rule q, which REFERENCES auditor.fdr.q (R3).
+  families:
+    - llm_researcher             # per strategy
+    - retrieval_only             # per strategy
+    - random_eligible            # per strategy
+    - extension_1_standalone     # single hypothesis, not a family
+
+cpcv:
+  n_groups: 8
+  test_groups: 2                 # -> 28 combinations, 7 paths
+  purge: per_candidate_information_span   # signal_lookback + holding_period + conditioning_lag
+  embargo:                       # A4 — MONTHS, not blocks; decoupled from n_groups
+    rule: holding_period_months
+    floor_months: 1
+  ddof: 1                        # matches the wrapped Auditor Sharpe convention
+
+deflated_sharpe:
+  n_trials: per_strategy_m       # A3 — = proposals_per_strategy[strategy]; justified by
+                                 #   INVARIANT 1 (the wall makes N_trials a structural fact).
+
+pbo:
+  scope: realised_family_only
+  status: supplementary_caveated # coarse at m = 6; reported with a caveat, never gating.
+
+costs:
+  # SOURCE UNRESOLVED. Spec §4 cites docs/domain_facts.md, which does NOT exist — the 40/80 bp
+  # round-trip figures currently have no substantiating citation anywhere in the repo. FLAGGED
+  # citation required; a strict consumer must treat `source: UNRESOLVED_pending_citation` as unmet
+  # and refuse to net figures until a real source lands.
+  round_trip_bps: {investment_grade: 40, high_yield: 80}
+  source: UNRESOLVED_pending_citation
+  report_net_beside_every_gross_figure: true
+
+selection:
+  rule: lexicographic
+  order: [valid_and_executed, audit_clean, bh_survivor,
+          cpcv_criterion_met, max_median_cpcv_path, simpler_intervention]
+
+holdout:
+  advance: all_cpcv_qualified_survivors
+  cap: 3                         # A6 / O2 — CPCV-qualified survivors/strategy; generous enough
+                                 #   it likely never binds; committed ex ante.
+  accesses: 1
+  # A5 — artefact-gated, NOT a self-opening date. The build enforces every condition; a bare
+  # date backstop (if used) must never be the trigger.
+  open_conditions:
+    require_all:
+      prereg_tag_present: scientist-prereg
+      frozen_script_hash_matches_manifest: true
+      explicit_env_var: SCIENTIST_HOLDOUT_UNLOCK
+      single_access_assertion: true
+    every_access_logged: true
+    earliest_date_belt_and_braces: null   # optional far-future backstop; MUST NOT be the trigger
+
+amendments:                      # logged amendments appended here post-tag (see amendment_policy)
+  - id: SC-SCI-7
+    date: 2026-08-02
+    finding: F8
+    summary: >
+      Executability re-census. The reachability census verified variable AVAILABILITY but not
+      engine EXECUTABILITY: the audited engine natively runs only T4 (independent double-sort,
+      holding_period=1). T1/T2/T3 are realised as Scientist-side PANEL TRANSFORMS (T1/T2 month
+      filter, T3 row filter) running the unmodified engine on the transformed panel. Eligibility
+      is now executability-aware. Executable distinct-mechanism counts: str 11, drf 11, mom6 9 —
+      all >= 8, so proposals_per_strategy stays 6/6/6 (reason corrected, not the number).
+      G2 gains: row-filter ex-ante provenance; month-filter lag + expanding-window (never
+      full-sample median). See prereg/design_findings.md, prereg/executability_census.md.
