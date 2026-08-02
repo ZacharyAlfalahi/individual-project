@@ -132,18 +132,21 @@ def run_experimentalist(
                 _booleans(g0_bools, compiled=True, execution_verified=True, audit_clean=True,
                           bh_survived=False), None, Measurements(gross=gross))
             continue
-        g4, meas = robustness_g4(cand, gross, n_trials=m,
-                                 information_span=_info_span(compiled, signal_lookback, holding_period),
-                                 holding_period=holding_period, sr_std=sr_std,
-                                 crowding_config=crowding_config, crowding_factors=crowding_factors,
-                                 months_per_year=months_per_year, nw_lags=nw_lags)
-        cpcv_q = g4.booleans["cpcv_qualified"]
+        try:
+            g4, meas = robustness_g4(
+                cand, gross, n_trials=m,
+                information_span=_info_span(compiled, signal_lookback, holding_period),
+                holding_period=holding_period, sr_std=sr_std, crowding_config=crowding_config,
+                crowding_factors=crowding_factors, months_per_year=months_per_year, nw_lags=nw_lags)
+            cpcv_q = g4.booleans["cpcv_qualified"]
+        except Exception:                              # per-proposal isolation: one cannot crash the batch
+            cpcv_q, meas = False, Measurements(gross=gross)
         stored[p.proposal_id] = (
             _booleans(g0_bools, compiled=True, execution_verified=True, audit_clean=True,
                       bh_survived=True, cpcv_qualified=cpcv_q), None, meas)
         if cpcv_q:
             survivors.append({"proposal_id": p.proposal_id,
-                              "median_cpcv_sharpe": meas.cpcv["median_sharpe"], "n_changes": 1})
+                              "median_cpcv_sharpe": meas.cpcv.get("median_sharpe"), "n_changes": 1})
 
     # ---- Phase D: G5 lexicographic selection ------------------------------------------------
     advanced = select_g5(survivors, cap=cap)

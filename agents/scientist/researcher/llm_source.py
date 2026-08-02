@@ -15,7 +15,7 @@ import json
 from typing import Protocol
 
 from .cache import ResponseCache
-from .context_builder import build_context
+from .context_builder import _assert_no_magnitudes, build_context
 
 
 class ModelClient(Protocol):
@@ -37,7 +37,9 @@ class DeferredModelClient:
 
 def build_prompt(context: dict, m: int) -> str:
     """The generative prompt — the magnitude-free context (from the wall allow-list) plus the
-    instruction to emit exactly m proposals as JSON. `context` is already magnitude-free."""
+    instruction to emit exactly m proposals as JSON. The wall is RE-ASSERTED here so the guarantee
+    is local to the serialisation boundary — a hand-assembled context cannot bypass INVARIANT 1."""
+    _assert_no_magnitudes(context)
     return (
         "You are proposing audit-clean EXTENSIONS of a corrected corporate-bond strategy. Using "
         "ONLY the context below, emit exactly "
@@ -75,6 +77,10 @@ class LLMResearcherSource:
 
     def candidates(self, case, eligible_results, library, *, seed, m, model, prompt_version,
                    generated_at) -> list[dict]:
+        # The recorded `model` must be the client that actually generated (m3) — otherwise the
+        # cache's seed-provenance log would attribute a response to the wrong model.
+        if model != self.client.name:
+            raise ValueError(f"model {model!r} != client {self.client.name!r} (cache provenance)")
         context = build_context(case, eligible_results, library)      # the wall — magnitude-free
         prompt = build_prompt(context, m)
         response = self.cache.get(prompt, model, seed) if self.cache else None

@@ -52,6 +52,20 @@ def test_g4_positive_candidate_is_cpcv_qualified_and_populates_measurements():
     assert meas.deflated_sharpe is not None
 
 
+def test_g4_short_series_does_not_crash():
+    # M1 regression: a series shorter than n_groups cannot be CPCV-partitioned -> not qualified,
+    # NEVER a crash (a month-filter extension can shrink a BH survivor below 8 months).
+    idx = pd.date_range("2010-01-31", periods=5, freq="ME")
+    short = pd.Series([0.02, 0.03, 0.01, 0.025, 0.015], index=idx)
+    rng = np.random.default_rng(3)
+    factors = pd.DataFrame({"date": idx, **{f: rng.normal(scale=0.02, size=5) for f in FACTORS}})
+    out, meas = robustness_g4(short, GrossMeasurements(), n_trials=6, information_span=2,
+                              holding_period=1, sr_std=0.5, crowding_config=_cfg(),
+                              crowding_factors=factors)
+    assert not out.passed and not out.booleans["cpcv_qualified"]
+    assert meas.cpcv["insufficient_months"] == 5.0
+
+
 def test_g4_negative_candidate_not_cpcv_qualified():
     y = _candidate(mean=-0.02)                                 # clearly negative -> median fold < 0
     out, meas = robustness_g4(y, GrossMeasurements(), n_trials=6, information_span=2,

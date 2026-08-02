@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 
@@ -28,11 +29,19 @@ class ResponseCache:
         p = self._path(self.key(prompt, model, seed))
         if not p.exists():
             return None
-        return json.loads(p.read_text())["response"]
+        return json.loads(p.read_text(encoding="utf-8"))["response"]
 
     def put(self, prompt: str, model: str, seed: int, response: str) -> str:
+        """Persist a response IMMUTABLY (an existing key is never overwritten — the artefact log is
+        append-only). UTF-8 + atomic (temp-then-rename) so an interrupted run cannot leave a partial
+        file that the next `get` chokes on."""
         key = self.key(prompt, model, seed)
-        self._path(key).write_text(json.dumps(
-            {"model": model, "seed": seed, "prompt_sha256": key, "response": response},
-            ensure_ascii=False))
+        path = self._path(key)
+        if path.exists():
+            return key                                          # already logged — do not overwrite
+        payload = json.dumps({"model": model, "seed": seed, "key": key, "response": response},
+                             ensure_ascii=False)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(payload, encoding="utf-8")
+        os.replace(tmp, path)
         return key

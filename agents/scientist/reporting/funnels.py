@@ -15,10 +15,16 @@ _G0_FIELDS = ("schema_valid", "mechanism_authorised", "template_supported",
               "toggles_preserved", "inputs_available", "not_duplicate")
 
 
+_STAGE_ORDER = ("generated", "valid", "compiled", "executed", "audit_clean", "bh_survivor",
+                "cpcv_qualified", "holdout_evaluated")
+
+
 def economic_funnel(records) -> dict:
-    """Stage counts over EvaluationRecords, monotone non-increasing."""
+    """Stage counts over EvaluationRecords. Each stage is a strict subset of the prior, so the
+    counts MUST be monotone non-increasing — asserted, because a non-monotone funnel is a headline
+    RQ4 artefact reflecting an upstream gate-composition bug, not something to report silently."""
     b = [r.booleans for r in records]
-    return {
+    funnel = {
         "generated": len(records),
         "valid": sum(1 for x in b if all(getattr(x, f) for f in _G0_FIELDS)),
         "compiled": sum(1 for x in b if x.compiled),
@@ -28,6 +34,10 @@ def economic_funnel(records) -> dict:
         "cpcv_qualified": sum(1 for x in b if x.cpcv_qualified),
         "holdout_evaluated": sum(1 for x in b if x.holdout_evaluated),
     }
+    counts = [funnel[s] for s in _STAGE_ORDER]
+    if any(counts[i] < counts[i + 1] for i in range(len(counts) - 1)):
+        raise AssertionError(f"economic funnel is not monotone (gate-composition bug): {funnel}")
+    return funnel
 
 
 def agent_quality_funnel(generation_results) -> dict:

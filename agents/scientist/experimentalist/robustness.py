@@ -45,9 +45,20 @@ def robustness_g4(
     ipca_factors=None,
 ):
     embargo = max(1, holding_period)
-    cpcv = cpcv_evaluate(candidate_returns, n_groups=n_groups, test_groups=test_groups,
-                         purge=information_span, embargo=embargo, months_per_year=months_per_year)
-    cpcv_qualified = math.isfinite(cpcv.median_sharpe) and cpcv.median_sharpe > 0.0
+    # A month-filter extension can shrink the series below n_groups; CPCV cannot partition it.
+    # That is a clean non-qualification (DEVELOPMENT_SURVIVOR_NOT_ADVANCED), NOT a crash — and it
+    # must never propagate out and take down the whole batch.
+    n_ret = int(len(candidate_returns.dropna()))
+    if n_ret < n_groups:
+        cpcv_qualified = False
+        cpcv_summary = {"n_groups": n_groups, "test_groups": test_groups, "n_folds": 0,
+                        "n_paths": 0, "median_sharpe": float("nan"), "frac_positive": float("nan"),
+                        "insufficient_months": float(n_ret)}
+    else:
+        cpcv = cpcv_evaluate(candidate_returns, n_groups=n_groups, test_groups=test_groups,
+                             purge=information_span, embargo=embargo, months_per_year=months_per_year)
+        cpcv_qualified = math.isfinite(cpcv.median_sharpe) and cpcv.median_sharpe > 0.0
+        cpcv_summary = cpcv.to_dict()
 
     # Deflated Sharpe — per-period Sharpe deflated against the m-trial max (measurement only).
     summ = summarize_returns(candidate_returns, nw_lags, months_per_year)
@@ -67,6 +78,6 @@ def robustness_g4(
     if ipca_factors is not None:
         crowd.update(ipca_crowding_diagnostic(candidate_returns, ipca_factors, nw_lags=nw_lags))
 
-    measurements = Measurements(gross=gross, cpcv=cpcv.to_dict(), deflated_sharpe=dsr, crowding=crowd)
+    measurements = Measurements(gross=gross, cpcv=cpcv_summary, deflated_sharpe=dsr, crowding=crowd)
     return (GateOutcome("G4", passed=cpcv_qualified, booleans={"cpcv_qualified": cpcv_qualified}),
             measurements)
