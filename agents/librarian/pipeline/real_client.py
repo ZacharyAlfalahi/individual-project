@@ -25,10 +25,12 @@ Design, honouring the frozen extraction contract:
 Prompt rendering: the templates carry ``{field}`` / ``{definition}`` / ``{menu}``
 / ``{range}`` / ``{registry_menu}`` / ``{decision}`` / ``{strategy_label}`` slots.
 Menus + ranges come from ``data/domains.yaml`` (Part 2) and ``schema/fields.py``
-(the two Part-1 menus); the registry menu from the Signal Concept Registry. There
-is no authoritative per-field *definition* resource yet -- a light gloss is used
-and flagged as a follow-up (a frozen, hash-stamped definitions file should land
-before reportable Phase-F runs, since rendered prompt content affects extraction).
+(the two Part-1 menus); the registry menu from the Signal Concept Registry. The
+per-field ``{definition}`` slot is filled from the frozen, hash-stamped
+``data/prompts/definitions.yaml`` (loaded via ``registries.load_field_definitions``)
+-- one gloss per routed field, byte-hashed like the silence-policy table, since
+rendered prompt content affects extraction. A routed field with no definition
+fails loud (never a silent ``_humanise`` fallback).
 
 Vendors are lazy-imported inside each backend, so importing this module (and thus
 running the offline unit tests) never requires an SDK to be installed.
@@ -48,7 +50,7 @@ import yaml
 
 from ..config.canonical_text import CanonicalText
 from ..errors import LibrarianSchemaError
-from ..registries import SignalConceptRegistry
+from ..registries import SignalConceptRegistry, load_field_definitions
 from ..schema import fields as F
 from .model_client import FieldQuery, ModelAnswer
 from .prompts import PromptManifest, load_prompt_manifest
@@ -124,6 +126,7 @@ class PromptBuilder:
     _decoding: dict   # kind -> decoding dict
     _domains2: dict   # part2 field -> domain dict
     _registry_menu: str
+    _definitions: dict  # field -> frozen {definition} gloss (definitions.yaml)
 
     @classmethod
     def load(
@@ -141,6 +144,7 @@ class PromptBuilder:
             decoding[kind] = yaml.safe_load((_DATA_ROOT / tpl.decoding).read_text(encoding="utf-8"))
         with _DOMAINS_PATH.open("r", encoding="utf-8") as fh:
             domains = yaml.safe_load(fh)
+        field_defs = load_field_definitions()
         return cls(
             manifest=manifest,
             registry=registry,
@@ -149,6 +153,7 @@ class PromptBuilder:
             _decoding=decoding,
             _domains2=dict(domains.get("part2", {})),
             _registry_menu=_render_registry_menu(registry),
+            _definitions=dict(field_defs.definitions),
         )
 
     def _menu_for(self, field_name: str) -> str:
@@ -163,6 +168,20 @@ class PromptBuilder:
             f"no enum menu for field {field_name!r} in domains.yaml or the Part-1 menus"
         )
 
+    def _definition_for(self, field_name: str) -> str:
+        """The frozen ``{definition}`` gloss for a field routed to a
+        ``{definition}``-carrying template. Fail-closed (matching ``_menu_for``): a
+        routed field with no authoritative gloss raises rather than falling back to
+        an un-frozen ``_humanise`` gloss (rendered prompt content affects
+        extraction, so an unstamped definition must never reach a live call)."""
+        definition = self._definitions.get(field_name)
+        if not definition:
+            raise LibrarianSchemaError(
+                f"no frozen definition for field {field_name!r} in definitions.yaml "
+                "(a field routed to a {definition} template must have an authoritative gloss)"
+            )
+        return definition
+
     def schema_for(self, kind: str) -> dict:
         return self._schemas[kind]
 
@@ -171,32 +190,46 @@ class PromptBuilder:
 
     def render(self, query: FieldQuery, strategy_label: str) -> str:
         """The instruction block (template with slots filled). The paper text +
-        the JSON-schema instruction are appended by the client."""
+        the JSON-schema instruction are appended by the client.
+
+        The ``{definition}`` slot (enum / int / date / paper_metric) is filled from
+        the frozen, hash-stamped ``definitions.yaml`` via ``_definition_for`` --
+        fail-loud on a routed field with no gloss. The kinds without a
+        ``{definition}`` slot (part1_enum / signal_ref / method_summary) never
+        touch it; part1_enum keeps its ``_humanise`` fallback for the ``{decision}``
+        framing only (both Part-1 fields are covered by ``_PART1_DECISIONS``)."""
         kind = query.kind
         tpl = self._templates[kind]
-        # NOTE: authoritative per-field definitions are a follow-up; a light gloss
-        # keeps the smoke honest without fabricating an authoritative definition.
-        definition = _humanise(query.field)
         if kind in ("enum",):
-            return tpl.format(field=query.field, definition=definition, menu=self._menu_for(query.field))
+            return tpl.format(
+                field=query.field,
+                definition=self._definition_for(query.field),
+                menu=self._menu_for(query.field),
+            )
         if kind == "int":
             dom = self._domains2.get(query.field, {})
-            return tpl.format(field=query.field, definition=definition, range=_render_range(dom))
+            return tpl.format(
+                field=query.field,
+                definition=self._definition_for(query.field),
+                range=_render_range(dom),
+            )
         if kind == "part1_enum":
-            decision = _PART1_DECISIONS.get(query.field, definition)
+            decision = _PART1_DECISIONS.get(query.field, _humanise(query.field))
             return tpl.format(field=query.field, decision=decision, menu=self._menu_for(query.field))
         if kind == "signal_ref":
             return tpl.format(field=query.field, registry_menu=self._registry_menu)
         if kind == "method_summary":
             return tpl.format(strategy_label=strategy_label)
         if kind == "date":
-            return tpl.format(field=query.field, definition=definition)
+            return tpl.format(field=query.field, definition=self._definition_for(query.field))
         if kind == "paper_metric":
             # The strategy label matters here: a paper reports many numbers, and
             # the field is "the headline figure THIS strategy claims" (D20 keys
             # RQ1 scoring by the label), not "a number from this paper".
             return tpl.format(
-                field=query.field, definition=definition, strategy_label=strategy_label
+                field=query.field,
+                definition=self._definition_for(query.field),
+                strategy_label=strategy_label,
             )
         raise LibrarianSchemaError(f"RealModelClient cannot render unknown kind {kind!r}")
 

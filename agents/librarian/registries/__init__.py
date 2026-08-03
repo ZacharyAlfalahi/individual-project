@@ -12,6 +12,10 @@ Librarian registries -- the versioned, hashed reference data the pipeline reads
   * ``silence_policy``          -- the silence-policy table (D26 / D32c): per-field
                                     routing for paper-silent fields at adapter
                                     intake. Versioned + byte-hashed data.
+  * ``field_definitions``       -- the frozen per-field definitions (RQ1
+                                    close-out): the ``{definition}`` prompt slot,
+                                    one gloss per routed field. Versioned +
+                                    byte-hashed data.
 
 Both loaders return frozen dataclasses carrying a ``version`` + a reproducible
 ``content_hash`` that stamps into every spec/config header (build brief §2).
@@ -30,6 +34,10 @@ from .silence_policy import (
     SilencePolicyTable,
     load_silence_policy_table,
 )
+from .field_definitions import (
+    FieldDefinitions,
+    load_field_definitions,
+)
 
 __all__ = [
     # signal concept registry (D22)
@@ -41,4 +49,7 @@ __all__ = [
     "SilencePolicyTable",
     "load_silence_policy_table",
     "POLICIES",
+    # per-field definitions (RQ1 close-out)
+    "FieldDefinitions",
+    "load_field_definitions",
 ]

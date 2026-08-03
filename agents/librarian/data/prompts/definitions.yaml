@@ -1,0 +1,74 @@
+# Frozen per-field definitions (the {definition} prompt slot) -- v1
+#
+# One concise, factual gloss per field routed to a {definition}-carrying prompt
+# template (the enum / int / date / paper_metric field-types -- manifest.yaml).
+# This REPLACES real_client.py's earlier `_humanise(field)` light gloss: rendered
+# prompt content affects extraction, so before reportable Phase-F runs the gloss
+# is frozen + byte-hashed here (the same freeze discipline as the silence-policy
+# table). The loader (registries/field_definitions.py) recomputes and asserts the
+# recorded sha256; a silent edit is caught at load.
+#
+# Source of record: docs/librarian/specs/part2_schema_and_silence_policy_v1_1.md
+# (field types + menus) and agents/librarian/data/domains.yaml (the Part-2 domain
+# source). Each gloss states WHAT THE FIELD IS -- never a likely value and never
+# the tag_and_proceed silence default. Definitions must stay NEUTRAL: they must
+# not nudge the extractor toward any menu token (the menu is rendered separately
+# below the definition; naming poles symmetrically as examples is fine, hinting a
+# default is not).
+#
+# Scope = the ~40 fields routed to a {definition} template: 9 sort-block
+# enum/int fields (sort_signal + control_axis are signal_ref, so excluded), the
+# 28 common fields, and 3 paper_facts fields. universe_filter is DELIBERATELY
+# ABSENT: it is unbound in manifest.yaml (free prose, filled NOT-EXTRACTED until a
+# prose rubric lands), so it is never routed to a {definition} template and needs
+# no gloss here.
+
+version: v1
+
+definitions:
+  # --- sort block (per-leg unless noted) -- 9 enum/int fields -----------------
+  sort_kind: "The sorting structure used to form portfolios: a single-signal sort, or a double sort whose second axis is applied either independently or conditionally on the first."
+  bucketing_method: "How ranked securities are partitioned into groups: by equal counts per group, or by fixed signal breakpoints."
+  n_groups: "The number of portfolio groups the sort partitions the universe into (e.g. quintiles = 5, deciles = 10)."
+  stripe_aggregation: "In a double sort, how the second-axis cells (stripes) are aggregated back into each signal group: weighting the cells equally, by member count, or by value."
+  control_missing_policy: "In a double sort, how securities missing a value on the control axis are handled: dropped from, or pooled within, the sort."
+  long_leg: "Which end of the signal ranking is held on the long side of the strategy: the lowest-signal group or the highest-signal group."
+  signal_transform: "Any transformation applied to the raw signal before ranking, such as winsorizing or standardizing."
+  control_n_groups: "The number of groups the second (control) axis of a double sort is partitioned into."
+  combiner: "How the strategy's individual legs are combined into a single return series: a single leg, or an equal-weighted average across legs."
+
+  # --- common block (spec-level) -- 28 fields --------------------------------
+  eligibility_missing_policy: "How securities missing a characteristic needed for the eligibility screen are handled: dropped, imputed, or carried forward."
+  return_availability_policy: "Whether a next-period return must be available at formation for a security to enter the portfolio, or positions are instead held to recovery."
+  signal_lag: "The number of periods the signal is lagged between when it is measured and when it is used to form portfolios."
+  lag_convention: "The convention by which the signal lag is measured: calendar month-end, business days, or positional offset."
+  min_bonds: "The minimum number of bonds required for a portfolio (or group) to be formed."
+  min_bonds_granularity: "The level at which the minimum-bond count is enforced: across the total universe, per group, or per leg."
+  tie_break_policy: "How ties in the signal ranking are resolved when assigning securities to groups: deterministically by identifier, or at random."
+  weighting_scheme: "How positions are weighted within each portfolio leg: equally, or by value."
+  weighting_base: "The quantity that value-weighting is based on: par amount outstanding, or market value."
+  weight_timing: "Whether position weights are set at formation and held fixed, or updated over the holding period."
+  strategy_side: "Whether the strategy takes both legs (long-short) or only a single side (long-only or short-only)."
+  empty_leg_policy: "What happens in a period when a leg has no eligible constituents: skip the period, zero-fill the leg, or trade one-sided."
+  transaction_cost_convention: "Whether the reported returns are gross, or net of transaction costs."
+  return_label: "Whether a portfolio return is attributed to the formation month or to the realisation (holding) month."
+  rebalance_frequency: "How often the portfolio is rebalanced: monthly, quarterly, weekly, or daily."
+  holding_period: "The number of periods a formed portfolio is held before it is closed or reformed."
+  overlap_convention: "Whether successive holding-period cohorts overlap in time, or portfolios are non-overlapping."
+  cohort_weighting: "When overlapping holding-period cohorts are averaged into one return, how the cohorts are weighted: equally, or by value."
+  burn_in_policy: "How the initial ramp-up periods, before overlapping cohorts are fully populated, are treated: kept, dropped, or scaled."
+  missing_return_policy: "How a missing security return during the holding period is handled: dropped and re-normalised, held to recovery, or imputed."
+  realisation_min_survivors: "The minimum number of surviving constituents required for a portfolio's realised return to be recorded."
+  return_compounding: "How multi-period returns are combined: arithmetically or geometrically."
+  significance_convention: "The method used to compute the reported t-statistic of the mean return: a HAC (autocorrelation-robust) t-statistic, or a simple standard-error ratio."
+  hac_lags: "The number of lags used in the heteroskedasticity- and autocorrelation-consistent (Newey-West) standard errors."
+  annualisation: "How periodic returns or statistics are scaled to an annual figure: arithmetically or geometrically."
+  rf_convention: "Whether the risk-free rate is subtracted to form excess returns, or returns are used as reported."
+  benchmark_model: "The factor model the strategy's alpha is measured against, such as CAPM, a five-factor model, or the BBW four-factor model."
+  expost_trim: "Any ex-post trimming applied to the realised return series: truncation or winsorisation of outliers."
+
+  # --- paper_facts block (spec-level, v1.1) -- 3 fields ----------------------
+  # (universe_filter is deliberately absent -- see the header note.)
+  sample_start: "The start of the sample period over which the paper reports the strategy's results, as stated in the paper."
+  sample_end: "The end of the sample period over which the paper reports the strategy's results, as stated in the paper."
+  claimed_headline_metric: "The paper's own reported headline performance figure for the strategy: its mean return, the accompanying t-statistic, and the unit in which they are reported."

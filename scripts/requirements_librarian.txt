@@ -5,11 +5,12 @@
 # The offline pipeline + unit tests (FakeModelClient) need none of them — the
 # RealModelClient imports each SDK lazily, so absence never breaks collection.
 #
-# Phase D (dev pair): Gemini 2.5 Flash + a Mistral SKU (the model id lives in
+# Phase D (dev pair): Gemini 3.1-flash-lite + a Mistral SKU (the model id lives in
 # docs/thresholds.yaml; free-tier coverage of that SKU is account-dependent).
 google-genai>=1.0.0        # Gemini — client.models.generate_content, JSON output
 mistralai>=1.0.0           # Mistral — client.chat.complete, JSON output (v1 + v2 SDKs supported)
 
-# Phase F (reported figures, gated on SKU authorization): Claude Sonnet + Gemini.
-# Uncomment when wiring the paid anchor pair.
-# anthropic>=0.40.0
+# Phase F (reported figures, gated on SKU/cost authorization, D33): Claude Sonnet 4.6 + Gemini 3.5-flash.
+# Uncommented 2026-08-03 (phase_f prep). The live run is still gated on ANTHROPIC_API_KEY + Gemini
+# quota + the D33 authorization; installing the SDK runs nothing on its own.
+anthropic>=0.40.0
