@@ -225,3 +225,7 @@ claimed_headline_metric: value: {mean: 0.70, t_stat: 3.60, unit: pct_per_month}
    outstanding; engine by offering_amt (par proxy).** Paper wins in the gold.
 3. **Locator backfill.** Run and recorded in `locator_backfill_report.md` (all quotes L1-located
    against the frozen canonical text with char offsets).
+
+---
+
+**Anchor targets.** The fidelity `gate` (pass/fail), `replication_target`, and `raw_expectation` for this anchor live in the evaluation-layer register `docs/quant/registers/anchor_targets.md` (O5 / D-Q7 / A4.4) — kept out of this spec (not new `paper_facts` fields) to protect RQ1's field-level-accuracy denominator.

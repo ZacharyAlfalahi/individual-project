@@ -210,3 +210,7 @@ claimed_headline_metric: value: {mean: 0.37, t_stat: 3.90, unit: pct_per_month}
    `scripts/regenerate_locator_backfill.py mom6` — 17 distinct STATED-quote locators, zero cross-page,
    all matching `locator_backfill_report.md` (binding). The freeze reproduced the pending parse
    (source_sha256 7e80f8cb…), so the offsets were unchanged; only their status flips provisional→binding.
+
+---
+
+**Anchor targets.** The fidelity `gate` (pass/fail), `replication_target`, and `raw_expectation` for this anchor live in the evaluation-layer register `docs/quant/registers/anchor_targets.md` (O5 / D-Q7 / A4.4) — kept out of this spec (not new `paper_facts` fields) to protect RQ1's field-level-accuracy denominator.

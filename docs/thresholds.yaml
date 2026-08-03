@@ -172,9 +172,14 @@ bias_toggles:
 # approximate magnitude of each toggle's effect — within the pipeline, NOT by
 # matching published factor levels.
 validation:
-  anchor_criterion: "bias_attribution"   # NOT absolute_level_pm15 (the ±15% gate
-                                          # still applies to the data-matched
-                                          # replication in RQ2, not these anchors)
+  anchor_criterion: "bias_attribution"   # The RQ2 anchor fidelity gate is the
+                                          # bias-attribution differential (O5 / D-Q1;
+                                          # contract §7 gate 5). External level
+                                          # comparisons are DESCRIPTIVE only, with no
+                                          # pass/fail weight. The ±15% absolute-level
+                                          # criterion is RETIRED for the anchors AND
+                                          # for the data-matched replication (D16).
+                                          # See docs/quant/open_item_O5_fidelity_gate.md
   gates:
     str_lib_decomposition: "month-end vs month-begin; direction + LIB proportion (§8 gate 1)"
     mom6_lab: "ex-post vs ex-ante winsorization; EP biased ~+0.30, EP-EA gap > 0 (§8 gate 1)"

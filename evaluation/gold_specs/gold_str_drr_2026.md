@@ -250,3 +250,7 @@ claimed_headline_metric: value: {mean: -0.99, t_stat: -4.46, unit: pct_per_month
    text (`evaluation/canonical_texts/drr_2026.frozen.yaml`, `.locate(quote, level="L1")`), not just the
    ad-hoc parse — representative quotes across the header, sort block, common block, and paper_facts all
    located. Freeze reproduces the recorded `source_sha256 d481c99e…` and recipe `normalise_sha256 3d846fef…`.
+
+---
+
+**Anchor targets.** The fidelity `gate` (pass/fail), `replication_target`, and `raw_expectation` for this anchor live in the evaluation-layer register `docs/quant/registers/anchor_targets.md` (O5 / D-Q7 / A4.4) — kept out of this spec (not new `paper_facts` fields) to protect RQ1's field-level-accuracy denominator.
