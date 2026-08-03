@@ -766,7 +766,9 @@ crowding:
   hac_lag_rule: floor_t_pow_0.25
   # Minimum candidate/factor overlap (months) below which the diagnostic sets
   # below_min_obs=1.0 rather than silently trusting NW-HAC t-stats on a short
-  # sample. 60 = five years; a pre-registration floor (confirm before the confirmatory run).
+  # sample. 60 = five years; a pre-registered floor for NW-HAC stability (a short
+  # overlap gives an unreliable HAC t-stat), chosen ex ante from sample length
+  # alone — never from factor performance. CONFIRMED 2026-08-03.
   min_obs: 60
   # Corrected-column sources: one (path, column) per logical factor. Only these
   # _corr columns are ever read — never a *_raw / n_bonds column.
