@@ -199,3 +199,17 @@ amendments:                      # logged amendments appended here post-tag (see
       premium str extension). Strictly conservative (can only reduce survivors). The two-sided
       bh_rejected is retained as a measurement; rejected-but-wrong-signed extensions are reported as
       wrong_signed (a real RQ4 finding), NOT a 7th outcome label.
+  - id: SC-SCI-9
+    date: 2026-08-03
+    summary: >
+      Rung-3 phase_d wiring. The deferred generative rung (llm_researcher) is WIRED to the real
+      free-dev vendor pair (D4 phase_d: Gemini 3.1-flash-lite + Mistral-small) via
+      agents/scientist/researcher/phase_d_client.py, REUSING the Librarian vendor backends
+      (make_backend) rather than reimplementing SDK plumbing; config lives in thresholds.yaml
+      scientist.model_stack (fail-loud loader). Generation temperature = 0.7 so the k-seed
+      generation-quality arm has genuine seed-to-seed diversity — reproducibility is by CACHE-REPLAY
+      (the seed-keyed ResponseCache, R5), NOT vendor determinism (a tunable, flagged for review).
+      phase_d stays NON-reportable (free dev pair); reportable generative figures still require
+      phase_f (Sonnet 4.6 + Gemini 3.5-flash) + SKU/cost authorization. A LIVE run additionally needs
+      GEMINI_API_KEY/MISTRAL_API_KEY + the vendor SDKs installed. The upstream blocker (a real Auditor
+      AuditReport / corrected QuantConfig) cleared 2026-08-03 (the core-lattice runs executed).

@@ -89,6 +89,15 @@ def test_unparseable_response_yields_no_candidates():
                                           prompt_version="v1", generated_at="t") == []
 
 
+def test_object_wrapped_array_is_tolerated():
+    # Mistral's json_object mode wraps the array in an object; the parser takes the first
+    # list-valued field so the phase_d Mistral model still yields candidates (SC-SCI-9).
+    wrapped = json.dumps({"proposals": [_VALID]})
+    r = run_generation(_source(wrapped), CASE, ELIG, LIB, seed=0, m=1, model="stub",
+                       prompt_version="v1", generated_at="t")
+    assert r.n_valid_unique == 1
+
+
 # ---- the wall + deferred client -----------------------------------------------------------
 
 def test_prompt_is_magnitude_free():

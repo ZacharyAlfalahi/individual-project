@@ -794,3 +794,26 @@ scientist:
     tier: within_strategy_bh_adjusted_p
   # The generation/evaluation protocol is committed separately (see header).
   protocol_ref: docs/scientist_protocol.yaml
+  # Rung-3 (llm_researcher) generative model wiring (SC-SCI-9). SKUs MIRROR
+  # librarian.model_stack.phase_d (D4 phase_d — the free DEV pair, NON-reportable). Read fail-loud
+  # by agents/scientist/researcher/phase_d_client.load_model_stack. Reportable generative figures
+  # require phase_f (Sonnet 4.6 + Gemini 3.5-flash) + SKU/cost authorization — see the librarian block.
+  model_stack:
+    temperature: 0.7               # >0 so the k-seed generation-quality arm has genuine seed-to-seed
+                                   #   diversity; each response is frozen by the seed-keyed
+                                   #   ResponseCache (R5) -> reproducibility is by REPLAY, not vendor
+                                   #   determinism. TUNABLE — flag for review (0 = deterministic
+                                   #   but identical across seeds until a vendor seed is threaded).
+    max_output_tokens: 2048        # m compact JSON proposals per call
+    max_retries: 6
+    phase_d:                       # free DEV pair — NON-reportable (D4/D33)
+      model_a:
+        vendor: gemini
+        model_id: gemini-3.1-flash-lite
+        api_key_env: GEMINI_API_KEY
+        min_interval_s: 6.0        # 3.1-flash-lite free tier = 250k input tokens/min
+      model_b:
+        vendor: mistral
+        model_id: mistral-small-latest
+        api_key_env: MISTRAL_API_KEY
+        min_interval_s: 4.0        # free-tier tokens/min is the binding cap

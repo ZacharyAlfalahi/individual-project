@@ -92,6 +92,10 @@ class LLMResearcherSource:
             items = json.loads(response)
         except (json.JSONDecodeError, TypeError):
             return []                                                  # unparseable -> 0 candidates
+        if isinstance(items, dict):
+            # Some vendors (Mistral's json_object mode) wrap the array in an object; take the first
+            # list-valued field. Gemini returns the top-level array directly. Neither regenerates.
+            items = next((v for v in items.values() if isinstance(v, list)), None)
         if not isinstance(items, list):
             return []
         return [_to_raw(it, case=case, seed=seed, model=model, prompt_version=prompt_version,
