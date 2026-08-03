@@ -40,6 +40,7 @@ Usage:
 
 import hashlib
 import json
+import math
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -102,13 +103,23 @@ def git_short() -> str:
         return "unknown"
 
 
+def _finite_or_none(x) -> float | None:
+    """Non-finite floats (inf/nan from a raw-family price-error blow-up) -> None, so
+    the descriptive JSON stays strict-valid under allow_nan=False."""
+    if x is None:
+        return None
+    x = float(x)
+    return x if math.isfinite(x) else None
+
+
 def _level(series: pd.Series, summary: dict) -> dict:
     """Read out mean %/mo, t, n_months exactly as each builder's write_report does:
-    mean = dropna().mean()*100 ; t = summary['t_stat'] ; n = len(dropna())."""
+    mean = dropna().mean()*100 ; t = summary['t_stat'] ; n = len(dropna()).
+    Non-finite mean/t (raw-family blow-ups) are coerced to None (strict-JSON safe)."""
     s = series.dropna()
     return {
-        "mean_pct_per_month": float(s.mean() * 100) if len(s) else None,
-        "t_stat": float(summary["t_stat"]),
+        "mean_pct_per_month": _finite_or_none(s.mean() * 100) if len(s) else None,
+        "t_stat": _finite_or_none(summary["t_stat"]),
         "n_months": int(len(s)),
     }
 
@@ -142,6 +153,9 @@ def main() -> None:
     _guard_no_holdout()
 
     # Load the mom6 signal once and the BBW signals once (family-agnostic inputs).
+    for sig in (MOM6_SIGNAL, VAR_SIGNAL, GAMMA_SIGNAL):
+        if not sig.exists():
+            raise FileNotFoundError(f"signal input not found: {sig}")
     mom6_signal = pd.read_parquet(MOM6_SIGNAL)
     var5 = pd.read_parquet(VAR_SIGNAL)
     gamma = pd.read_parquet(GAMMA_SIGNAL)
@@ -191,7 +205,7 @@ def main() -> None:
     out_file = out_dir / "anchor_descriptive.json"
     tmp = out_file.with_suffix(".json.tmp")
     with open(tmp, "w") as f:
-        json.dump(report, f, indent=2)
+        json.dump(report, f, indent=2, allow_nan=False)
     tmp.replace(out_file)
     print(f"\nWritten: {out_file}")
 
