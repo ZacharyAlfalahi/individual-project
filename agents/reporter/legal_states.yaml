@@ -1,0 +1,37 @@
+# legal_states.yaml — R4 exhaustive stage-tuple -> PipelineDisposition (docs/reporter/reporter_spec_v0.2.md §7.1).
+#
+# NOT first-match-wins: this table enumerates the LEGAL stage-completeness states. A stage
+# tuple absent from it raises IllegalStateError (INV-13), so an impossible combination of
+# upstream artefacts surfaces loudly rather than being silently classified. Content-hashed
+# and stamped in every note's provenance footer, because it defines the semantic interpretation
+# of artefact combinations — not merely validation code.
+#
+# key = [extraction, compilation, execution, audit, scientist, audit_scope]
+#   stage statuses: succeeded | refused | failed | unobserved | not_applicable
+#   audit_scope:    COMPLETE | PARTIAL | REFUSED | none   (none when no audit artefact)
+schema_version: 1
+rows:
+  - key: [succeeded, unobserved, unobserved, unobserved, unobserved, none]
+    disposition: extraction_only
+  - key: [succeeded, refused, unobserved, unobserved, unobserved, none]
+    disposition: compilation_refused
+  - key: [succeeded, succeeded, unobserved, unobserved, unobserved, none]
+    disposition: execution_unobserved
+  - key: [succeeded, succeeded, failed, unobserved, unobserved, none]
+    disposition: compiled_not_executed
+  - key: [succeeded, succeeded, succeeded, unobserved, unobserved, none]
+    disposition: executed_not_audited
+  - key: [succeeded, succeeded, succeeded, refused, unobserved, REFUSED]
+    disposition: audit_refused
+  - key: [succeeded, succeeded, succeeded, succeeded, unobserved, PARTIAL]
+    disposition: audit_partial
+  - key: [succeeded, succeeded, succeeded, succeeded, not_applicable, PARTIAL]
+    disposition: audit_partial
+  - key: [succeeded, succeeded, succeeded, succeeded, unobserved, COMPLETE]
+    disposition: audit_complete_no_extension
+  - key: [succeeded, succeeded, succeeded, succeeded, not_applicable, COMPLETE]
+    disposition: audit_complete_no_extension
+  - key: [succeeded, succeeded, succeeded, succeeded, succeeded, COMPLETE]
+    disposition: extension_path
+  - key: [succeeded, succeeded, succeeded, succeeded, succeeded, PARTIAL]
+    disposition: extension_path
