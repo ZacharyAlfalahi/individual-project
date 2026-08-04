@@ -46,7 +46,8 @@ from typing import Any
 from agents.quant.config import Inherited
 
 from ..errors import LibrarianSchemaError
-from .signal_ref import LocatedQuote, SignalRef
+from .estimation_fields import ESTIMATION_FIELDS, INSTRUMENT_INHERITED_FIELDS
+from .signal_ref import DescribedSignal, LocatedQuote, SignalRef
 
 
 def _inherited_to_dict(inh: Inherited) -> dict:
@@ -424,20 +425,147 @@ class PaperFacts:
 
 
 # ---------------------------------------------------------------------------
+# Part 2 (v1.2) -- the fitted-factor-model construction variant. Selected when
+# Part 1's ``formation_structure == estimated_factor_model``. These are OPTIONAL
+# spec-level siblings on ``StrategySpec`` (like paper_facts), NOT edits to Part2:
+# a sort spec leaves ``estimation``/``instruments`` == None and serialises
+# byte-identically to a pre-v1.2 spec. The estimation-block field NAMES + menus +
+# field-type dispatch live in ``estimation_fields.py`` so fields.py's 10/28/38
+# sort-schema signature is untouched.
+#
+# The shared Librarian walk (``spec_validators._iter_inherited``) does NOT reach
+# these siblings, so the sort scorer cannot see an estimation field. The KPP gold
+# loader validates them via ``validate_estimation_block`` (a separate pass).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EstimationBlock:
+    """(v1.2) The estimation core of a fitted latent-factor model (e.g. IPCA):
+    the 11 ``ESTIMATION_FIELDS``, each an ``Inherited[...]`` with the same quote+
+    locator discipline as the rest of the spec (STATED or UNKNOWN(not_stated)).
+    Replaces ``legs[] + combiner`` for the ``estimated_factor_model`` family.
+
+    Prose fields (``return_variable``, ``characteristic_preprocessing``,
+    ``managed_portfolio_construction``) carry their ``Inherited[str]`` value +
+    quote like ``MethodSummary.summary``; they are declared-weaker (rubric)
+    downstream. ``n_factors_tested`` carries a set-valued ``Inherited`` value."""
+
+    model_family: Inherited
+    estimation_algorithm: Inherited
+    n_factors_tested: Inherited
+    n_factors_preferred: Inherited
+    intercept_spec: Inherited
+    return_variable: Inherited
+    characteristic_preprocessing: Inherited
+    managed_portfolio_construction: Inherited
+    estimation_mode: Inherited
+    oos_split: Inherited
+    inference_method: Inherited
+
+    def __post_init__(self) -> None:
+        for name in ESTIMATION_FIELDS:
+            _require_inherited(getattr(self, name), f"EstimationBlock.{name}")
+
+    def to_dict(self) -> dict:
+        return {name: _inherited_to_dict(getattr(self, name)) for name in ESTIMATION_FIELDS}
+
+
+@dataclass(frozen=True)
+class InstrumentRef:
+    """(v1.2) One characteristic ("instrument") in a fitted model's instrument
+    set (KPP Table A.I). The fitted-model analogue of a ``SignalRef``: an
+    ``Inherited`` ``concept_id`` (an instrument-registry id, or the ``unrecognised``
+    escape) + the paper's own words (``as_described``), plus three per-instrument
+    ``Inherited`` dials: ``source_class`` (bond|equity|accounting|macro),
+    ``transform`` (e.g. rank-standardize), and ``lag`` (reporting/availability lag).
+
+    Reuses ``DescribedSignal``/``LocatedQuote`` so the locator discipline is
+    identical to ``SignalRef``. Registry membership + the ``unrecognised`` escape
+    invariant are checked in ``validate_estimation_block`` (registry-aware), not
+    here -- exactly as ``SignalRef`` defers to ``validate_librarian_spec``."""
+
+    concept_id: Inherited        # Inherited[str]
+    source_class: Inherited      # Inherited[str]
+    transform: Inherited         # Inherited[str]
+    lag: Inherited               # Inherited[str]
+    as_described: DescribedSignal
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.concept_id, Inherited):
+            raise LibrarianSchemaError(
+                "InstrumentRef.concept_id must be an Inherited[str]; "
+                f"got {type(self.concept_id).__name__}"
+            )
+        cid = self.concept_id.value
+        if cid is not None and not isinstance(cid, str):
+            raise LibrarianSchemaError(
+                f"InstrumentRef.concept_id.value must be a str or None; got {cid!r}"
+            )
+        for name in INSTRUMENT_INHERITED_FIELDS:
+            _require_inherited(getattr(self, name), f"InstrumentRef.{name}")
+        if not isinstance(self.as_described, DescribedSignal):
+            raise LibrarianSchemaError(
+                "InstrumentRef.as_described must be a DescribedSignal; "
+                f"got {type(self.as_described).__name__}"
+            )
+
+    def to_dict(self) -> dict:
+        out: dict[str, Any] = {"concept_id": _inherited_to_dict(self.concept_id)}
+        for name in INSTRUMENT_INHERITED_FIELDS:
+            out[name] = _inherited_to_dict(getattr(self, name))
+        out["as_described"] = self.as_described.to_dict()
+        return out
+
+
+@dataclass(frozen=True)
+class InstrumentSet:
+    """(v1.2) The instrument set of a fitted model: a non-empty tuple of
+    ``InstrumentRef`` (KPP Table A.I lists ~29). Order-invariant downstream (the
+    G3 scorer set-matches on ``concept_id``, like the sort scorer's leg match)."""
+
+    instruments: tuple[InstrumentRef, ...] = ()
+
+    def __post_init__(self) -> None:
+        if isinstance(self.instruments, list):
+            object.__setattr__(self, "instruments", tuple(self.instruments))
+        if not isinstance(self.instruments, tuple) or len(self.instruments) == 0:
+            raise LibrarianSchemaError(
+                "InstrumentSet.instruments must be a non-empty tuple of InstrumentRef"
+            )
+        for i, ins in enumerate(self.instruments):
+            if not isinstance(ins, InstrumentRef):
+                raise LibrarianSchemaError(
+                    f"InstrumentSet.instruments[{i}] must be an InstrumentRef; "
+                    f"got {type(ins).__name__}"
+                )
+
+    def to_dict(self) -> dict:
+        return {"instruments": [ins.to_dict() for ins in self.instruments]}
+
+
+# ---------------------------------------------------------------------------
 # The whole spec.
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class StrategySpec:
     """One runnable strategy in paper language (D20). = header + Part1 + Part2,
-    plus (v1.1) an optional ``paper_facts`` block. ``paper_facts`` defaults to
-    ``None`` so v1 call sites keep working; when present it is analysis-only data
-    the adapter never reads (Guard 2, §5)."""
+    plus (v1.1) an optional ``paper_facts`` block and (v1.2) an optional
+    ``estimation`` + ``instruments`` pair (the fitted-factor-model construction
+    variant). All three optional blocks default to ``None`` so pre-v1.1/v1.2 call
+    sites keep working; a sort spec that leaves ``estimation``/``instruments`` ==
+    None serialises BYTE-IDENTICALLY to a pre-v1.2 spec (they are emitted only
+    when present). ``part2`` stays mandatory: a fitted-model spec carries a minimal
+    all-UNKNOWN stub ``Part2`` (to satisfy the non-empty ``legs`` guard) and the
+    real construction in ``estimation`` + ``instruments``."""
 
     header: SpecHeader
     part1: Part1
     part2: Part2
     paper_facts: PaperFacts | None = None
+    estimation: EstimationBlock | None = None
+    instruments: InstrumentSet | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.header, SpecHeader):
@@ -457,11 +585,28 @@ class StrategySpec:
                 "StrategySpec.paper_facts must be a PaperFacts or None; "
                 f"got {type(self.paper_facts).__name__}"
             )
+        if self.estimation is not None and not isinstance(self.estimation, EstimationBlock):
+            raise LibrarianSchemaError(
+                "StrategySpec.estimation must be an EstimationBlock or None; "
+                f"got {type(self.estimation).__name__}"
+            )
+        if self.instruments is not None and not isinstance(self.instruments, InstrumentSet):
+            raise LibrarianSchemaError(
+                "StrategySpec.instruments must be an InstrumentSet or None; "
+                f"got {type(self.instruments).__name__}"
+            )
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "header": self.header.to_dict(),
             "part1": self.part1.to_dict(),
             "part2": self.part2.to_dict(),
             "paper_facts": self.paper_facts.to_dict() if self.paper_facts is not None else None,
         }
+        # (v1.2) Emit the fitted-model blocks only when present, so a sort spec
+        # (estimation/instruments == None) serialises byte-identically to pre-v1.2.
+        if self.estimation is not None:
+            out["estimation"] = self.estimation.to_dict()
+        if self.instruments is not None:
+            out["instruments"] = self.instruments.to_dict()
+        return out

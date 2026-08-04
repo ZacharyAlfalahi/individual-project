@@ -17,6 +17,7 @@ from .domains import (
     load_domains,
     validate_value,
 )
+from .estimation_validators import validate_estimation_block
 from .spec_validators import (
     SignalRegistryLike,
     validate_librarian_spec,
@@ -42,4 +43,6 @@ __all__ = [
     # spec validator (D8)
     "validate_librarian_spec",
     "SignalRegistryLike",
+    # estimation-block validator (v1.2)
+    "validate_estimation_block",
 ]

@@ -83,6 +83,19 @@ _ANCHORS: dict[str, dict[str, Any]] = {
     "str": {"file": "gold_str_drr_2026.md", "spec_key": "str_drr_2026", "binding": True},
     "drf": {"file": "gold_drf_bbw_2019.md", "spec_key": "drf_bbw_2019", "binding": True},
     "mom6": {"file": "gold_mom6_jnps_2013.md", "spec_key": "mom6_jnps_2013", "binding": True},
+    # (v1.4) CRF — BBW's credit-risk factor: the first multi-leg gold. Three
+    # independent 5×5 rating-signal sorts combined by ``equal_average`` (D28). Same
+    # frozen BBW canonical text as drf; sort path (no ``kind``), so it flows through
+    # this loader's section-scoped multi-leg parse.
+    "crf": {"file": "gold_crf_bbw_2019.md", "spec_key": "crf_bbw_2019", "binding": True},
+    # (v1.2) The fitted-factor-model anchor (KPP / IPCA). ``kind: estimation``
+    # routes load_gold_spec to the parallel kpp_gold_loader; its field set (the
+    # estimation block + instrument list) is disjoint from the sort schema, so the
+    # sort loader path is untouched.
+    "kpp": {
+        "file": "gold_kpp_ipca.md", "spec_key": "kpp_2023",
+        "binding": True, "kind": "estimation",
+    },
 }
 
 # Integer-valued schema fields -- parse their STATED value as an int.
@@ -546,6 +559,80 @@ def _merge_blocks(blocks: list[str], known: set[str]) -> dict[str, _ParsedField]
 
 
 # ---------------------------------------------------------------------------
+# Section-scoped parsing (multi-leg golds, D19).
+#
+# A single-leg gold flattens fine under _merge_blocks (one leg's field names are
+# globally unique). A multi-leg gold (CRF: three rating-signal sorts) declares
+# sort_signal / n_groups / long_leg / ... once PER LEG, so a global merge would
+# raise "appears in more than one block". Instead we split the Markdown into
+# ``## `` sections (``###`` sub-headers like CORE/TAIL stay inside their parent)
+# and classify a section as a LEG section iff its fields contain ``sort_signal``.
+# Leg sections are parsed into per-leg field dicts (duplicate names across legs
+# are legal); every other section is merged into one global namespace exactly as
+# _merge_blocks did. Single-leg golds have exactly one sort_signal-bearing
+# section, so they load byte-identically (one leg, global names untouched).
+# ---------------------------------------------------------------------------
+
+_H2_RE = re.compile(r"^##\s+(.*)$", re.M)  # ``## `` section headers only (NOT ``###``)
+
+
+def _sections(md: str) -> list[tuple[str, str]]:
+    """Split the gold Markdown into (title, body) by ``## `` headers, in order.
+    Text before the first ``## `` header (the title + status preamble) is dropped
+    -- it carries no code block a field is parsed from."""
+    matches = list(_H2_RE.finditer(md))
+    out: list[tuple[str, str]] = []
+    for i, m in enumerate(matches):
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(md)
+        out.append((m.group(1).strip(), md[start:end]))
+    return out
+
+
+def _section_fields(body: str, known: set[str]) -> dict[str, _ParsedField]:
+    """Parse one section's code blocks into {name: _ParsedField}. Same dup-raise
+    discipline as _merge_blocks, but scoped to the single section."""
+    return _merge_blocks(_read_code_blocks(body), known)
+
+
+def _partition_sections(
+    md: str, known: set[str]
+) -> tuple[list[dict[str, _ParsedField]], dict[str, _ParsedField]]:
+    """Partition a gold into (leg_field_dicts, global_fields).
+
+    A section whose fields contain ``sort_signal`` is a leg section -> its field
+    dict is appended to ``leg_field_dicts`` (in document order). Every other
+    section is merged into ``global_fields`` with the cross-section dup-raise that
+    _merge_blocks applied globally before. Leg field names and global field names
+    are disjoint by schema, so single-leg golds produce an identical global merge."""
+    leg_field_dicts: list[dict[str, _ParsedField]] = []
+    global_fields: dict[str, _ParsedField] = {}
+    for _title, body in _sections(md):
+        fields = _section_fields(body, known)
+        if "sort_signal" in fields:
+            leg_field_dicts.append(fields)
+        else:
+            for name, pf in fields.items():
+                if name in global_fields:
+                    raise GoldParseError(
+                        f"field {name!r} appears in more than one block"
+                    )
+                global_fields[name] = pf
+    # Fail-loud on a field misplaced across the leg/global boundary: leg field names
+    # and global (Part 1 / common / paper_facts / header) names are disjoint by schema,
+    # so a name present in BOTH a leg section and a non-leg section is an authoring
+    # error (the old global merge caught cross-block dups; preserve that discipline).
+    for lf in leg_field_dicts:
+        clash = sorted(set(lf) & set(global_fields))
+        if clash:
+            raise GoldParseError(
+                f"field(s) {clash} appear in both a leg section and a non-leg section "
+                "-- a field must live in exactly one namespace"
+            )
+    return leg_field_dicts, global_fields
+
+
+# ---------------------------------------------------------------------------
 # The public loader.
 # ---------------------------------------------------------------------------
 
@@ -556,6 +643,87 @@ def _require(fields: dict[str, _ParsedField], name: str, where: str) -> _ParsedF
             "from the gold is a hard error, never a silent skip"
         )
     return fields[name]
+
+
+def _build_leg(
+    leg_fields: dict[str, _ParsedField],
+    idx: _LocatorIndex,
+    spec_key: str,
+    resolved: dict[str, tuple[str, Locator]],
+) -> Leg:
+    """Build one Leg from a single leg-section's field dict: sort_signal +
+    control_axis SignalRefs, then the _LEG_INHERITED_FIELDS loop. Identical to the
+    historical single-leg construction, just scoped to one section's fields.
+
+    INVARIANT: ``resolved`` is shared across legs and overwritten per leg, so a leg
+    field must NOT use "Same quote as <other-leg-field>" -- cross-leg quote reuse is
+    undefined (it would borrow whichever leg resolved that name last). Within-leg
+    reuse must reference an EARLIER field in ``_LEG_INHERITED_FIELDS`` order. CRF's
+    legs carry byte-identical shared quotes with no "Same quote as", so this holds."""
+    sort_signal = _parse_signal_ref(
+        _require(leg_fields, "sort_signal", "sort block"), idx, spec_key
+    )
+    if sort_signal is None:
+        raise GoldParseError("sort_signal cannot be 'none'")
+    control_axis = _parse_signal_ref(
+        _require(leg_fields, "control_axis", "sort block"), idx, spec_key
+    )
+    leg_kwargs: dict[str, Inherited] = {}
+    for name in _LEG_INHERITED_FIELDS:
+        leg_kwargs[name] = _build_inherited(
+            _classify_field(_require(leg_fields, name, "sort block leg")),
+            idx, spec_key, resolved,
+        )
+    return Leg(sort_signal=sort_signal, control_axis=control_axis, **leg_kwargs)
+
+
+def _build_combiner(
+    leg_field_dicts: list[dict[str, _ParsedField]],
+    global_fields: dict[str, _ParsedField],
+    idx: _LocatorIndex,
+    spec_key: str,
+    resolved: dict[str, tuple[str, Locator]],
+) -> Combiner:
+    """Build the Combiner in one of two grounded forms.
+
+    * **Multi-leg** (CRF): the gold carries a dedicated ``combiner:`` field in a
+      non-leg section (so it lands in ``global_fields``), STATED with its OWN
+      quote+page -- the composite sentence (``equal_average``). Grounded on its own
+      resolved locator (no borrowing).
+    * **Single-leg** (str/drf/mom6): ``combiner: single_leg`` is a BARE token inside
+      the one leg section. It is structurally entailed by that leg's sort_kind quote,
+      so it reuses sort_kind's resolved quote+locator -- the unchanged historical
+      path (keeps the gold's 'zero INFERRED / no fabricated locator' audit)."""
+    if "combiner" in global_fields:
+        raw = _classify_field(global_fields["combiner"])
+        if raw.tag != "STATED" or raw.value is None or raw.quote is None or raw.page is None:
+            raise GoldParseError(
+                "a multi-leg combiner must be STATED with its own quote+page "
+                f"(the composite sentence); got tag={raw.tag!r}"
+            )
+        locator = idx.resolve(spec_key, raw.page, raw.quote, field="combiner")
+        resolved["combiner"] = (raw.quote, locator)
+        return Combiner(
+            kind=Inherited(raw.value, "STATED", Evidence(quote=raw.quote, locator=locator))
+        )
+
+    # single-leg: the bare token lives in the (only) leg section.
+    if len(leg_field_dicts) != 1:
+        raise GoldParseError(
+            f"no global combiner field, but there are {len(leg_field_dicts)} leg "
+            "sections; a multi-leg gold must ground the combiner in its own section"
+        )
+    raw = _classify_field(_require(leg_field_dicts[0], "combiner", "sort block"))
+    if raw.tag != "BARE" or raw.value is None:
+        raise GoldParseError(
+            f"combiner expected a bare structural token; got tag={raw.tag!r}"
+        )
+    if "sort_kind" not in resolved:
+        raise GoldParseError("combiner grounding needs sort_kind resolved (STATED) first")
+    ck_quote, ck_locator = resolved["sort_kind"]
+    return Combiner(
+        kind=Inherited(raw.value, "STATED", Evidence(quote=ck_quote, locator=ck_locator))
+    )
 
 
 def load_gold_spec(anchor_id: str) -> StrategySpec:
@@ -570,6 +738,12 @@ def load_gold_spec(anchor_id: str) -> StrategySpec:
         raise GoldParseError(
             f"unknown anchor_id {anchor_id!r}; expected one of {sorted(_ANCHORS)}"
         )
+    # (v1.2) Estimation-family anchors (KPP) parse via the parallel loader -- a
+    # different construction (estimation block + instrument set), not legs+combiner.
+    if _ANCHORS[anchor_id].get("kind") == "estimation":
+        from evaluation.gold_specs.kpp_gold_loader import load_kpp_gold_spec
+
+        return load_kpp_gold_spec(anchor_id)
     meta = _ANCHORS[anchor_id]
     gold_path = _HERE / meta["file"]
     spec_key = meta["spec_key"]
@@ -578,8 +752,12 @@ def load_gold_spec(anchor_id: str) -> StrategySpec:
 
     idx = _LocatorIndex(_LOCATOR_REPORT)
     known = _all_known_field_names()
-    blocks = _read_code_blocks(gold_path.read_text(encoding="utf-8"))
-    fields = _merge_blocks(blocks, known)
+    # Section-scoped parse: leg sections (those carrying sort_signal) become one
+    # field dict each; everything else merges into the global namespace (Header /
+    # Part 1 / common / paper_facts) exactly as the old global merge did.
+    leg_field_dicts, fields = _partition_sections(
+        gold_path.read_text(encoding="utf-8"), known
+    )
 
     # `resolved`: STATED field-name -> (quote, Locator), so 'Same quote as' reuse
     # (hac_lags) can borrow a sibling's resolved locator.
@@ -611,42 +789,15 @@ def load_gold_spec(anchor_id: str) -> StrategySpec:
         method_summary=method_summary,
     )
 
-    # --- Leg (sort block) ------------------------------------------------------
-    sort_signal = _parse_signal_ref(
-        _require(fields, "sort_signal", "sort block"), idx, spec_key
-    )
-    if sort_signal is None:
-        raise GoldParseError("sort_signal cannot be 'none'")
-    control_axis = _parse_signal_ref(
-        _require(fields, "control_axis", "sort block"), idx, spec_key
-    )
+    # --- legs (one per sort-block section) -------------------------------------
+    # Building every leg first registers each leg's sort_kind locator in
+    # ``resolved`` (the single-leg combiner borrows it below).
+    if not leg_field_dicts:
+        raise GoldParseError("gold has no leg section (a section carrying sort_signal)")
+    legs = tuple(_build_leg(lf, idx, spec_key, resolved) for lf in leg_field_dicts)
 
-    leg_kwargs: dict[str, Inherited] = {}
-    for name in _LEG_INHERITED_FIELDS:
-        leg_kwargs[name] = _build_inherited(
-            _classify_field(_require(fields, name, "sort block leg")),
-            idx, spec_key, resolved,
-        )
-    leg = Leg(sort_signal=sort_signal, control_axis=control_axis, **leg_kwargs)
-
-    # --- combiner (bare structural token; grounded on sort_kind's quote) -------
-    combiner_pf = _require(fields, "combiner", "sort block")
-    combiner_raw = _classify_field(combiner_pf)
-    if combiner_raw.tag != "BARE" or combiner_raw.value is None:
-        raise GoldParseError(
-            f"combiner expected a bare structural token; got tag={combiner_raw.tag!r}"
-        )
-    # single_leg is structurally entailed by the single long-short construction the
-    # sort_kind quote describes -> reuse sort_kind's resolved quote + locator so the
-    # STATED locator is real (no fabrication; keeps the gold's 'zero INFERRED' audit).
-    if "sort_kind" not in resolved:
-        raise GoldParseError("combiner grounding needs sort_kind resolved (STATED) first")
-    ck_quote, ck_locator = resolved["sort_kind"]
-    combiner = Combiner(
-        kind=Inherited(
-            combiner_raw.value, "STATED", Evidence(quote=ck_quote, locator=ck_locator)
-        )
-    )
+    # --- combiner (single_leg borrows sort_kind; multi-leg grounds its own quote)
+    combiner = _build_combiner(leg_field_dicts, fields, idx, spec_key, resolved)
 
     # --- common block (28 fields) ---------------------------------------------
     common_kwargs: dict[str, Inherited] = {}
@@ -656,7 +807,7 @@ def load_gold_spec(anchor_id: str) -> StrategySpec:
             idx, spec_key, resolved,
         )
 
-    part2 = Part2(legs=(leg,), combiner=combiner, **common_kwargs)
+    part2 = Part2(legs=legs, combiner=combiner, **common_kwargs)
 
     # --- paper_facts -----------------------------------------------------------
     pf_kwargs: dict[str, Inherited] = {}

@@ -36,6 +36,7 @@ from agents.librarian.registries.standing_substitutions import (  # noqa: E402
 from agents.quant.config import QuantConfig, to_rulebook  # noqa: E402
 from agents.quant.library.bbw_factors import factor_rulebook  # noqa: E402
 from evaluation.gold_specs.gold_loader import load_gold_spec  # noqa: E402
+from evaluation.harness.canonical_yaml import assert_rulebook_byte_equal  # noqa: E402
 
 from build_str import str_rulebook  # noqa: E402  (scripts/)
 from build_mom6 import mom6_rulebook  # noqa: E402  (scripts/)
@@ -95,6 +96,78 @@ def produced_rulebook(adapt_result) -> dict:
 
 def combiner_dict(adapt_result) -> dict:
     return adapt_result.combiner.to_dict()
+
+
+# --- multi-leg composite G2 (CRF: the first multi-leg equal_average anchor) ----
+#
+# A composite rulebook is {"legs": {control_col: leg_rulebook, ...}, "combiner": {...}}.
+# Legs are keyed by their DISTINGUISHING control column (order-invariant), so the
+# gate proves byte-equality per leg AND the combiner instruction.
+
+_CRF_COMPONENTS = ("crf_var", "crf_illiq", "crf_rev")
+
+
+def expected_composite_rulebook(anchor_id: str) -> dict:
+    """The golden composite ``R_paper`` for a multi-leg equal_average anchor: each
+    component's independently hand-authored golden rulebook, keyed by its control
+    column, plus the equal_average combiner instruction. CRF only, today."""
+    if anchor_id != "crf":
+        raise HarnessError(f"no composite golden rulebook for anchor_id {anchor_id!r}")
+    legs: dict[str, dict] = {}
+    for name in _CRF_COMPONENTS:
+        rb = factor_rulebook(name)
+        control = rb["control"]
+        if control in legs:
+            raise HarnessError(
+                f"two CRF golden components share control column {control!r}; the "
+                "composite legs are keyed by control and would collapse to one"
+            )
+        legs[control] = rb
+    return {"legs": legs, "combiner": {"kind": "equal_average", "divisor": "available"}}
+
+
+def produced_rulebook_composite(adapt_result) -> dict:
+    """The compiler's composite rulebook for a multi-leg anchor: every leg's
+    ``to_rulebook`` keyed by its control column, plus ``combiner.to_dict()``. Raises
+    if any leg did not compile, has no control column, or two legs collide on one."""
+    legs: dict[str, dict] = {}
+    for i, lc in enumerate(adapt_result.leg_calls):
+        if not isinstance(lc.result, QuantConfig):
+            raise HarnessError(
+                f"leg {i} did not compile to a QuantConfig (got {type(lc.result).__name__}); "
+                "cannot form a produced composite rulebook"
+            )
+        rb = to_rulebook(lc.result)
+        control = rb.get("control")
+        if control is None:
+            raise HarnessError(f"leg {i} produced a rulebook with no control column")
+        if control in legs:
+            raise HarnessError(
+                f"two legs share control column {control!r}; cannot key the composite"
+            )
+        legs[control] = rb
+    return {"legs": legs, "combiner": adapt_result.combiner.to_dict()}
+
+
+def assert_composite_rulebook_byte_equal(produced: dict, expected: dict) -> None:
+    """Assert a multi-leg composite matches PER LEG **and** the combiner -- the
+    headline new G2 capability. Legs are keyed by control column (order-invariant);
+    each leg is D30 byte-equal (reusing ``assert_rulebook_byte_equal``), and the
+    combiner dict matches exactly. A missing/extra leg or a mismatched control column
+    (e.g. the crf_rev rev->xret reconciliation regressing) surfaces loudly here."""
+    prod_legs, exp_legs = produced["legs"], expected["legs"]
+    if set(prod_legs) != set(exp_legs):
+        raise AssertionError(
+            f"composite legs differ: produced controls {sorted(prod_legs)} vs "
+            f"expected {sorted(exp_legs)}"
+        )
+    for control in exp_legs:
+        assert_rulebook_byte_equal(prod_legs[control], exp_legs[control])
+    if produced["combiner"] != expected["combiner"]:
+        raise AssertionError(
+            f"combiner differs: produced {produced['combiner']} vs "
+            f"expected {expected['combiner']}"
+        )
 
 
 # --- the authorised-diff register (contract §7.2 register rows) --------------

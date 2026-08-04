@@ -8,6 +8,15 @@ StrategySpec`` rather than reaching into the submodules.
 
 from __future__ import annotations
 
+from .estimation_fields import (
+    DERIVABLE_ON_MENU,
+    ESTIMATION_FIELD_TYPES,
+    ESTIMATION_FIELDS,
+    ESTIMATION_MENUS,
+    INSTRUMENT_FIELDS,
+    INSTRUMENT_INHERITED_FIELDS,
+    SOURCE_CLASS_MENU,
+)
 from .fields import (
     ALREADY_FINAL_PART2,
     COMMON_FIELDS,
@@ -27,6 +36,9 @@ from .signal_ref import (
 )
 from .strategy_spec import (
     Combiner,
+    EstimationBlock,
+    InstrumentRef,
+    InstrumentSet,
     Leg,
     MethodSummary,
     PaperFacts,
@@ -50,6 +62,9 @@ __all__ = [
     "Combiner",
     "Part2",
     "PaperFacts",
+    "EstimationBlock",
+    "InstrumentRef",
+    "InstrumentSet",
     "StrategySpec",
     # field-name / menu constants
     "PART1_FIELDS",
@@ -61,4 +76,12 @@ __all__ = [
     "INT_FIELDS",
     "CONTROL_N_GROUPS",
     "PAPER_FACTS_FIELDS",
+    # estimation-block (v1.2) constants
+    "ESTIMATION_FIELDS",
+    "ESTIMATION_FIELD_TYPES",
+    "ESTIMATION_MENUS",
+    "INSTRUMENT_FIELDS",
+    "INSTRUMENT_INHERITED_FIELDS",
+    "SOURCE_CLASS_MENU",
+    "DERIVABLE_ON_MENU",
 ]

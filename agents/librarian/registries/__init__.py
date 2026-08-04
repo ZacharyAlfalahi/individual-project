@@ -23,6 +23,7 @@ Both loaders return frozen dataclasses carrying a ``version`` + a reproducible
 
 from __future__ import annotations
 
+from .instrument_concept_registry import load_instrument_concept_registry
 from .signal_concept_registry import (
     SignalConcept,
     SignalConceptRegistry,
@@ -44,6 +45,8 @@ __all__ = [
     "SignalConcept",
     "SignalConceptRegistry",
     "load_signal_concept_registry",
+    # instrument concept registry (v1.2, fitted-model)
+    "load_instrument_concept_registry",
     # silence-policy table (D26 / D32c)
     "FieldPolicy",
     "SilencePolicyTable",

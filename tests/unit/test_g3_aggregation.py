@@ -19,6 +19,7 @@ import pytest  # noqa: E402
 
 from evaluation.harness.aggregation import (  # noqa: E402
     ANCHOR_SET,
+    ANCHOR_SET_WITH_CRF,
     aggregate,
     render_aggregate,
 )
@@ -67,8 +68,11 @@ def test_macro_is_an_unweighted_mean_that_shows_its_constituents():
     agg = aggregate(b)
     m = agg.macro["selective_accuracy"]
     assert m.n_papers == 3
-    assert dict(m.values) == {"drf": pytest.approx(3 / 4), "mom6": pytest.approx(6 / 7),
-                              "str": pytest.approx(6 / 8)}
+    # Macro constituents are per-PAPER (§3.3). Each paper holds one anchor in the
+    # 3-strategy set, so BBW==drf, JNPS==mom6, DRR==str: same three numbers, keyed
+    # by paper. (The 4-strategy call makes BBW = mean(drf, crf) -- see the CRF test.)
+    assert dict(m.values) == {"BBW": pytest.approx(3 / 4), "JNPS": pytest.approx(6 / 7),
+                              "DRR": pytest.approx(6 / 8)}
     assert m.mean == pytest.approx((3 / 4 + 6 / 7 + 6 / 8) / 3)
     assert "constituents" in m.render()
 
@@ -96,9 +100,9 @@ def test_no_dispersion_statistic_is_emitted_on_so_few_papers():
 @_needs_runs
 def test_leave_one_out_drops_exactly_one_paper():
     agg = aggregate(_bundles())
-    assert set(agg.leave_one_out) == {"drf", "mom6", "str"}
+    assert set(agg.leave_one_out) == {"BBW", "JNPS", "DRR"}   # keyed by PAPER now
     # at G=3, dropping one leaves a genuine POOL of two, not a single paper
-    rest = agg.leave_one_out["drf"]["selective_accuracy"]
+    rest = agg.leave_one_out["BBW"]["selective_accuracy"]     # drop BBW -> drf(+crf) gone
     assert (rest.numerator, rest.denominator) == (6 + 6, 7 + 8)   # mom6 + str pooled
 
 
@@ -127,8 +131,39 @@ def test_the_third_anchor_stabilised_selective_accuracy():
     artefact of having two papers, not a property of the pipeline. This is the
     single clearest argument for why the third anchor was worth recovering."""
     agg = aggregate(_bundles())
-    vals = [agg.leave_one_out[a]["selective_accuracy"].value for a in agg.anchors_scored]
+    vals = [v["selective_accuracy"].value for v in agg.leave_one_out.values()]
     assert max(vals) - min(vals) < 0.10
+
+
+# --- CRF: the fourth gold pools at the PAPER level (v1.4 / D43) ---------------
+
+@_needs_runs
+def test_bbw_paper_averages_drf_and_crf():
+    """CRF is BBW's second sort anchor: the BBW paper score is the unweighted mean
+    of drf and crf, so BBW carries ONE paper's weight in the macro (§3.3), not two,
+    and CRF's larger three-leg schema cannot dominate the BBW paper score."""
+    b = _bundles()
+    # synthetic crf: clone drf, give it a distinct selective_accuracy (1/2 vs drf 3/4)
+    crf = replace(b["drf"], selective_accuracy=replace(
+        b["drf"].selective_accuracy, numerator=1, denominator=2))
+    agg = aggregate({**b, "crf": crf}, anchors_expected=ANCHOR_SET_WITH_CRF)
+    m = agg.macro["selective_accuracy"]
+    assert m.n_papers == 3                                   # BBW, JNPS, DRR (not 4)
+    assert dict(m.values) == {"BBW": pytest.approx((3 / 4 + 1 / 2) / 2),
+                              "JNPS": pytest.approx(6 / 7), "DRR": pytest.approx(6 / 8)}
+    assert m.mean == pytest.approx(((3 / 4 + 1 / 2) / 2 + 6 / 7 + 6 / 8) / 3)
+
+
+@_needs_runs
+def test_leave_one_paper_out_drops_both_bbw_anchors():
+    """Dropping BBW removes drf AND crf; the remainder pools only mom6 + str."""
+    b = _bundles()
+    crf = replace(b["drf"], selective_accuracy=replace(
+        b["drf"].selective_accuracy, numerator=1, denominator=2))
+    agg = aggregate({**b, "crf": crf}, anchors_expected=ANCHOR_SET_WITH_CRF)
+    assert set(agg.leave_one_out) == {"BBW", "JNPS", "DRR"}   # papers, not 4 anchors
+    rest = agg.leave_one_out["BBW"]["selective_accuracy"]
+    assert (rest.numerator, rest.denominator) == (6 + 6, 7 + 8)   # only mom6 + str
 
 
 # --- completeness ------------------------------------------------------------

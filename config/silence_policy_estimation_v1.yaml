@@ -1,0 +1,31 @@
+# Silence-policy table (estimation block) — v1.2
+# Per-field routing at intake for UNKNOWN(not_stated) fields of the fitted-factor-model
+# construction variant (schema v1.2: EstimationBlock). SEPARATE from the sort table
+# (config/silence_policy_v1.yaml) so that file + its frozen byte-hash (1ecc7948…) stay
+# untouched. Loaded via load_silence_policy_table(path=<this file>, blocks=("estimation",)).
+# Hash-stamped in docs/librarian/specs/schema_v1_2_estimation_block.md.
+#
+# policy ∈ {tag_and_proceed, refuse, flag, conditional_refuse}
+#   refuse:          paper silent on a load-bearing IDENTITY field -> typed refusal naming the field
+#   tag_and_proceed: paper silent -> proceed (an adapter default would fill it in Scope B)
+#
+# The identity fields refuse-on-silence, mirroring how the sort block's sort_signal / long_leg
+# refuse: a fitted model with no stated model family / algorithm / intercept spec / estimation mode
+# / factor grid cannot be reconstructed, so silence there is a refusal, not a default.
+
+version: v1.2
+date: 2026-08-03
+basis: [D26, D42]
+
+estimation:
+  model_family:                   {policy: refuse, reason: "the model family is the estimation's identity (e.g. IPCA); silence cannot be defaulted"}
+  estimation_algorithm:           {policy: refuse, reason: "the fitting algorithm (e.g. alternating least squares) is load-bearing to the estimate"}
+  n_factors_tested:               {policy: refuse, reason: "the factor grid (K set) defines the estimation's scope; silence cannot be inferred"}
+  n_factors_preferred:            {policy: tag_and_proceed, default: max_tested, note: "headline K; if silent, the largest tested K is the reporting default"}
+  intercept_spec:                 {policy: refuse, reason: "restricted (Gamma_alpha=0) vs unrestricted is the alpha-test identity; silence cannot be defaulted"}
+  return_variable:                {policy: tag_and_proceed, default: excess_return, note: "prose (rubric); return basis + scaling captured descriptively"}
+  characteristic_preprocessing:   {policy: tag_and_proceed, default: rank_standardize, note: "prose (rubric); the KPS rank-standardization is the field's conventional default"}
+  managed_portfolio_construction: {policy: tag_and_proceed, default: none, note: "prose (rubric); the X'R managed-portfolio reduction is a method detail, not load-bearing to identity"}
+  estimation_mode:                {policy: refuse, reason: "in-sample vs recursive-OOS changes what the numbers mean; silence cannot be defaulted"}
+  oos_split:                      {policy: tag_and_proceed, default: none, note: "OOS burn-in; only meaningful when estimation_mode includes recursive_oos"}
+  inference_method:               {policy: tag_and_proceed, default: none, note: "significance machinery (e.g. wild bootstrap); reported when present, not load-bearing to the point estimate"}

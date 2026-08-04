@@ -111,6 +111,35 @@ def test_mom6_spot_values(specs):
     assert s.part2.cohort_weighting.value == "equal"
 
 
+def test_crf_three_legs():
+    """CRF is the first MULTI-LEG gold: three independent credit-rating sorts
+    (against VaR, ILLIQ, REV) combined by equal_average (D28). The loader must
+    build three legs and ground the combiner on its OWN composite-sentence quote."""
+    s = load_gold_spec("crf")
+    assert len(s.part2.legs) == 3
+    for leg in s.part2.legs:
+        assert leg.sort_signal.concept_id.value == "credit_rating"
+        assert leg.sort_signal.concept_id.tag == "STATED"
+        assert leg.long_leg.value == "highest_signal"    # long = worst credit (§2)
+        assert leg.n_groups.value == 5 and leg.control_n_groups.value == 5
+        assert leg.sort_kind.value == "independent"
+    # each leg's DISTINGUISHING axis is its control_axis, in document order
+    assert [leg.control_axis.concept_id.value for leg in s.part2.legs] == \
+        ["var_5pct", "bpw_gamma", "prior_1m_excess_return"]
+    # combiner: equal_average, STATED, grounded on its OWN locator (not a leg's)
+    c = s.part2.combiner.kind
+    assert c.value == "equal_average" and c.tag == "STATED"
+    assert c.evidence.locator is not None and c.evidence.locator.page == 15
+    # fail-closed validation + headline
+    assert validate_librarian_spec(s) == []
+    assert s.paper_facts.claimed_headline_metric.value == {
+        "mean": 0.43, "t_stat": 2.78, "unit": "pct_per_month"}
+
+
+def test_crf_is_binding():
+    assert is_binding("crf") is True
+
+
 def test_claimed_headline_metric_parses_as_dict(specs):
     m = specs["str"].paper_facts.claimed_headline_metric.value
     assert isinstance(m, dict)

@@ -38,13 +38,23 @@ import pandas as pd
 from .characteristic_sort import run_characteristic_sort
 
 # name -> (score axis, control axis, long group, short group)
+#
+# Column-name reconciliation (v1.4): the CRF gold's REV control axis is the concept
+# ``prior_1m_excess_return``, which the frozen D27 concept->column table binds to
+# column ``xret`` (str depends on that binding). So the adapter compiles the CRF_REV
+# leg's control to ``xret``; ``crf_rev`` here is reconciled ``rev``->``xret`` to keep
+# the golden rulebook byte-equal with the adapter (never edit the frozen concept
+# table). DEFERRED-RUN companion: a live CRF run needs the BBW panel to expose the
+# reversal signal under column ``xret`` (build_bbw_factors currently names it ``rev``);
+# G2 compares rulebook dicts only, so this does not gate the buildable scope. The
+# standalone ``rev`` factor (score=``rev``) is in no gold/G2 and is left unchanged.
 BBW_FACTOR_CONFIGS: dict[str, dict] = {
     "drf":       {"score": "var_5pct", "control": "rating",   "long_group": 4, "short_group": 0},
     "lrf":       {"score": "gamma",    "control": "rating",   "long_group": 4, "short_group": 0},
     "rev":       {"score": "rev",      "control": "rating",   "long_group": 0, "short_group": 4},
     "crf_var":   {"score": "rating",   "control": "var_5pct", "long_group": 4, "short_group": 0},
     "crf_illiq": {"score": "rating",   "control": "gamma",    "long_group": 4, "short_group": 0},
-    "crf_rev":   {"score": "rating",   "control": "rev",      "long_group": 4, "short_group": 0},
+    "crf_rev":   {"score": "rating",   "control": "xret",     "long_group": 4, "short_group": 0},
 }
 
 CRF_COMPONENTS = ("crf_var", "crf_illiq", "crf_rev")
@@ -85,6 +95,14 @@ def compose_crf(component_monthly: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
     A month is included only when all three components are present (inner-join),
     so the composite is never a partial average.
+
+    NB the STANDALONE variant. For the eval pipeline the AUTHORITATIVE CRF composite
+    is the adapter->runner `equal_average` path (`agents/quant/config/runner.py`
+    `_combine_equal_average`), whose adaptive divisor (skipna by-date mean) differs
+    from this inner-join ONLY on months where a component is missing; on the frozen
+    BBW window all three share universe/formation every month, so they agree. G2
+    compares rulebook dicts + the combiner dict, never return series, so this
+    difference does not affect the byte-equality gate.
     """
     missing = [c for c in CRF_COMPONENTS if c not in component_monthly]
     if missing:

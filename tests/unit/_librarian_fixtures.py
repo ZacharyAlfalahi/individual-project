@@ -13,8 +13,12 @@ from __future__ import annotations
 from agents.quant.config import Evidence, Inherited, Locator
 
 from agents.librarian.schema import (
+    ESTIMATION_FIELDS,
     Combiner,
     DescribedSignal,
+    EstimationBlock,
+    InstrumentRef,
+    InstrumentSet,
     Leg,
     LocatedQuote,
     MethodSummary,
@@ -153,3 +157,119 @@ class FakeSignalRegistry:
 
     def parameter_schema(self, concept_id: str):
         return self._schemas[concept_id]
+
+
+# ---------------------------------------------------------------------------
+# Fitted-factor-model (v1.2) builders -- EstimationBlock + InstrumentSet + the
+# all-UNKNOWN stub Part2 a KPP-shaped spec carries. Synthetic, not paper-lifted.
+# ---------------------------------------------------------------------------
+
+
+def build_stub_part2():
+    """An all-UNKNOWN sort block (single stub leg + single_leg combiner): the
+    minimal Part2 a fitted-model spec carries to satisfy the non-empty legs
+    guard. Never scored (the KPP path is parallel)."""
+    stub_leg = Leg(
+        sort_signal=SignalRef(
+            concept_id=unknown(), as_described=DescribedSignal(label="schema stub")
+        ),
+        sort_kind=unknown(),
+        bucketing_method=unknown(),
+        n_groups=unknown(),
+        stripe_aggregation=unknown(),
+        control_missing_policy=unknown(),
+        long_leg=unknown(),
+        signal_transform=unknown(),
+        control_n_groups=unknown(),
+    )
+    return build_part2(
+        legs=(stub_leg,),
+        combiner=Combiner(kind=unknown()),
+        # blank the common block to UNKNOWN so nothing sort-side reads as real.
+        **{
+            name: unknown()
+            for name in (
+                "eligibility_missing_policy", "return_availability_policy", "signal_lag",
+                "lag_convention", "min_bonds", "min_bonds_granularity", "tie_break_policy",
+                "weighting_scheme", "weighting_base", "weight_timing", "strategy_side",
+                "empty_leg_policy", "transaction_cost_convention", "return_label",
+                "rebalance_frequency", "holding_period", "overlap_convention",
+                "cohort_weighting", "burn_in_policy", "missing_return_policy",
+                "realisation_min_survivors", "return_compounding", "significance_convention",
+                "hac_lags", "annualisation", "rf_convention", "benchmark_model", "expost_trim",
+            )
+        },
+    )
+
+
+def instrument_ref(concept="past_6m_cumulative_return", *, source_class="bond",
+                   transform=None, lag=None, label="synthetic instrument", quotes=None):
+    if quotes is None:
+        quotes = (located_quote(),)
+    return InstrumentRef(
+        concept_id=stated(concept),
+        source_class=stated(source_class),
+        transform=transform if transform is not None else unknown(),
+        lag=lag if lag is not None else unknown(),
+        as_described=DescribedSignal(label=label, quotes=tuple(quotes)),
+    )
+
+
+def build_estimation_block(**overrides):
+    """A well-formed EstimationBlock; STATED headline identity fields, UNKNOWN
+    elsewhere by default. Override any field by name."""
+    base = {name: unknown() for name in ESTIMATION_FIELDS}
+    base.update(
+        model_family=stated("instrumented_pca"),
+        estimation_algorithm=stated("alternating_least_squares"),
+        n_factors_tested=stated({1, 2, 3, 4, 5}),
+        n_factors_preferred=stated(5),
+        intercept_spec=stated("both"),
+        estimation_mode=stated("both"),
+        oos_split=stated(36),
+        inference_method=stated("wild_bootstrap"),
+    )
+    base.update(overrides)
+    return EstimationBlock(**base)
+
+
+def build_instrument_set(instruments=None):
+    if instruments is None:
+        instruments = (
+            instrument_ref("past_6m_cumulative_return", source_class="bond"),
+            instrument_ref("credit_rating", source_class="bond"),
+        )
+    return InstrumentSet(instruments=tuple(instruments))
+
+
+def build_kpp_spec(header=None, part1=None, estimation=None, instruments=None):
+    """A KPP-shaped StrategySpec: estimated_factor_model Part1 + stub Part2 +
+    estimation + instruments."""
+    return StrategySpec(
+        header=header or build_header(),
+        part1=part1
+        or build_part1(formation_structure=stated("estimated_factor_model")),
+        part2=build_stub_part2(),
+        estimation=estimation or build_estimation_block(),
+        instruments=instruments or build_instrument_set(),
+    )
+
+
+class FakeInstrumentRegistry:
+    """A minimal in-memory Instrument Concept Registry satisfying
+    SignalRegistryLike -- for the estimation validator tests."""
+
+    def __init__(self, ids=None):
+        self._ids = set(
+            ids
+            or {
+                "past_6m_cumulative_return", "credit_rating", "bond_var_36m",
+                "duration", "spread", "bond_skewness",
+            }
+        )
+
+    def has_concept(self, concept_id: str) -> bool:
+        return concept_id in self._ids
+
+    def parameter_schema(self, concept_id: str):
+        return {}

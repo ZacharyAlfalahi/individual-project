@@ -88,8 +88,13 @@ def run_family(maximal: pd.DataFrame, signals: pd.DataFrame, family: str):
     )
     panel = view(maximal, cfg, signals=signals).drop_duplicates(
         subset=["cusip", "date"]).reset_index(drop=True)
-    panel["rev"] = panel["ret"]  # REV sorts on the contemporaneous prior-month return
-    panel = panel[["cusip", "date", "ret", "size", "rating", "var_5pct", "gamma", "rev"]]
+    panel["rev"] = panel["ret"]   # REV factor sorts on the contemporaneous prior-month return (score=rev)
+    # CRF_REV controls on the same reversal signal, exposed under `xret`: its gold concept
+    # is prior_1m_excess_return, which the frozen D27 table binds to column `xret`, so
+    # bbw_factors' crf_rev control was reconciled rev->xret. Alias here (BBW's reversal is
+    # the raw prior-month return) so the live build can run the crf_rev leg.
+    panel["xret"] = panel["ret"]
+    panel = panel[["cusip", "date", "ret", "size", "rating", "var_5pct", "gamma", "rev", "xret"]]
 
     monthly, summaries, component_mr = {}, {}, {}
     for name in FACTORS:

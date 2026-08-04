@@ -194,8 +194,18 @@ def _parse_field_policy(block: str, field: str, spec: object) -> FieldPolicy:
     )
 
 
-def load_silence_policy_table(path: str | Path | None = None) -> SilencePolicyTable:
-    """Load and validate ``config/silence_policy_v1.yaml`` into a typed table.
+def load_silence_policy_table(
+    path: str | Path | None = None,
+    blocks: tuple[str, ...] = _BLOCKS,
+) -> SilencePolicyTable:
+    """Load and validate a silence-policy table into a typed table.
+
+    ``path`` defaults to the sort table ``config/silence_policy_v1.yaml`` and
+    ``blocks`` to its two blocks ``("sort_block", "common")`` -- so the sort call
+    site is unchanged. The (v1.2) fitted-model estimation silences live in a
+    SEPARATE file (``config/silence_policy_estimation_v1.yaml``, block
+    ``("estimation",)``), loaded by passing both; this leaves the sort table +
+    its frozen byte-hash provably untouched.
 
     ``content_hash`` is the sha256 of the file bytes (the artifact-freeze check),
     computed before parsing so it is independent of the parse."""
@@ -213,7 +223,7 @@ def load_silence_policy_table(path: str | Path | None = None) -> SilencePolicyTa
         raise LibrarianSchemaError("silence-policy table must declare a non-empty 'version'")
 
     policies: dict[str, dict[str, FieldPolicy]] = {}
-    for block in _BLOCKS:
+    for block in blocks:
         block_raw = raw.get(block)
         if not isinstance(block_raw, dict) or len(block_raw) == 0:
             raise LibrarianSchemaError(

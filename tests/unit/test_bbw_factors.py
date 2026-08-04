@@ -72,6 +72,10 @@ def test_rev_is_losers_minus_winners():
     # increases in rating group (+0.02*r). REV (long losers=group0) = +0.04;
     # CRF_REV (long low-rating=group4) = +0.08.
     panel = _grid_panel("rev", lambda v, r: -0.01 * v + 0.02 * r)
+    # crf_rev's control was reconciled rev->xret (concept prior_1m_excess_return ->
+    # xret, D27) so its rulebook byte-equals the adapter; the reversal signal is the
+    # same series under either name, so alias it here for the standalone-rev grid.
+    panel["xret"] = panel["rev"]
     rev = run_bbw_factor(panel, "rev")["monthly_returns"].set_index("date")
     crf_rev = run_bbw_factor(panel, "crf_rev")["monthly_returns"].set_index("date")
     assert rev.loc[M1, "strategy_ret"] == pytest.approx(0.04, abs=1e-12)

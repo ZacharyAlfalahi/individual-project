@@ -57,6 +57,17 @@ from evaluation.harness.stats import Proportion  # noqa: E402
 # The gold corpus. An aggregate that scores fewer must say so.
 ANCHOR_SET: tuple[str, ...] = ("drf", "mom6", "str")
 
+# (v1.4 / D43) CRF is BBW's SECOND sort anchor. The RQ1 macro is a PAPER-level
+# average (contract §3.3), so drf and crf both map to the BBW paper and are averaged
+# into ONE BBW score before the cross-paper mean -- BBW carries one paper's weight and
+# is not double-counted by CRF's larger three-leg schema. The legacy ``ANCHOR_SET``
+# stays the 3-strategy default (the historical headline, reported side-by-side per the
+# governance "report both headlines" condition); the 4-strategy headline passes
+# ``ANCHOR_SET_WITH_CRF`` explicitly. Backward-compatible: a paper holding exactly one
+# anchor has paper_rate == that anchor's rate, so the 3-strategy number is unchanged.
+ANCHOR_SET_WITH_CRF: tuple[str, ...] = ("crf", "drf", "mom6", "str")
+PAPER_OF: dict[str, str] = {"drf": "BBW", "crf": "BBW", "mom6": "JNPS", "str": "DRR"}
+
 # The §3.1/§3.6 metrics carried through every altitude.
 _METRICS: tuple[str, ...] = (
     "coverage", "selective_accuracy", "over_claim_rate",
@@ -66,14 +77,16 @@ _METRICS: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class MacroStat:
-    """An unweighted mean across papers, with its constituents.
+    """An unweighted mean across PAPERS, with its constituents.
 
     ``values`` is emitted alongside the mean deliberately: on G <= 3 the mean is a
     summary of so few points that showing it alone would imply a precision that is
-    not there. No standard deviation -- see the module docstring."""
+    not there. No standard deviation -- see the module docstring. Each constituent is
+    one PAPER's rate; a paper with multiple anchors (BBW = drf + crf) contributes the
+    unweighted mean of its anchors' rates, so BBW is weighted as one paper (§3.3)."""
 
     label: str
-    values: tuple[tuple[str, float], ...]      # (anchor_id, rate)
+    values: tuple[tuple[str, float], ...]      # (paper_id, paper_rate)
     n_papers: int
 
     @property
@@ -158,23 +171,46 @@ def aggregate(bundles: dict[str, MetricBundle], *,
     ordered = {a: bundles[a] for a in sorted(bundles)}
     as_list = list(ordered.values())
 
+    # Paper-level macro/LOO group by PAPER_OF; a sort anchor with no registered paper
+    # cannot be grouped. Fail loud with a named message (not a bare KeyError deep in
+    # the macro loop) so a misregistered anchor is obvious.
+    unknown = [a for a in ordered if a not in PAPER_OF]
+    if unknown:
+        raise ValueError(
+            f"aggregate() received sort anchor(s) {unknown} absent from PAPER_OF; "
+            "register each anchor's paper before the paper-level macro can group it (§3.3)"
+        )
+
     micro = {m: _pool(as_list, m, th, " (micro)") for m in _METRICS} if as_list else {}
 
+    # Macro = mean across PAPERS. A paper's rate is the unweighted mean of its
+    # present anchors' rates (BBW = mean(drf, crf)); an n=0 anchor contributes no
+    # rate. Papers are ordered by first appearance in the sorted-anchor iteration
+    # (deterministic: BBW, JNPS, DRR).
     macro: dict[str, MacroStat] = {}
     for m in _METRICS:
-        vals = []
+        by_paper: dict[str, list[float]] = {}
         for anchor, b in ordered.items():
             p = getattr(b, m)
-            if p.value is not None:          # an n=0 paper contributes no rate
-                vals.append((anchor, p.value))
+            if p.value is not None:          # an n=0 anchor contributes no rate
+                by_paper.setdefault(PAPER_OF[anchor], []).append(p.value)
+        paper_vals = tuple(
+            (paper, sum(rates) / len(rates)) for paper, rates in by_paper.items()
+        )
         macro[m] = MacroStat(label=getattr(as_list[0], m).label if as_list else m,
-                             values=tuple(vals), n_papers=len(vals))
+                             values=paper_vals, n_papers=len(paper_vals))
 
-    # Leave-one-paper-out: micro over the remainder. With two papers this leaves
-    # one, which is the per-paper row -- reported, but not a sensitivity analysis.
+    # Leave-one-PAPER-out: micro-pool the anchors of every OTHER paper. Dropping
+    # BBW drops BOTH drf and crf (§3.3). With two papers this leaves one, which is
+    # the per-paper row -- reported, but not a sensitivity analysis.
+    papers_scored: list[str] = []
+    for anchor in ordered:
+        paper = PAPER_OF[anchor]
+        if paper not in papers_scored:
+            papers_scored.append(paper)
     loo: dict[str, dict[str, Proportion]] = {}
-    for dropped in ordered:
-        rest = [b for a, b in ordered.items() if a != dropped]
+    for dropped in papers_scored:
+        rest = [b for a, b in ordered.items() if PAPER_OF[a] != dropped]
         if not rest:
             continue
         loo[dropped] = {m: _pool(rest, m, th, f" (micro, minus {dropped})") for m in _METRICS}
@@ -217,9 +253,10 @@ def render_aggregate(agg: AggregateBundle, *, allow_non_reportable: bool = False
         lines.append(f"      {agg.macro[m].render()}")
 
     lines.append("  -- leave-one-paper-out --")
-    if len(agg.anchors_scored) <= 2:
-        lines.append(f"      NOTE: with {len(agg.anchors_scored)} papers, LOO leaves "
-                     f"{len(agg.anchors_scored) - 1} and degenerates to the per-paper row. "
+    n_papers = len({PAPER_OF[a] for a in agg.anchors_scored})
+    if n_papers <= 2:
+        lines.append(f"      NOTE: with {n_papers} papers, LOO leaves "
+                     f"{n_papers - 1} and degenerates to the per-paper row. "
                      "Reported as the effect of a single paper, NOT as a robustness claim.")
     for dropped, metrics in agg.leave_one_out.items():
         lines.append(f"      drop {dropped}:")

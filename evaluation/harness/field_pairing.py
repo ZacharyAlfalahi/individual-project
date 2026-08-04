@@ -159,23 +159,89 @@ class PairedField:
         return None if self.gold is None else self.gold.value
 
 
+# --- run-side leg encoding (multi-leg join, D34) ------------------------------
+#
+# A multi-leg run keys its per-leg records ``legs[{j}].{field}`` (the gold path
+# ``part2.legs[i].<field>`` minus ``part2.``); a single-leg run keeps the BARE
+# ``<field>`` names. load_run rejects duplicate flat names, so a 3-leg run MUST use
+# the leg-scoped form. The gold->run leg permutation is resolved by ``match_legs``.
+
+_RUN_LEG_RE = re.compile(r"^legs\[(\d+)\]\.")
+
+
+def _run_concept(artefacts, j: int, field: str) -> object:
+    """The run's normalised concept value for leg j's sort_signal/control_axis,
+    taken from whichever model answered (matching is identity-only, not scoring)."""
+    rf = artefacts.fields.get(f"legs[{j}].{field}")
+    if rf is None:
+        return None
+    if getattr(rf, "a_answered", False):
+        return rf.normalised_a
+    if getattr(rf, "b_answered", False):
+        return rf.normalised_b
+    return None
+
+
+def _run_leg_proxy(artefacts, j: int):
+    """A lightweight stand-in exposing ``.sort_signal.concept_id.value`` /
+    ``.control_axis.concept_id.value`` -- the only attributes ``match_legs`` reads."""
+    from types import SimpleNamespace
+
+    def sig(field: str):
+        return SimpleNamespace(concept_id=SimpleNamespace(
+            value=_run_concept(artefacts, j, field)))
+
+    return SimpleNamespace(sort_signal=sig("sort_signal"), control_axis=sig("control_axis"))
+
+
+def _build_run_legs(artefacts) -> tuple[list[int], list]:
+    """Reconstruct the run's legs from its leg-scoped keys. Returns the ACTUAL run
+    leg indices (sorted) alongside the proxies. The indices need not be a contiguous
+    0..n-1 range, so the caller MUST translate a match position back through this
+    list to the real ``legs[{idx}]`` record -- ``match_legs`` returns positions into
+    the proxy list, not run indices."""
+    indices = sorted({
+        int(m.group(1)) for k in artefacts.fields
+        if (m := _RUN_LEG_RE.match(k)) is not None
+    })
+    return indices, [_run_leg_proxy(artefacts, j) for j in indices]
+
+
+def _run_field(artefacts, key: FieldKey, gold_to_run: dict[int, int], multi: bool):
+    """The run record for one gold field. Spec-level and single-leg fields use the
+    BARE name (byte-identical to the historical lookup); a multi-leg leg field uses
+    the matched run leg's ``legs[{run_j}].{name}`` record (or None if unmatched)."""
+    if key.leg_index is None or not multi:
+        return artefacts.fields.get(key.name)
+    run_j = gold_to_run.get(key.leg_index)
+    if run_j is None:
+        return None
+    return artefacts.fields.get(f"legs[{run_j}].{key.name}")
+
+
 def pair_fields(spec, artefacts) -> tuple[list[PairedField], list[str]]:
     """Join a gold spec to a run's fields.
 
     Returns (paired, excluded_paths). The universe is fixed by the GOLD, never by
     the run (contract §8): a field the run never emitted still appears, with
-    ``run=None``, so it lands in the coverage denominator rather than vanishing."""
-    # The run-side lookup below is by FLAT NAME, so it discards leg_index. On a
-    # single-leg spec that is exact; on a multi-leg spec two gold legs' fields
-    # would resolve to the SAME trace record and both be scored against it -- a
-    # silently wrong number, not a crash. match_legs exists for that join but is
-    # not wired, so refuse rather than score. Every anchor is single-leg today.
-    if len(spec.part2.legs) > 1:
-        raise PairingError(
-            f"multi-leg spec ({len(spec.part2.legs)} legs): the run-side join is by flat trace "
-            "name and would collapse both legs onto one record. Wire match_legs into the lookup "
-            "before scoring a multi-leg anchor."
-        )
+    ``run=None``, so it lands in the coverage denominator rather than vanishing.
+
+    Single-leg specs use the bare-name run lookup (unchanged). A multi-leg spec
+    (CRF) resolves the gold->run leg permutation with ``match_legs`` (order-invariant,
+    keyed on sort_signal then control_axis) and looks each leg field up under the
+    matched run leg's ``legs[{run_j}].{field}`` record -- so two gold legs never
+    collapse onto one trace record. ``FieldKey`` carries ``leg_index``, so each
+    leg's fields stay distinct in ``seen``."""
+    multi = len(spec.part2.legs) > 1
+    gold_to_run: dict[int, int] = {}
+    if multi:
+        run_indices, run_legs = _build_run_legs(artefacts)
+        # match_legs returns (gold_i, POSITION) into run_legs; translate the position
+        # back to the ACTUAL run leg index so _run_field reads the right legs[{idx}]
+        # record even when the run's leg indices are non-contiguous (fail-safe, not
+        # an assumed invariant).
+        gold_to_run = {gi: run_indices[pos]
+                       for gi, pos in match_legs(spec.part2.legs, run_legs)}
 
     paired: list[PairedField] = []
     excluded: list[str] = []
@@ -197,7 +263,7 @@ def pair_fields(spec, artefacts) -> tuple[list[PairedField], list[str]]:
                 key=key,
                 dotted_path=path,
                 gold=gold,
-                run=artefacts.fields.get(key.name),
+                run=_run_field(artefacts, key, gold_to_run, multi),
                 excluded_rubric=key.name in RUBRIC_FIELDS,
             )
         )
@@ -216,14 +282,24 @@ def match_legs(gold_legs, run_legs) -> list[tuple[int, int]]:
 
     from itertools import permutations
 
+    def _concept(leg, attr) -> object:
+        sig = getattr(leg, attr, None)
+        cid = getattr(sig, "concept_id", None)
+        return getattr(cid, "value", None)
+
     def score(g, r) -> int:
-        gs = getattr(getattr(g, "sort_signal", None), "concept_id", None)
-        rs = getattr(getattr(r, "sort_signal", None), "concept_id", None)
-        gv = getattr(gs, "value", None)
-        rv = getattr(rs, "value", None)
-        # The sort signal is the leg's identity (it is the crux field), so an
-        # agreeing signal outweighs any number of agreeing scalar fields.
-        return (100 if gv is not None and gv == rv else 0)
+        gs, rs = _concept(g, "sort_signal"), _concept(r, "sort_signal")
+        gc, rc = _concept(g, "control_axis"), _concept(r, "control_axis")
+        # The sort signal is the leg's primary identity (the crux field), so an
+        # agreeing signal outweighs the scalar fields. But when legs SHARE a sort
+        # signal -- CRF's three legs all sort on credit_rating -- the sort-signal
+        # term is constant across every permutation, so the DISTINGUISHING axis is
+        # the control_axis. Add it as a lower-weighted tiebreak; without it, all
+        # permutations tie and the arbitrary identity pairing can pair gold's VaR
+        # leg to a run's ILLIQ leg.
+        s = 100 if gs is not None and gs == rs else 0
+        s += 10 if gc is not None and gc == rc else 0
+        return s
 
     best, best_score = None, -1
     for perm in permutations(range(len(run_legs))):

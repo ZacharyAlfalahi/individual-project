@@ -12,9 +12,17 @@ STATED value carries a verbatim quote located at L1 by the project's own `locate
 | `gold_mom6_jnps_2013.md` | mom6 | Jostova et al. (2013), RFS | **INSTANTIATED 2026-07-15 (schema v1.1)** — JNPS canonical text frozen (`jnps_2013.frozen.yaml`); all STATED locators re-verified binding; `expost_trim=truncate` delegated to the `lab_trim` toggle via `lab_trim_delegation_v1`; G2 byte-equality green |
 | `gold_str_drr_2026.md` | str | Dickerson, Robotti & Rossetti (2026) | **INSTANTIATED 2026-07-12 (schema v1.1)** — concept grounded (`prior_1m_excess_return`→`xret`, table v2), DRR text frozen, quotes re-verified against the frozen text |
 
-Gold set = str, drf, mom6 — **final** (project decision 2026-07-11; CRF considered and excluded — combiner
-path deferred to the corpus BBW extraction). ◇ control field is named `control_axis` per the
+**Sort** gold set = str, drf, mom6 — **final** (project decision 2026-07-11; CRF considered and excluded —
+combiner path deferred to the corpus BBW extraction). ◇ control field is named `control_axis` per the
 2026-07-11 brief amendment (shipped code name kept; `control_signal` rejected).
+
+| file | anchor | paper | class | status |
+|---|---|---|---|---|
+| `gold_kpp_ipca.md` | kpp | Kelly, Palhares & Pruitt (2023), JF | **fitted-factor-model (schema v1.2)** | **INSTANTIATED 2026-08-03** — the first non-sort gold: an `EstimationBlock` (11 fields) + a 29-instrument set (Table A.I), ~90 STATED quotes all L1-located (42 binding rows, zero cross-page/drift). Loaded by `kpp_gold_loader.py` (routed via `load_gold_spec("kpp")`). Graded as a **separate, non-pooled** RQ1 sub-metric — NOT part of the sort G3 set above (different field set; contract v1.3 §3.7 / D42). |
+
+The fitted-model gold is a *separate construction class*; the sort gold set (str/drf/mom6) is
+unchanged and stays the sort-G3 denominator. See `docs/librarian/specs/schema_v1_2_estimation_block.md`
+and `.../implementation-notes/kpp_rq1_fitted_model_record_2026-08-03.md`.
 
 ## Canonical-text status
 

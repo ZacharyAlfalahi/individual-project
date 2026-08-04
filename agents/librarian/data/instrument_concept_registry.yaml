@@ -1,0 +1,319 @@
+# Instrument Concept Registry (schema v1.2) -- KPP Table A.I, 29 characteristics
+#
+# The menu of INSTRUMENT identities a fitted-factor-model StrategySpec may
+# reference (each InstrumentRef.concept_id). Same shape as the sort
+# `signal_concept_registry.yaml` (id / definition / aliases / parameter_schema),
+# loaded by the SAME loader (`load_signal_concept_registry(path=...)`) so it gets
+# an independent `content_hash`. This file is PHYSICALLY SEPARATE from the sort
+# registry: adding the 29 fitted-model instruments does not touch the sort
+# registry's file or its semantic hash (which flows into every sort spec header),
+# so a defect here cannot perturb the working sort G3 number.
+#
+# WALL-SPLIT (D22). ids / definitions / aliases / parameter schemas ONLY -- no
+# column names; a `column:` key is a build error.
+#
+# SOURCE. The 29 are the authoritative Table A.I list (KPP 2023, p37) + Appendix A
+# "Characteristics Description" (p36-37); see `papers/processed/kelly_2023_ipca.md`.
+# The coarse data-domain (bond/equity/accounting/macro) is recorded per-instrument
+# in the GOLD (InstrumentRef.source_class), not here -- the registry declares
+# identity only.
+#
+# SHARED IDENTITIES (⟳). Two ids are REUSED verbatim from
+# `signal_concept_registry.yaml` -- `past_6m_cumulative_return` (KPP "Mom. 6m")
+# and `credit_rating` (KPP "Rating"). Their `definition` + `aliases` are copied
+# byte-for-byte; a drift guard in `tests/unit/test_instrument_concept_registry.py`
+# asserts the two files never diverge on a reused identity.
+#
+# VALUE-AT-RISK. KPP's Value-at-risk (#28) is "the second lowest credit excess
+# return over the past 36 months (min 24)" -- a DIFFERENT definition from the sort
+# registry's generic `var_5pct` (5% VaR), so it is a NEW id `bond_var_36m`
+# (ruling 2026-08-03), not a reuse.
+
+version: v1
+
+concepts:
+  # --- 1. Bond age ----------------------------------------------------------
+  - id: bond_age
+    definition: >-
+      The age of the bond issue in years (bond issue attribute).
+    aliases:
+      - bond age
+      - age
+    parameter_schema: {}
+
+  # --- 2. Coupon ------------------------------------------------------------
+  - id: coupon
+    definition: >-
+      The bond's coupon rate (an attribute of the bond issue).
+    aliases:
+      - coupon
+      - coupon rate
+    parameter_schema: {}
+
+  # --- 3. Face value --------------------------------------------------------
+  - id: face_value
+    definition: >-
+      The face value of the bond issue (an attribute of the bond issue).
+    aliases:
+      - face value
+      - par value
+    parameter_schema: {}
+
+  # --- 4. Book-to-price -----------------------------------------------------
+  - id: book_to_price
+    definition: >-
+      Shareholders' equity plus preferred stock divided by equity market
+      capitalization for the issuing firm (an equity valuation ratio).
+    aliases:
+      - book-to-price
+      - book to price
+      - book-to-market
+    parameter_schema: {}
+
+  # --- 5. Debt-to-EBITDA ----------------------------------------------------
+  - id: debt_to_ebitda
+    definition: >-
+      Total debt divided by EBITDA for the issuing firm (a leverage/coverage
+      accounting ratio).
+    aliases:
+      - debt-to-EBITDA
+      - debt to EBITDA
+    parameter_schema: {}
+
+  # --- 6. Duration ----------------------------------------------------------
+  - id: duration
+    definition: >-
+      The derivative of the bond value to the credit spread divided by the bond
+      value (bond interest-rate/credit duration).
+    aliases:
+      - duration
+      - spread duration
+    parameter_schema: {}
+
+  # --- 7. Mom. 6m equity ----------------------------------------------------
+  - id: equity_momentum_6m
+    definition: >-
+      The issuing firm's equity 6-2 momentum (six-month stock-return momentum,
+      skipping the most recent month).
+    aliases:
+      - mom. 6m equity
+      - equity momentum
+      - stock momentum
+    parameter_schema: {}
+
+  # --- 8. Earnings-to-price -------------------------------------------------
+  - id: earnings_to_price
+    definition: >-
+      The issuing firm's earnings-to-price ratio (an equity valuation ratio).
+    aliases:
+      - earnings-to-price
+      - earnings to price
+      - E/P
+    parameter_schema: {}
+
+  # --- 9. Equity market cap. ------------------------------------------------
+  - id: equity_market_cap
+    definition: >-
+      The issuing firm's equity market capitalization (equity size).
+    aliases:
+      - equity market cap
+      - equity market capitalization
+      - market cap
+    parameter_schema: {}
+
+  # --- 10. Equity volatility ------------------------------------------------
+  - id: equity_volatility
+    definition: >-
+      The volatility of the issuing firm's equity returns.
+    aliases:
+      - equity volatility
+      - stock volatility
+    parameter_schema: {}
+
+  # --- 11. Firm total debt --------------------------------------------------
+  - id: firm_total_debt
+    definition: >-
+      The issuing firm's total debt outstanding (a firm balance-sheet quantity).
+    aliases:
+      - firm total debt
+      - total debt
+    parameter_schema: {}
+
+  # --- 12. Mom. 6m (REUSED from signal_concept_registry.yaml) ---------------
+  - id: past_6m_cumulative_return
+    definition: >-
+      The bond's cumulative return over the six months prior to formation
+      (six-month momentum signal).
+    aliases:
+      - six-month momentum
+      - past six-month return
+      - 6-month cumulative return
+      - momentum
+    parameter_schema: {}
+
+  # --- 13. Mom. 6m industry -------------------------------------------------
+  - id: industry_momentum_6m
+    definition: >-
+      Industry-adjusted six-month (6-2) momentum of bond returns.
+    aliases:
+      - mom. 6m industry
+      - industry momentum
+    parameter_schema: {}
+
+  # --- 14. Mom. 6m x ratings ------------------------------------------------
+  - id: momentum_6m_x_rating
+    definition: >-
+      Six-month bond return momentum interacted with the numerical credit rating.
+    aliases:
+      - mom. 6m x ratings
+      - momentum times rating
+    parameter_schema: {}
+
+  # --- 15. Book leverage ----------------------------------------------------
+  - id: book_leverage
+    definition: >-
+      A book-leverage accounting ratio: shareholders' equity and long-/short-term
+      debt and minority interest, less cash and inventories, divided by
+      shareholders' equity less preferred stock.
+    aliases:
+      - book leverage
+    parameter_schema: {}
+
+  # --- 16. Market leverage --------------------------------------------------
+  - id: market_leverage
+    definition: >-
+      A market-leverage ratio: market capitalization and long-/short-term debt
+      and minority interest and preferred stock, less cash and inventories,
+      divided by market capitalization.
+    aliases:
+      - market leverage
+    parameter_schema: {}
+
+  # --- 17. Turnover volatility ----------------------------------------------
+  - id: turnover_volatility
+    definition: >-
+      The quarterly standard deviation of sales divided by assets (an accounting
+      operating-volatility measure).
+    aliases:
+      - turnover volatility
+    parameter_schema: {}
+
+  # --- 18. Spread -----------------------------------------------------------
+  - id: spread
+    definition: >-
+      The option-adjusted credit spread of the bond.
+    aliases:
+      - spread
+      - credit spread
+      - option-adjusted spread
+      - OAS
+    parameter_schema: {}
+
+  # --- 19. Operating leverage -----------------------------------------------
+  - id: operating_leverage
+    definition: >-
+      Sales minus EBITDA, divided by EBITDA (an accounting operating-leverage
+      ratio).
+    aliases:
+      - operating leverage
+    parameter_schema: {}
+
+  # --- 20. Profitability ----------------------------------------------------
+  - id: profitability
+    definition: >-
+      Sales minus cost-of-goods-sold divided by assets (nonfinancials), or sales
+      minus total expenses plus depreciation divided by shareholders' equity less
+      preferred stock (financials) -- an accounting profitability ratio.
+    aliases:
+      - profitability
+    parameter_schema: {}
+
+  # --- 21. Profitability change ---------------------------------------------
+  - id: profitability_change
+    definition: >-
+      The five-year change in profitability (accounting profitability trend).
+    aliases:
+      - profitability change
+    parameter_schema: {}
+
+  # --- 22. Rating (REUSED from signal_concept_registry.yaml) ----------------
+  - id: credit_rating
+    definition: >-
+      The bond's credit rating (a rating-based characteristic used as a sort or
+      control axis).
+    aliases:
+      - rating
+      - credit quality
+      - agency rating
+    parameter_schema: {}
+
+  # --- 23. Distance-to-default ----------------------------------------------
+  - id: distance_to_default
+    definition: >-
+      The issuing firm's distance-to-default as defined by Shumway (2001) (a
+      structural default-risk measure).
+    aliases:
+      - distance-to-default
+      - distance to default
+      - D2D
+    parameter_schema: {}
+
+  # --- 24. Bond skewness ----------------------------------------------------
+  - id: bond_skewness
+    definition: >-
+      Skewness of the bond's returns over the past 60 months.
+    aliases:
+      - bond skewness
+      - return skewness
+    parameter_schema: {}
+
+  # --- 25. Mom. 6m log(Spread) ----------------------------------------------
+  - id: spread_momentum_6m
+    definition: >-
+      The log of the credit spread six months earlier minus the current log
+      spread (spread momentum).
+    aliases:
+      - mom. 6m log(spread)
+      - spread momentum
+    parameter_schema: {}
+
+  # --- 26. Spread-to-D2D ----------------------------------------------------
+  - id: spread_to_d2d
+    definition: >-
+      The option-adjusted spread divided by one minus the cumulative distribution
+      function of the Shumway distance-to-default (a bond "value" characteristic).
+    aliases:
+      - spread-to-D2D
+      - spread to distance-to-default
+    parameter_schema: {}
+
+  # --- 27. Bond volatility --------------------------------------------------
+  - id: bond_volatility
+    definition: >-
+      The volatility of the bond's returns over the past 24 months.
+    aliases:
+      - bond volatility
+      - return volatility
+    parameter_schema: {}
+
+  # --- 28. Value-at-risk (NEW id; distinct from sort registry var_5pct) -----
+  - id: bond_var_36m
+    definition: >-
+      The second lowest credit excess return over the past 36 months (minimum of
+      24 months) -- a bond downside-risk measure.
+    aliases:
+      - value-at-risk
+      - VaR
+      - downside risk
+    parameter_schema: {}
+
+  # --- 29. VIX beta ---------------------------------------------------------
+  - id: vix_beta
+    definition: >-
+      The sum of coefficients on current and lagged VIX in a regression of bond
+      returns on Mkt-RF, HML, SMB, DEF, TERM, VIX, and lagged VIX over the past
+      60 months (a macro sensitivity).
+    aliases:
+      - VIX beta
+      - VIX sensitivity
+    parameter_schema: {}
