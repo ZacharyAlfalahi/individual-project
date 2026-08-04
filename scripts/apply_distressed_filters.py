@@ -1,37 +1,54 @@
 """
-DRR (Dickerson, Robotti, Rossetti 2026) Appendix A.3 distressed daily
-filters 1-4 — corrected branch, stage 3 of the meas_err pipeline.
+DRR (Dickerson, Robotti, Rossetti 2026) distressed daily filters — corrected
+branch, stage 3 of the meas_err pipeline.
 
-Reads `trace_daily_corr.parquet` (output of build_daily_panel.py --family
-corr), applies four per-cusip filters on the time-sorted daily series, and
-writes `trace_daily_corr_filtered.parquet` with dropped days removed. Per
-A7.6 of the registry amendments, the dropped days are persisted to
-`distressed_dropped_<partition>.parquet` companion artefacts with one boolean
-flag column per filter so the audit trail records which filter fired.
+Reads `trace_daily_corr.parquet` (output of build_daily_panel.py --family corr),
+applies FOUR per-cusip filters on the time-sorted daily series, and writes
+`trace_daily_corr_filtered.parquet` with dropped days removed. The dropped days
+are persisted to `distressed_dropped_<partition>.parquet` companion artefacts
+with one boolean flag column per filter so the audit trail records which filter
+fired (per A7.6 of the registry amendments).
 
-Stage order (normative per A7.2): decimal-shift → bounce-back → VWAP→daily
-→ distressed filters 1-4. This script is stage 3.
+Stage order (repo Step 8): decimal-shift → bounce-back → VWAP→daily → distressed
+filters. DRR's FINAL filters (repo Step 9) are handled by documented equivalence:
+price_threshold=300 is realised in-place by the decimal-shift target band
+(trace_cleaning.price_ceiling), and dip_threshold=35 (the 2002-07 first-change
+filter) is a documented deferral — see thresholds.yaml + citations_verified.md §1.
 
-**Independent coding per A7.3.** This implementation transcribes the four
-filters from DRR-2026 Appendix A.3's published description. It is NOT a
-port of any DRR distribution code. Where the description is ambiguous,
-interpretation is documented inline; the parameter set comes from Table A.3
-via docs/thresholds.yaml.
+PROVENANCE — port + disclose (spec v4 Part J). This implementation is
+repo-derived from Dickerson's released `trace-data-pipeline`, pinned commit
+42c5dea93fce550089e175bb622dfd32a725b92f
+(stage1/helper_functions.py::ultra_distressed_filter and the four detectors
+_detect_anomalies_ultra / _detect_spikes_ultra / _detect_plateaus_ultra /
+flag_intraday_inconsistency_vectorized + _compute_round_mask;
+ULTRA_DISTRESSED_CONFIG in stage1/_stage1_settings.py; step8 in
+stage1/stage1_pipeline.py). The earlier "independent coding from the appendix;
+do NOT port repo code" firewall is RETIRED for the filter implementation — it
+produced a wrong implementation (absolute price-point gaps; a 25/50/75/100 round
+grid). The OSBAP / DRR published-OUTPUT validation firewall is UNAFFECTED. Full
+provenance + appendix-vs-repo notes: docs/data/registers/citations_verified.md §1.
 
-Filter definitions (paraphrased from A7.1 + A7.3 of the amendments):
+FOUR filter outputs; the round-number mask is a SHARED PREDICATE consumed inside
+anomaly/spike/plateau, NOT a fifth OR'd flag. All prices are % of par (100 = par),
+consistent with the project's `price_vwap`/`min_price`/`max_price` — no unit
+conversion. A day is dropped if ANY filter fires (repo Step 10a). Column mapping:
+DRR `pr` → `price_vwap`; DRR `prc_hi`/`prc_lo` → `max_price`/`min_price`.
 
-  1. Anomaly       — isolated ultra-low prints sitting ≥ρ_anomaly price
-                     points below the surrounding ±L-day median, AND the
-                     print itself is ≤ τ_low (ultra-low).
-  2. Spike         — prints ≥ρ_spike above the pre-spike-L-day median that
-                     recover within the next L days to within ρ_recovery
-                     of that median.
-  3. Plateau       — runs of ≥ℓ_min consecutive days with identical prices
-                     (within τ_plateau) that are EITHER ultra-low (≤τ_low)
-                     OR near a multiple of 25 (round-numbered), with
-                     pre/post displacement of ≥ρ_plateau on both sides.
-  4. Intraday      — days where min_price < τ_intraday AND
-                     (max_price − min_price) > γ_range × price_vwap.
+Filter definitions (pinned repo):
+
+  1. Anomaly  — candidate is ultra-low (price < ultra_low_threshold) OR round;
+                flag if median(neighbours priced ABOVE, ±lookback/forward window)
+                / price >= min_normal_price_ratio (a RATIO, not a gap).
+  2. Spike    — candidate has price > high_spike_threshold (a raw LEVEL gate, not
+                a ratio) OR is a round print > 0.50; flag if
+                price / median(pre-window points BELOW) >= min_spike_ratio AND a
+                post price recovers to <= median_pre * recovery_ratio within the
+                lookahead.
+  3. Plateau  — run of >= min_plateau_days EXACT-equal ultra-low/round prices;
+                flag the run if it is round OR either-side displacement
+                (pre/price or post/price) >= pre_post_price_ratio.
+  4. Intraday — days where min_price < intraday_price_threshold AND
+                (max_price - min_price)/mean(min,max) > intraday_range_threshold.
 
 Usage:
   python scripts/apply_distressed_filters.py
@@ -101,12 +118,17 @@ DROPPED_SCHEMA = pa.schema([
 # ---------------------------------------------------------------------------
 
 REQUIRED_KEYS = (
-    "rho_anomaly", "L",
-    "rho_spike", "rho_recovery",
-    "rho_plateau", "ell_min", "tau_plateau", "round_step",
-    "tau_intraday", "gamma_range",
-    "tau_low",
+    "ultra_low_threshold", "min_normal_price_ratio",
+    "high_spike_threshold", "min_spike_ratio", "recovery_ratio",
+    "plateau_ultra_low_threshold", "min_plateau_days", "pre_post_price_ratio",
+    "suspicious_round_numbers", "round_tolerance",
+    "lookback", "lookforward",
+    "intraday_price_threshold", "intraday_range_threshold",
 )
+
+# Prices are pre-rounded to this many decimals before filtering (repo l.1050),
+# which makes the plateau EXACT-equality test well-defined.
+PRICE_ROUND_DECIMALS = 4
 
 
 def load_config() -> dict:
@@ -129,114 +151,166 @@ def thresholds_sha256() -> str:
 
 # ---------------------------------------------------------------------------
 # Filter primitives (pure functions on a single cusip's daily series)
+#
+# Faithful to the pinned repo. Prices are % of par; a candidate for a filter
+# must first satisfy that filter's gate (ultra-low / high / round). Ratios use
+# the repo's (denominator + 1e-10) guard so an exact-zero price cannot divide.
 # ---------------------------------------------------------------------------
 
-def _is_near_round(price: float, tau: float, step: float) -> bool:
-    """A price is "near round" if within tau of an integer multiple of step.
-    step comes from thresholds.yaml round_step (25 covers 25/50/75/100/...,
-    the conventional bond round-number plateaus)."""
-    nearest = round(price / step) * step
-    return abs(price - nearest) <= tau
-
-
-def filter_anomaly(prices: np.ndarray, params: dict) -> np.ndarray:
-    """Filter 1: isolated ultra-low prints ≥ρ_anomaly below ±L-day median.
-    Returns a boolean array; True where the day is flagged."""
+def _compute_round_mask(prices: np.ndarray, round_numbers: np.ndarray,
+                        round_tolerance: float) -> np.ndarray:
+    """True where |price - r| < round_tolerance for any r in the round set.
+    NaN prices are never round. (repo _compute_round_mask)."""
     n = len(prices)
-    rho = float(params["rho_anomaly"])
-    L = int(params["L"])
-    tau_low = float(params["tau_low"])
-    flag = np.zeros(n, dtype=bool)
+    is_round = np.zeros(n, dtype=bool)
     for i in range(n):
-        if prices[i] > tau_low:
-            continue  # not ultra-low → not a Filter-1 candidate
-        # ±L-day window EXCLUDING the current day
-        lo = max(0, i - L)
-        hi = min(n, i + L + 1)
-        nbr_idx = [j for j in range(lo, hi) if j != i]
-        if len(nbr_idx) < 1:
+        p = prices[i]
+        if np.isnan(p):
             continue
-        nbr_med = float(np.median(prices[nbr_idx]))
-        if nbr_med - float(prices[i]) >= rho:
+        for r in round_numbers:
+            if abs(p - r) < round_tolerance:
+                is_round[i] = True
+                break
+    return is_round
+
+
+def round_mask(prices: np.ndarray, params: dict) -> np.ndarray:
+    """The shared round-number predicate over the operative round set."""
+    return _compute_round_mask(
+        prices,
+        np.asarray(params["suspicious_round_numbers"], dtype=np.float64),
+        float(params["round_tolerance"]),
+    )
+
+
+def filter_anomaly(prices: np.ndarray, params: dict,
+                   is_round: "np.ndarray | None" = None) -> np.ndarray:
+    """Filter 1 — anomaly (repo _detect_anomalies_ultra). Candidate is ultra-low
+    OR round; flag if median(neighbours priced ABOVE, in the ±window) / price is
+    >= min_normal_price_ratio. `is_round` may be shared across filters; computed
+    from params when omitted."""
+    if is_round is None:
+        is_round = round_mask(prices, params)
+    n = len(prices)
+    ultra_low = float(params["ultra_low_threshold"])
+    ratio_thr = float(params["min_normal_price_ratio"])
+    lookback = int(params["lookback"])
+    lookforward = int(params["lookforward"])
+    flag = np.zeros(n, dtype=bool)
+    valid = ~np.isnan(prices)
+    is_ultra_low = valid & (prices < ultra_low)
+    for i in range(n):
+        if not (valid[i] and (is_ultra_low[i] or is_round[i])):
+            continue
+        cur = float(prices[i])
+        lo = max(0, i - lookback)
+        hi = min(n, i + lookforward + 1)
+        above = [float(prices[j]) for j in range(lo, hi)
+                 if j != i and valid[j] and prices[j] > cur]
+        if not above:
+            continue
+        med = float(np.median(above))
+        if med / (cur + 1e-10) >= ratio_thr:
             flag[i] = True
     return flag
 
 
-def filter_spike(prices: np.ndarray, params: dict) -> np.ndarray:
-    """Filter 2: prints ≥ρ_spike above the trailing-L median that recover
-    within L days to within ρ_recovery of that median."""
+def filter_spike(prices: np.ndarray, params: dict,
+                 is_round: "np.ndarray | None" = None) -> np.ndarray:
+    """Filter 2 — spike (repo _detect_spikes_ultra). Candidate has price above a
+    raw LEVEL gate (high_spike_threshold) OR is a round print > 0.50; flag if
+    price / median(pre-window points BELOW) >= min_spike_ratio AND recovers to
+    <= median_pre * recovery_ratio within the lookahead."""
+    if is_round is None:
+        is_round = round_mask(prices, params)
     n = len(prices)
-    rho = float(params["rho_spike"])
-    rec = float(params["rho_recovery"])
-    L = int(params["L"])
+    high_thr = float(params["high_spike_threshold"])
+    ratio_thr = float(params["min_spike_ratio"])
+    recovery = float(params["recovery_ratio"])
+    lookback = int(params["lookback"])
+    lookforward = int(params["lookforward"])
     flag = np.zeros(n, dtype=bool)
+    valid = ~np.isnan(prices)
+    is_high = valid & (prices > high_thr)
+    # For spikes the round set is restricted to prints > 0.50 (repo l.1120).
+    is_round_spike = is_round & valid & (prices > 0.50)
     for i in range(n):
-        if i == 0:
+        if not (valid[i] and (is_high[i] or is_round_spike[i])):
             continue
-        pre_lo = max(0, i - L)
-        pre_window = prices[pre_lo:i]
-        if len(pre_window) == 0:
+        cur = float(prices[i])
+        lo = max(0, i - lookback)
+        below = [float(prices[j]) for j in range(lo, i)
+                 if valid[j] and prices[j] < cur]
+        if not below:
             continue
-        pre_med = float(np.median(pre_window))
-        if float(prices[i]) - pre_med < rho:
+        med = float(np.median(below))
+        if cur / (med + 1e-10) < ratio_thr:
             continue
-        # Recovery check: any of the next L days back to within rec of pre_med
-        post_hi = min(n, i + 1 + L)
-        post_window = prices[i + 1:post_hi]
-        if any(abs(float(p) - pre_med) <= rec for p in post_window):
+        rec_thr = med * recovery
+        hi = min(n, i + lookforward + 1)
+        if any(valid[j] and prices[j] <= rec_thr for j in range(i + 1, hi)):
             flag[i] = True
     return flag
 
 
-def filter_plateau(prices: np.ndarray, params: dict) -> np.ndarray:
-    """Filter 3: runs of ≥ℓ_min identical-or-near-round prices with pre/post
-    displacement ≥ρ_plateau. Plateau prices must be ultra-low OR near round."""
+def filter_plateau(prices: np.ndarray, params: dict,
+                   is_round: "np.ndarray | None" = None) -> np.ndarray:
+    """Filter 3 — plateau (repo _detect_plateaus_ultra). Run of >= min_plateau_days
+    EXACT-equal ultra-low/round prices; flag the run if it is round OR either-side
+    displacement (pre/price or post/price) >= pre_post_price_ratio."""
+    if is_round is None:
+        is_round = round_mask(prices, params)
     n = len(prices)
-    ell_min = int(params["ell_min"])
-    rho = float(params["rho_plateau"])
-    tau = float(params["tau_plateau"])
-    tau_low = float(params["tau_low"])
-    round_step = float(params["round_step"])
+    ultra_low = float(params["plateau_ultra_low_threshold"])
+    min_days = int(params["min_plateau_days"])
+    disp = float(params["pre_post_price_ratio"])
     flag = np.zeros(n, dtype=bool)
-
+    valid = ~np.isnan(prices)
+    is_ultra_low = valid & (prices < ultra_low)
     i = 0
     while i < n:
-        # Extend a run as long as the next price is within tau of the run's
-        # first price.
-        j = i
-        while j + 1 < n and abs(float(prices[j + 1]) - float(prices[i])) <= tau:
+        if not (valid[i] and (is_ultra_low[i] or is_round[i])):
+            i += 1
+            continue
+        cur = float(prices[i])
+        j = i + 1
+        while j < n and prices[j] == cur:  # exact equality (post round to 4 dp)
             j += 1
-        run_len = j - i + 1
-        if run_len >= ell_min:
-            p_run = float(prices[i])
-            # Plateau prices must be ultra-low or near round.
-            is_qualifying = (p_run <= tau_low) or _is_near_round(p_run, tau, round_step)
-            pre = float(prices[i - 1]) if i > 0 else None
-            post = float(prices[j + 1]) if j + 1 < n else None
-            pre_disp = (pre is not None) and (abs(pre - p_run) >= rho)
-            post_disp = (post is not None) and (abs(post - p_run) >= rho)
-            # Both pre and post displaced — interpretation of "≥ρ_plateau
-            # pre/post displacement" as both-sides displaced (a one-sided
-            # displacement at the start or end of the series doesn't
-            # confirm a plateau).
-            if is_qualifying and pre_disp and post_disp:
-                flag[i:j + 1] = True
-        i = j + 1
-
+        if (j - i) >= min_days:
+            pre_price = float(prices[i - 1]) if i > 0 and valid[i - 1] else -1.0
+            post_price = float(prices[j]) if j < n and valid[j] else -1.0
+            suspicious = bool(is_round[i])
+            if pre_price > 0 and pre_price / (cur + 1e-10) >= disp:
+                suspicious = True
+            if post_price > 0 and post_price / (cur + 1e-10) >= disp:
+                suspicious = True
+            if suspicious:
+                flag[i:j] = True
+        i = j
     return flag
 
 
-def filter_intraday(price_vwap: np.ndarray, min_price: np.ndarray,
-                    max_price: np.ndarray, params: dict) -> np.ndarray:
-    """Filter 4: low-price days with abnormal intraday range.
-    min_price < τ_intraday AND (max - min) > γ_range × VWAP."""
-    n = len(price_vwap)
-    tau = float(params["tau_intraday"])
-    gamma = float(params["gamma_range"])
+def filter_intraday(min_price: np.ndarray, max_price: np.ndarray,
+                    params: dict) -> np.ndarray:
+    """Filter 4 — intraday inconsistency (repo flag_intraday_inconsistency_
+    vectorized). Low-price day (min_price < intraday_price_threshold) whose
+    high/low range normalised by mean(low,high) exceeds intraday_range_threshold.
+    Requires both daily low and high present."""
+    n = len(min_price)
+    tau = float(params["intraday_price_threshold"])
+    gamma = float(params["intraday_range_threshold"])
     flag = np.zeros(n, dtype=bool)
     for i in range(n):
-        if (float(min_price[i]) < tau
-                and (float(max_price[i]) - float(min_price[i])) > gamma * float(price_vwap[i])):
+        lo = min_price[i]
+        hi = max_price[i]
+        if np.isnan(lo) or np.isnan(hi):
+            continue
+        # Candidate if either endpoint is below the low-price gate (== lo < tau
+        # since lo <= hi).
+        if not (lo < tau or hi < tau):
+            continue
+        mean = (float(lo) + float(hi)) / 2.0
+        if mean > 0 and (float(hi) - float(lo)) / mean > gamma:
             flag[i] = True
     return flag
 
@@ -244,15 +318,30 @@ def filter_intraday(price_vwap: np.ndarray, min_price: np.ndarray,
 def apply_filters_to_cusip(cusip_df: pl.DataFrame, params: dict):
     """Apply all four filters to one cusip's time-sorted daily series.
 
-    Returns (keep_mask, flag_dict). flag_dict has per-filter boolean arrays.
-    A day is dropped if ANY filter fires (logical OR)."""
-    prices = cusip_df["price_vwap"].to_numpy()
-    mins = cusip_df["min_price"].to_numpy()
-    maxs = cusip_df["max_price"].to_numpy()
-    f1 = filter_anomaly(prices, params)
-    f2 = filter_spike(prices, params)
-    f3 = filter_plateau(prices, params)
-    f4 = filter_intraday(prices, mins, maxs, params)
+    Returns (keep_mask, flag_dict). A day is dropped if ANY filter fires (OR).
+    Per-cusip minimum-observation guards match the repo (anomaly/spike need >= 3
+    days; plateau needs >= min_plateau_days)."""
+    prices = np.round(cusip_df["price_vwap"].to_numpy().astype(np.float64),
+                      PRICE_ROUND_DECIMALS)
+    mins = np.round(cusip_df["min_price"].to_numpy().astype(np.float64),
+                    PRICE_ROUND_DECIMALS)
+    maxs = np.round(cusip_df["max_price"].to_numpy().astype(np.float64),
+                    PRICE_ROUND_DECIMALS)
+    n = len(prices)
+
+    is_round = round_mask(prices, params)
+
+    min_days = int(params["min_plateau_days"])
+    if n >= 3:
+        f1 = filter_anomaly(prices, params, is_round=is_round)
+        f2 = filter_spike(prices, params, is_round=is_round)
+    else:
+        f1 = np.zeros(n, dtype=bool)
+        f2 = np.zeros(n, dtype=bool)
+    f3 = filter_plateau(prices, params, is_round=is_round) if n >= min_days \
+        else np.zeros(n, dtype=bool)
+    f4 = filter_intraday(mins, maxs, params)  # row-wise; no min-obs gate
+
     any_flag = f1 | f2 | f3 | f4
     keep_mask = ~any_flag
     flag_dict = {
@@ -376,12 +465,16 @@ def write_report(dev_counts: dict, hold_counts: "dict | None",
         "thresholds_used": params,
         "stage": "distressed_filters_corrected_branch",
         "registry_role": (
-            "meas_err = ON, stage 3: DRR-2026 Appendix A.3 daily distressed "
-            "filters 1-4 (anomaly, spike, plateau, intraday). Raw family "
-            "bypasses entirely per A1.1; corrected family processes per A7. "
-            "Filters are independent codings from the published appendix per "
-            "A7.3 (no DRR distribution code ported)."
+            "meas_err = ON, stage 3: DRR-2026 daily distressed filters "
+            "(anomaly, spike, plateau, intraday; round-number mask a shared "
+            "predicate). Raw family bypasses entirely per A1.1; corrected "
+            "family processes per A7. Filter implementation is REPO-DERIVED "
+            "from trace-data-pipeline pinned commit "
+            "42c5dea93fce550089e175bb622dfd32a725b92f (spec v4 Part J: port + "
+            "disclose; the OSBAP/DRR published-output validation firewall is "
+            "unaffected). See docs/data/registers/citations_verified.md §1."
         ),
+        "pinned_source_commit": "42c5dea93fce550089e175bb622dfd32a725b92f",
         "holdout_processed": hold_counts is not None,
         "rows_dev": dev_counts,
         "inputs": {
@@ -394,8 +487,9 @@ def write_report(dev_counts: dict, hold_counts: "dict | None",
         "audit_trail_note": (
             "Companion 'distressed_dropped' parquets persist the cusip-day "
             "rows the filters dropped, with one boolean column per filter "
-            "recording which fired. Satisfies the Phase 1 verification "
-            "step 4 (spot-check a known distressed-flagged day)."
+            "recording which fired. Per-filter empirical counts (rows_dev) are "
+            "a diagnostic, NOT a gate — a zero count is a legitimate result "
+            "(spec v4 C6)."
         ),
     }
     if hold_counts is not None:
@@ -429,7 +523,7 @@ def main():
     params = load_config()
     print(f"Loaded meas_err_distressed_filters config "
           f"(thresholds sha256: {thresholds_sha256()[:12]}...)")
-    print("Stage: meas_err = ON — DRR-2026 distressed filters 1-4")
+    print("Stage: meas_err = ON — DRR-2026 distressed filters (repo 42c5dea9)")
 
     print("Processing development partition...")
     dev_counts = process_partition(DEV_IN, DEV_OUT, DEV_DROPPED, params)

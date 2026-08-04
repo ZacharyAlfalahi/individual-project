@@ -129,78 +129,100 @@ class TestBounceBackInjection:
 # ---------------------------------------------------------------------------
 
 class TestAnomalyInjection:
-    """Filter 1 — isolated ultra-low print sitting ≥ρ_anomaly below ±L-day
-    median. Inject an ultra-low (0.05) in a series otherwise at ~10."""
+    """Filter 1 — isolated ultra-low/round print whose median of ABOVE-priced
+    neighbours is >= min_normal_price_ratio x the price (a ratio, repo-faithful).
+    Inject an ultra-low (0.05) in a series otherwise at ~10."""
 
     def test_isolated_ultra_low_print_flagged(self):
         prices = np.array([10.0, 10.5, 9.5, 10.2, 0.05, 10.1, 10.3, 9.8, 10.0, 10.2])
-        # Position 4 is ultra-low (≤ tau_low = 0.10) and far below the ±5-day
-        # median of its neighbours (~10).
+        # Position 4 is ultra-low (< ultra_low_threshold = 0.10); the median of
+        # its above-priced neighbours (~10) / 0.05 = ~200 >= 3.0.
         flag = filter_anomaly(prices, DISTRESSED_PARAMS)
         assert flag[4]
         # Other days are not flagged
         assert not flag[0] and not flag[1] and not flag[9]
 
+    def test_ultra_low_candidate_with_small_ratio_not_flagged(self):
+        # 0.05 is ultra-low (a candidate) but its above-neighbour median (0.08)
+        # / 0.05 = 1.6 < 3.0 -> not an anomaly.
+        prices = np.array([0.05, 0.08, 0.05, 0.08, 0.05])
+        flag = filter_anomaly(prices, DISTRESSED_PARAMS)
+        assert not flag.any()
+
 
 class TestSpikeInjection:
-    """Filter 2 — print ≥ρ_spike above pre-spike median that recovers in L
-    days to within ρ_recovery of that median."""
+    """Filter 2 — price / median(pre-window points BELOW) >= min_spike_ratio that
+    recovers to <= median_pre * recovery_ratio within the lookahead. The
+    high_spike_threshold (5.0) is a raw price-LEVEL candidate gate, not the ratio."""
 
     def test_spike_with_recovery_flagged(self):
-        prices = np.array([100.0, 100.0, 100.0, 100.0, 100.0, 105.0, 100.0, 100.0])
-        # Position 5 is 5 points above the pre-spike median (100). 5 ≥
-        # rho_spike (3.0). Recovery: position 6 is 100, exactly at median.
+        # Distressed bond ~2 (% of par); a print spikes to 10 (> 5.0 level gate);
+        # 10 / median_pre(2) = 5 >= min_spike_ratio (3.0); recovers to 2 next day
+        # (<= median_pre * recovery_ratio = 4).
+        prices = np.array([2.0, 2.0, 2.0, 2.0, 2.0, 10.0, 2.0, 2.0])
         flag = filter_spike(prices, DISTRESSED_PARAMS)
         assert flag[5]
+        assert not flag[0] and not flag[4] and not flag[6]
 
     def test_spike_without_recovery_not_flagged(self):
-        # Permanent regime shift — spike, then stays high.
-        prices = np.array([100.0, 100.0, 100.0, 100.0, 100.0, 110.0, 110.0, 110.0,
-                           110.0, 110.0, 110.0])
+        # Permanent regime shift — spikes to 10 then stays high (no recovery).
+        prices = np.array([2.0, 2.0, 2.0, 2.0, 2.0, 10.0, 10.0, 10.0,
+                           10.0, 10.0, 10.0])
         flag = filter_spike(prices, DISTRESSED_PARAMS)
-        # Position 5 has no recovery (price stays at 110 — far from pre-spike
-        # median of 100). Not flagged.
+        assert not flag[5]
+
+    def test_spike_ratio_below_threshold_not_flagged(self):
+        # 5.5 clears the level gate (> 5.0) but 5.5 / median_pre(2) = 2.75 < 3.0.
+        prices = np.array([2.0, 2.0, 2.0, 2.0, 2.0, 5.5, 2.0, 2.0])
+        flag = filter_spike(prices, DISTRESSED_PARAMS)
         assert not flag[5]
 
 
 class TestPlateauInjection:
-    """Filter 3 — runs of ≥ℓ_min identical ultra-low or near-round prices
-    with ≥ρ_plateau pre/post displacement."""
+    """Filter 3 — run of >= min_plateau_days EXACT-equal ultra-low/round prices;
+    flagged if round OR either-side displacement (pre/price or post/price) >=
+    pre_post_price_ratio."""
 
     def test_round_number_plateau_flagged(self):
-        # Bond trades at ~50 then plateaus at 100.00 for 3 days, then resumes
-        # at ~50. 100 is a round multiple of 25; pre/post are 50 (50 points
-        # displaced from 100; ρ_plateau = 3.0, easily satisfied).
-        prices = np.array([50.0, 51.0, 49.0, 100.0, 100.0, 100.0, 51.0, 50.0])
+        # A two-day run at 0.50 (a suspicious round number in % of par). Round
+        # runs are always suspicious regardless of displacement.
+        prices = np.array([80.0, 0.50, 0.50, 80.0])
         flag = filter_plateau(prices, DISTRESSED_PARAMS)
-        # Positions 3, 4, 5 are the plateau
-        assert flag[3] and flag[4] and flag[5]
-        # Pre and post not flagged
-        assert not flag[0] and not flag[7]
+        assert flag[1] and flag[2]
+        assert not flag[0] and not flag[3]
+
+    def test_ultra_low_plateau_with_displacement_flagged(self):
+        # A run at 0.07 (ultra-low < 0.15, NOT round) displaced from 80 on both
+        # sides: 80 / 0.07 >> 3.0.
+        prices = np.array([80.0, 0.07, 0.07, 80.0])
+        flag = filter_plateau(prices, DISTRESSED_PARAMS)
+        assert flag[1] and flag[2]
+
+    def test_ultra_low_plateau_without_displacement_not_flagged(self):
+        # Run at 0.07 with neighbours too close to displace (0.08 / 0.07 < 3.0)
+        # and not round -> not suspicious.
+        prices = np.array([0.08, 0.07, 0.07, 0.09])
+        flag = filter_plateau(prices, DISTRESSED_PARAMS)
+        assert not flag[1] and not flag[2]
 
 
 class TestIntradayInjection:
-    """Filter 4 — low-priced day (min < τ_intraday) with intraday range
-    > γ_range × VWAP."""
+    """Filter 4 — low-price day (min_price < intraday_price_threshold) whose
+    high/low range normalised by mean(low,high) exceeds intraday_range_threshold."""
 
     def test_low_price_wide_range_flagged(self):
-        # One day: VWAP = 10, min = 5, max = 15. Range = 10; γ_range × VWAP =
-        # 0.75 × 10 = 7.5. Range > 7.5 → flagged. min = 5 < τ_intraday (20).
-        price_vwap = np.array([100.0, 100.0, 10.0, 100.0])
+        # min = 5 (< 20); (15-5)/mean(5,15) = 10/10 = 1.0 > 0.75.
         min_price = np.array([99.5, 99.5, 5.0, 99.5])
         max_price = np.array([100.5, 100.5, 15.0, 100.5])
-        flag = filter_intraday(price_vwap, min_price, max_price, DISTRESSED_PARAMS)
+        flag = filter_intraday(min_price, max_price, DISTRESSED_PARAMS)
         assert flag[2]
         assert not flag[0]
 
     def test_high_price_wide_range_not_flagged(self):
-        # Wide range but high prices — Filter 4 doesn't apply (low-price gate).
-        price_vwap = np.array([100.0, 100.0])
+        # 80-point range but min = 60 >= 20 -> the low-price gate is not met.
         min_price = np.array([60.0, 99.5])
         max_price = np.array([140.0, 100.5])
-        flag = filter_intraday(price_vwap, min_price, max_price, DISTRESSED_PARAMS)
-        # Day 0 has 80-point range on VWAP=100 (range > 0.75×VWAP) BUT
-        # min=60 ≥ τ_intraday=20 → not flagged.
+        flag = filter_intraday(min_price, max_price, DISTRESSED_PARAMS)
         assert not flag[0]
 
 
@@ -209,27 +231,29 @@ class TestIntradayInjection:
 # ---------------------------------------------------------------------------
 
 class TestWildlyImplausiblePrice:
-    """A1.7: raw family preserves wildly implausible prices bit-exact;
-    corrected family drops them (no shift recovers them). Pins that the
-    price-plausibility filter is meas_err-gated, not parsing."""
+    """A1.7 under spec v4: the raw family preserves wildly implausible prices
+    bit-exact. The corrected family still drops them, but the DROP MECHANISM now
+    depends on the price. With price_floor restored to 0.0, a micro-price SURVIVES
+    the decimal-shift and is dropped downstream by the DRR distressed anomaly
+    filter; a giga-price is still unrecoverable at decimal-shift (no shift lands
+    it in the plausible band)."""
 
-    def test_micro_price_dropped_by_corr_preserved_by_raw(self):
+    def test_micro_price_survives_shift_then_dropped_by_distressed(self):
+        # price_floor is 0.0 (spec v4): 1e-6 is NO LONGER dropped at decimal-shift.
         raw_prices = np.array([1e-6, 100.0, 100.0])
-        # raw: bit-exact
-        assert raw_prices[0] == 1e-6
-        # corr: drop
+        assert raw_prices[0] == 1e-6                       # raw: bit-exact
         res = apply_decimal_shift_vec(raw_prices, FLOOR, CEILING)
-        assert not res.in_range_mask[0]   # below floor; no shift restores it
-        assert np.isnan(res.corrected[0])
+        assert res.in_range_mask[0]                        # kept (floor removed)
+        assert res.corrected[0] == pytest.approx(1e-6)     # value unchanged
+        # The distressed anomaly filter drops it: an ultra-low print among ~100
+        # neighbours -> median(above)/price >> min_normal_price_ratio.
+        flag = filter_anomaly(np.array([100.0, 1e-6, 100.0, 100.0]), DISTRESSED_PARAMS)
+        assert flag[1]
 
     def test_giga_price_dropped_by_corr_preserved_by_raw(self):
-        # 1e9 — way above pre_correction_ceiling (30000)
-        # Note: apply_decimal_shift_vec's caller is responsible for the
-        # pre-ceiling gate. Here we feed a value that no shift recovers.
+        # 1e9 — no shift lands it in (price_floor, price_ceiling]; unrecoverable.
         raw_prices = np.array([1e9, 100.0, 100.0])
         assert raw_prices[0] == 1e9  # raw preserves
-        # 1e9/10 = 1e8 — still above ceiling; 1e9/100 = 1e7 — still above
-        # ceiling. → unresolvable, NaN, in_range False.
         res = apply_decimal_shift_vec(raw_prices, FLOOR, CEILING)
         assert not res.in_range_mask[0]
         assert np.isnan(res.corrected[0])
@@ -255,9 +279,11 @@ class TestCheck2Recall:
     def test_recall_on_implausible_prices(self):
         raw = np.array([1e-6, 1e9, 100.0])
         res = apply_decimal_shift_vec(raw, FLOOR, CEILING)
-        # Implausibles fall out of in_range; corrected is NaN; the
-        # raw-vs-corr divergence is `corrected_is_nan_and_raw_is_finite`.
-        assert not res.in_range_mask[0] and not res.in_range_mask[1]
+        # Under the floor-free decimal-shift (price_floor=0.0): 1e-6 now survives
+        # here (dropped later by the distressed anomaly filter); 1e9 is
+        # unrecoverable and dropped at decimal-shift; 100 is a clean pass.
+        assert res.in_range_mask[0]         # 1e-6 kept (floor removed)
+        assert not res.in_range_mask[1]     # 1e9 unrecoverable -> dropped
         assert res.in_range_mask[2]
 
 

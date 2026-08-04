@@ -32,7 +32,7 @@ import pyarrow.parquet as pq
 from apply_distressed_filters import load_config, process_partition
 
 PARAMS = load_config()
-L = int(PARAMS["L"])
+L = int(PARAMS["lookback"])
 
 CUSIP = "CUSWIN001"
 BASE = pd.Timestamp("2015-06-01")
@@ -96,8 +96,9 @@ def _dropped_positions(work_dir: Path, day_offsets, vwaps) -> set:
 
 class TestObservationVsCalendarWindowing:
     def test_spike_recovery_uses_observation_count_not_calendar_gap(self, tmp_path):
-        # Spike at position 5 (+5 above a flat 100 level) recovering at position 6.
-        vwaps = [100.0, 100.0, 100.0, 100.0, 100.0, 105.0, 100.0]
+        # Spike at position 5 (10 above a flat 2 level; 10/2 = 5 >= min_spike_ratio)
+        # recovering at position 6.
+        vwaps = [2.0, 2.0, 2.0, 2.0, 2.0, 10.0, 2.0]
         dense = list(range(7))               # consecutive calendar days 0..6
         sparse = [0, 1, 2, 3, 4, 5, 100]     # recovery observation 95 cal-days out
 
@@ -114,11 +115,11 @@ class TestObservationVsCalendarWindowing:
         assert sparse_dropped == {5}
 
     def test_plateau_run_is_observation_contiguous_not_calendar_contiguous(self, tmp_path):
-        # Three-day run at 100 (a round-number level) displaced from ~130 on both
-        # sides — positions 3, 4, 5. (Same shape as the spec's plateau fixture.)
-        vwaps = [130.0, 131.0, 129.0, 100.0, 100.0, 100.0, 131.0, 130.0]
+        # Three-day run at 0.50 (a suspicious round number) between ~1.2 neighbours
+        # — positions 3, 4, 5. (Same shape as the injection-suite plateau fixture.)
+        vwaps = [1.2, 1.3, 1.1, 0.50, 0.50, 0.50, 1.3, 1.2]
         dense = list(range(8))
-        sparse = [0, 1, 2, 3, 50, 90, 120, 121]   # the three 100s spread over months
+        sparse = [0, 1, 2, 3, 50, 90, 120, 121]   # the three 0.50s spread over months
 
         # The three plateau observations span far beyond an L-calendar-day window.
         assert (sparse[5] - sparse[3]) > L
@@ -133,8 +134,8 @@ class TestObservationVsCalendarWindowing:
 
     def test_drops_identical_regardless_of_date_spacing(self, tmp_path):
         # Mixed series: isolated ultra-low anomaly (position 2) + spike-and-recover
-        # (position 6). Documents the general invariant.
-        vwaps = [10.0, 10.0, 0.05, 10.0, 10.0, 10.0, 13.5, 10.0]
+        # (position 6, 40/median(~10) = 4 >= min_spike_ratio). General invariant.
+        vwaps = [10.0, 10.0, 0.05, 10.0, 10.0, 10.0, 40.0, 10.0]
         dense = list(range(8))
         sparse = [0, 30, 60, 90, 120, 150, 180, 210]
 

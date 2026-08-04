@@ -53,22 +53,24 @@ PLAT = "CUSPLAT01"
 INTR = "CUSINTR01"
 CLEAN = "CUSCLEAN1"
 
-# Injection-series shapes (mirroring test_meas_err_injection.py):
-#   anomaly : isolated ultra-low print (0.05 ≤ tau_low) in a ~10 series
-#   spike   : +5 print above a flat 100 series, recovering next day
-#   plateau : 3-day run at 100 (a multiple of round_step) displaced from a
-#             ~130 neighbourhood on both sides
-#   intraday: low day (vwap 10, min 5 < tau_intraday) with range 10 >
-#             gamma_range × vwap
-# min/max are set equal to vwap everywhere except the intraday case so
-# Filter 4 cannot fire on the non-intraday cusips.
+# Injection-series shapes (DRR ratio/ultra-low semantics, prices in % of par):
+#   anomaly : isolated ultra-low print (0.05 < ultra_low_threshold) whose
+#             above-neighbour median / price >> min_normal_price_ratio
+#   spike   : distressed ~2 series with a 10 print (> high_spike_threshold level
+#             gate); 10/median_pre(2)=5 >= min_spike_ratio, recovers next day
+#   plateau : 3-day run at 0.50 (a suspicious round number) between ~1.2
+#             neighbours — round runs are always suspicious
+#   intraday: low day (min 5 < intraday_price_threshold) with (max-min)/mean > 0.75
+# min/max are set equal to vwap everywhere except the intraday case so Filter 4
+# cannot fire on the non-intraday cusips (zero range). Candidate levels are
+# chosen so only the intended filter fires (see the flagged_*_only assertions).
 ANOM_PRICES = [10.0, 10.5, 9.5, 10.2, 0.05, 10.1, 10.3, 9.8, 10.0, 10.2]
 ANOM_FLAGGED = [4]
 
-SPIK_PRICES = [100.0, 100.0, 100.0, 100.0, 100.0, 105.0, 100.0, 100.0]
+SPIK_PRICES = [2.0, 2.0, 2.0, 2.0, 2.0, 10.0, 2.0, 2.0]
 SPIK_FLAGGED = [5]
 
-PLAT_PRICES = [130.0, 131.0, 129.0, 100.0, 100.0, 100.0, 131.0, 130.0]
+PLAT_PRICES = [1.2, 1.3, 1.1, 0.50, 0.50, 0.50, 1.3, 1.2]
 PLAT_FLAGGED = [3, 4, 5]
 
 INTR_VWAP = [100.0, 100.0, 10.0, 100.0]
@@ -153,19 +155,23 @@ def _flags_of(dropped_df, cusip, day_idx) -> pd.Series:
 
 class TestFixtureValidUnderCurrentParams:
     def test_anomaly_case_valid(self):
-        assert ANOM_PRICES[4] <= float(PARAMS["tau_low"])
+        assert ANOM_PRICES[4] < float(PARAMS["ultra_low_threshold"])
 
-    def test_plateau_level_is_near_round_step_multiple(self):
-        step = float(PARAMS["round_step"])
-        tau = float(PARAMS["tau_plateau"])
+    def test_spike_case_valid(self):
+        assert SPIK_PRICES[SPIK_FLAGGED[0]] > float(PARAMS["high_spike_threshold"])
+
+    def test_plateau_level_is_round(self):
+        rounds = [float(r) for r in PARAMS["suspicious_round_numbers"]]
+        tol = float(PARAMS["round_tolerance"])
         level = PLAT_PRICES[3]
-        assert abs(level - round(level / step) * step) <= tau
-        assert len(PLAT_FLAGGED) >= int(PARAMS["ell_min"])
+        assert any(abs(level - r) < tol for r in rounds)
+        assert len(PLAT_FLAGGED) >= int(PARAMS["min_plateau_days"])
 
     def test_intraday_case_valid(self):
         i = INTR_FLAGGED[0]
-        assert INTR_MIN[i] < float(PARAMS["tau_intraday"])
-        assert (INTR_MAX[i] - INTR_MIN[i]) > float(PARAMS["gamma_range"]) * INTR_VWAP[i]
+        assert INTR_MIN[i] < float(PARAMS["intraday_price_threshold"])
+        mean = (INTR_MIN[i] + INTR_MAX[i]) / 2.0
+        assert (INTR_MAX[i] - INTR_MIN[i]) / mean > float(PARAMS["intraday_range_threshold"])
 
 
 # ---------------------------------------------------------------------------

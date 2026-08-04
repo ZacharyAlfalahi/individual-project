@@ -4,11 +4,22 @@
 
 trace_cleaning:
   # Dick-Nielsen (2009) "How to Clean Enhanced TRACE Data", p.528
-  # price_floor raised from 0.0 to 1.0 to exclude near-zero prices (e.g. 1e-6)
-  # that pass a strict >0 check but produce return blow-ups when present as a
-  # VWAP denominator. Validated against OSBAP expected mean (~0.6%/month);
-  # the ultra-distressed filter in OSBAP achieves the same effect.
-  price_floor: 1.0
+  # price_floor RESTORED to 0.0 (spec v4 Part C/A4, 2026-08-04). It had been
+  # raised to 1.0 as a crutch for the mis-implemented distressed filters, which
+  # could not catch the ultra-low prints that produce VWAP-denominator blow-ups.
+  # With the DRR-faithful filters now in place (apply_distressed_filters.py,
+  # repo 42c5dea9), the floor is removed so ultra-low prints (< 1.0 % of par)
+  # flow through to the distressed stage, which drops them there — DRR apply no
+  # pre-distressed floor. A strict `> price_floor` still drops non-positive
+  # prices. See docs/data/registers/citations_verified.md §1.
+  price_floor: 0.0
+  # price_ceiling is the decimal-shift TARGET band: a corrected price must land
+  # in (price_floor, price_ceiling], so every shift already lands <= 300. This
+  # realises DRR's price_threshold=300 final filter (repo Step 9) IN-PLACE — a
+  # separate post-distressed "drop price > 300" would be a no-op on identical
+  # data, so it is not added (documented equivalence, spec v4 Part C6 / user
+  # decision 2026-08-04). DRR's dip_threshold=35 (the narrow 2002-07 first-change
+  # filter) is NOT yet wired — a documented faithfulness deferral (citations §1).
   price_ceiling: 300.0
   # Project design decision — committed before first run, never changed.
   # Holdout window is the closed interval [holdout_start_year, holdout_end_year]
@@ -246,52 +257,63 @@ bounce_back_filter:
   par_band: 15.0             # |price - par_level| <= par_band triggers the heuristic
   par_min_run: 3             # Consecutive trades near par required to activate
 
-# DRR (Dickerson, Robotti, Rossetti 2026) distressed daily filters 1-4.
-# Source: DRR-2026 Appendix A.3 Table A.3, transcribed via the published
-# description per A7.3 of the registry amendments (independent coding from
-# the appendix; do NOT port `trace-data-pipeline` code — firewall).
-# Applied by scripts/apply_distressed_filters.py on the corrected daily
-# layer only (raw family bypasses entirely per A1.1).
+# DRR (Dickerson, Robotti, Rossetti 2026) distressed daily filters.
+# PROVENANCE — port + disclose (spec v4 Part J; supersedes the prior firewall).
+# The filter IMPLEMENTATION is repo-derived from Dickerson's released
+# `trace-data-pipeline`, pinned commit 42c5dea93fce550089e175bb622dfd32a725b92f
+# (stage1/helper_functions.py::ultra_distressed_filter; ULTRA_DISTRESSED_CONFIG
+# in stage1/_stage1_settings.py; step8 in stage1/stage1_pipeline.py). The earlier
+# "independent coding from the appendix; do NOT port repo code" firewall is
+# RETIRED for the filter implementation — it produced a wrong implementation
+# (absolute price-point gaps, a 25/50/75/100 round grid). The OSBAP / DRR
+# published-OUTPUT validation firewall is UNAFFECTED (independence kept where it
+# validates against their results). Full provenance + appendix-vs-repo notes:
+# docs/data/registers/citations_verified.md §1.
+#
+# FOUR filter outputs (anomaly, spike, plateau, intraday); the round-number mask
+# is a SHARED PREDICATE consumed inside anomaly/spike/plateau, NOT a fifth OR'd
+# flag. All prices are % of par (100 = par). Applied by
+# scripts/apply_distressed_filters.py on the corrected daily layer only (raw
+# family bypasses per A1.1). Rows with any flag are DROPPED (repo Step 10a).
 meas_err_distressed_filters:
-  # Filter 1 — anomaly (isolated ultra-low prints sitting ≥ ρ_anomaly price
-  # points below the surrounding ±L-day median). Catches single-day price
-  # collapses that don't reflect a market move.
-  rho_anomaly: 3.0           # Threshold below ±L-day median (price points)
-  L: 5                       # Half-window (days) for the median computation
+  # Anomaly — isolated ultra-low/round print whose median of ABOVE-priced
+  # neighbours is >= min_normal_price_ratio x the price (ratio, not a gap).
+  ultra_low_threshold: 0.10       # anomaly ultra-low gate: price < this
+  min_normal_price_ratio: 3.0     # flag if median(neighbours priced above)/price >= this
 
-  # Filter 2 — spike (prints ≥ ρ_spike price points above the pre-spike
-  # median that recover to within ρ_recovery of median within L days).
-  rho_spike: 3.0             # Threshold above pre-spike median (price points)
-  rho_recovery: 2.0          # Recovery tolerance (price points to median)
+  # Spike — jump whose price / median(pre-window points BELOW) >= min_spike_ratio
+  # that recovers to <= median_pre * recovery_ratio within the lookahead.
+  high_spike_threshold: 5.0       # spike candidate LEVEL gate: price > this.
+                                  # NB a RAW price level, NOT a ratio (repo l.1144);
+                                  # the spike ratio is min_spike_ratio below.
+  min_spike_ratio: 3.0            # flag if price / median(pre-below) >= this
+  recovery_ratio: 2.0             # recovery: some post price <= median_pre * this
 
-  # Filter 3 — plateau (runs of ≥ ℓ_min identical ultra-low or round-number
-  # prices with ≥ ρ_plateau pre/post displacement on either side).
-  rho_plateau: 3.0           # Pre/post displacement threshold (price points)
-  ell_min: 2                 # Minimum run length (days)
-  tau_plateau: 0.15          # "Round-number" tolerance (price points) for
-                             # plateau identification — a price within
-                             # tau_plateau of a round multiple (e.g. 100,
-                             # 50, 25) counts as round-numbered
-  round_step: 25.0           # Grid of round-number plateau levels:
-                             # multiples of 25 cover 25/50/75/100/125/...,
-                             # the conventional bond plateaus. Moved here
-                             # from a hard-coded _is_near_round default per
-                             # the thresholds-in-yaml rule.
+  # Plateau — run of >= min_plateau_days EXACT-equal ultra-low/round prices with
+  # >= pre_post_price_ratio displacement on EITHER side (round runs always flag).
+  plateau_ultra_low_threshold: 0.15  # plateau ultra-low gate: price < this
+  min_plateau_days: 2             # minimum run length (days)
+  pre_post_price_ratio: 3.0       # either-side displacement: pre/price or post/price >= this
 
-  # Filter 4 — intraday inconsistency (days where the day's mean is below
-  # tau_intraday AND the intraday range (max - min) > gamma_range × mean).
-  # Combines low-price-bond context with abnormal range to catch erratic
-  # daily prints.
-  tau_intraday: 20.0         # Low-price threshold (price points)
-  gamma_range: 0.75          # Range/mean ratio threshold
+  # Round-number predicate (shared by anomaly/spike/plateau). Operative 7-element
+  # set from ULTRA_DISTRESSED_CONFIG (the repo README/function-default add 0.75;
+  # the pipeline passes THIS 7-element list — see citations_verified.md §1).
+  suspicious_round_numbers: [0.001, 0.01, 0.05, 0.10, 0.25, 0.50, 1.00]
+  round_tolerance: 0.0001         # |price - r| < this counts as round
 
-  # Shared ultra-low price gate referenced by filters 1 and 3.
-  tau_low: 0.10              # Ultra-low price gate (price points)
-  tau_high: 5.0              # RESERVED — not consumed by any current filter
-                             # (kept for DRR Table A.3 completeness; not in
-                             # apply_distressed_filters REQUIRED_KEYS).
-                             # Wiring an ultra-high gate would be a
-                             # methodology change requiring its own review.
+  # Anomaly/spike window half-widths (repo function defaults; pipeline does not
+  # override them).
+  lookback: 5
+  lookforward: 5
+
+  # Intraday inconsistency — low-price day with abnormal high/low range. Uses the
+  # daily low/high (prc_lo/prc_hi -> min_price/max_price).
+  intraday_price_threshold: 20.0  # candidate if min_price < this
+  intraday_range_threshold: 0.75  # flag if (max_price - min_price)/mean(min,max) > this
+  # DRR final filters (repo Step 9) for the record: price_threshold=300 is
+  # realised in-place by trace_cleaning.price_ceiling (the decimal-shift target
+  # band); dip_threshold=35 (the 2002-07 first-change filter) is a documented
+  # deferral, not yet wired (citations_verified.md §1).
 
 # FISD reference preprocessing (scripts/build_fisd_reference.py).
 # Source: WRDS Mergent FISD reference tables (data/fisd/*). This block governs
