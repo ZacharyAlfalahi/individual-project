@@ -18,6 +18,8 @@ from typing import Mapping
 
 import yaml
 
+from .contracts import CostUnit
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 THRESHOLDS_FILE = REPO_ROOT / "docs" / "thresholds.yaml"
 
@@ -119,4 +121,202 @@ def load_crowding_config(path: str | Path | None = None) -> CrowdingConfig:
         hac_lag_rule=hac_rule,
         min_obs=int(min_obs),
         bundles=bundles,
+    )
+
+
+# ===========================================================================
+# Cost / regime pre-registration constants (docs/thresholds.yaml
+# `shared_evaluation:` block — a 14th additive sibling block, invisible to the
+# existing loaders, exactly as the `reporter:` block established). These loaders are
+# ADDITIVE: CrowdingConfig / load_crowding_config above are untouched. Spanning
+# constants stay in the `crowding:` block; this block adds only the cost scenarios
+# and the regime evaluation/contrast constants (spec §6, §7).
+# ===========================================================================
+
+EXTENSION_1_FILE = REPO_ROOT / "docs" / "extension_1_config.yaml"
+
+_UNRESOLVED_SENTINEL = "UNRESOLVED_pending_citation"
+
+
+class SharedEvalThresholdError(KeyError):
+    """A required cost/regime pre-registration constant is absent from or malformed in
+    docs/thresholds.yaml (`shared_evaluation:` block). Raised rather than defaulted — a
+    silent default would launder a post-hoc constant."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(
+            f"shared_evaluation pre-registration constant {detail} in "
+            f"{THRESHOLDS_FILE.name}. It must be pre-registered under the top-level "
+            f"`shared_evaluation:` block — the diagnostic never defaults it."
+        )
+
+
+def _cost_unit(raw: object, where: str) -> CostUnit:
+    if raw == "one_way":
+        return CostUnit.ONE_WAY
+    if raw == "round_trip":
+        return CostUnit.ROUND_TRIP
+    raise SharedEvalThresholdError(f"`{where}` (must be 'one_way' or 'round_trip'; got {raw!r})")
+
+
+def _number(raw: object, where: str) -> float:
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise SharedEvalThresholdError(f"`{where}` (must be a number; got {raw!r})")
+    return float(raw)
+
+
+@dataclass(frozen=True)
+class CostScenarioSpec:
+    """One registered cost scenario (D-E12). `usable` is derived: a scenario whose
+    source is empty or the UNRESOLVED sentinel is NOT usable and is never emitted as a
+    cost figure until a real citation lands (P5)."""
+
+    scenario_id: str
+    ig_bps: float
+    hy_bps: float
+    unit: CostUnit
+    source: str
+    usable: bool
+
+
+@dataclass(frozen=True)
+class CostsConfig:
+    scenarios: tuple[CostScenarioSpec, ...]
+    break_even_alpha_denominator: str
+    assumed_turnover_grid: tuple[float, ...]
+    gross_exposure_convention: int
+
+    def scenario(self, scenario_id: str) -> CostScenarioSpec:
+        for s in self.scenarios:
+            if s.scenario_id == scenario_id:
+                return s
+        raise SharedEvalThresholdError(f"`shared_evaluation.costs.scenarios.{scenario_id}` (not registered)")
+
+
+@dataclass(frozen=True)
+class RegimesConfig:
+    evaluation_median: float            # frozen dev median, RESOLVED from extension_1
+    evaluation_median_source: str       # "<file>#<dotted key>", recorded for provenance
+    macro_data_contract_id: str
+    min_obs_conditional: int
+
+
+def _resolve_dotted(doc: object, dotted: str, where: str):
+    cur = doc
+    for part in dotted.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            raise SharedEvalThresholdError(f"`{where}` reference {dotted!r} is unresolved")
+        cur = cur[part]
+    return cur
+
+
+def _shared_eval_block(path: str | Path | None) -> dict:
+    p = Path(path) if path is not None else THRESHOLDS_FILE
+    with open(p) as f:
+        data = yaml.safe_load(f)
+    if not isinstance(data, dict):
+        raise SharedEvalThresholdError("(docs/thresholds.yaml is empty or malformed)")
+    block = data.get("shared_evaluation")
+    if not isinstance(block, dict):
+        raise SharedEvalThresholdError("`shared_evaluation` (the whole block is missing)")
+    return block
+
+
+def load_costs_config(path: str | Path | None = None) -> CostsConfig:
+    """Read the `shared_evaluation.costs` block fail-loud."""
+    costs = _shared_eval_block(path).get("costs")
+    if not isinstance(costs, dict):
+        raise SharedEvalThresholdError("`shared_evaluation.costs` (missing or not a mapping)")
+
+    raw_scenarios = costs.get("scenarios")
+    if not isinstance(raw_scenarios, dict) or not raw_scenarios:
+        raise SharedEvalThresholdError("`shared_evaluation.costs.scenarios` (missing or empty mapping)")
+    scenarios: list[CostScenarioSpec] = []
+    for sid, spec in raw_scenarios.items():
+        if not isinstance(spec, dict):
+            raise SharedEvalThresholdError(f"`shared_evaluation.costs.scenarios.{sid}` (not a mapping)")
+        where = f"shared_evaluation.costs.scenarios.{sid}"
+        source = spec.get("source")
+        if not isinstance(source, str) or not source.strip():
+            raise SharedEvalThresholdError(f"`{where}.source` (must be a non-empty string)")
+        usable = source.strip() != _UNRESOLVED_SENTINEL
+        scenarios.append(
+            CostScenarioSpec(
+                scenario_id=str(sid),
+                ig_bps=_number(spec.get("ig_bps"), f"{where}.ig_bps"),
+                hy_bps=_number(spec.get("hy_bps"), f"{where}.hy_bps"),
+                unit=_cost_unit(spec.get("unit"), f"{where}.unit"),
+                source=source.strip(),
+                usable=usable,
+            )
+        )
+
+    be = costs.get("break_even")
+    if not isinstance(be, dict):
+        raise SharedEvalThresholdError("`shared_evaluation.costs.break_even` (missing or not a mapping)")
+    denom = be.get("alpha_denominator")
+    if not isinstance(denom, str) or not denom.strip():
+        raise SharedEvalThresholdError("`shared_evaluation.costs.break_even.alpha_denominator` (non-empty string)")
+    grid_raw = be.get("assumed_turnover_grid")
+    if not isinstance(grid_raw, list) or not grid_raw or not all(
+        (not isinstance(x, bool)) and isinstance(x, (int, float)) and x > 0 for x in grid_raw
+    ):
+        raise SharedEvalThresholdError(
+            "`shared_evaluation.costs.break_even.assumed_turnover_grid` (non-empty list of positive numbers)"
+        )
+
+    gec = costs.get("gross_exposure_convention")
+    if isinstance(gec, bool) or gec not in (1, 2):
+        raise SharedEvalThresholdError("`shared_evaluation.costs.gross_exposure_convention` (must be 1 or 2)")
+
+    return CostsConfig(
+        scenarios=tuple(scenarios),
+        break_even_alpha_denominator=denom.strip(),
+        assumed_turnover_grid=tuple(float(x) for x in grid_raw),
+        gross_exposure_convention=int(gec),
+    )
+
+
+def load_regimes_config(
+    path: str | Path | None = None, *, extension_1_path: str | Path | None = None
+) -> RegimesConfig:
+    """Read the `shared_evaluation.regimes` block fail-loud, RESOLVING the evaluation
+    median from extension_1_config.yaml (referenced, never restated — spec §7 / D-E14)."""
+    regimes = _shared_eval_block(path).get("regimes")
+    if not isinstance(regimes, dict):
+        raise SharedEvalThresholdError("`shared_evaluation.regimes` (missing or not a mapping)")
+
+    macro_id = regimes.get("macro_data_contract_id")
+    if not isinstance(macro_id, str) or not macro_id.strip():
+        raise SharedEvalThresholdError("`shared_evaluation.regimes.macro_data_contract_id` (non-empty string)")
+
+    moc = regimes.get("min_obs_conditional")
+    if isinstance(moc, bool) or not isinstance(moc, int) or moc < 1:
+        raise SharedEvalThresholdError("`shared_evaluation.regimes.min_obs_conditional` (positive int)")
+
+    src = regimes.get("evaluation_median_source")
+    if not isinstance(src, dict) or "file" not in src or "key" not in src:
+        raise SharedEvalThresholdError(
+            "`shared_evaluation.regimes.evaluation_median_source` (mapping with `file` and `key`)"
+        )
+    ext_path = Path(extension_1_path) if extension_1_path is not None else REPO_ROOT / str(src["file"])
+    try:
+        with open(ext_path) as f:
+            ext_doc = yaml.safe_load(f)
+    except FileNotFoundError as exc:
+        raise SharedEvalThresholdError(
+            f"`shared_evaluation.regimes.evaluation_median_source.file` points at "
+            f"{src['file']!r}, which does not exist"
+        ) from exc
+    median = _resolve_dotted(ext_doc, str(src["key"]), "shared_evaluation.regimes.evaluation_median_source.key")
+    if isinstance(median, bool) or not isinstance(median, (int, float)):
+        raise SharedEvalThresholdError(
+            f"resolved evaluation median from {src['file']}#{src['key']} is not a number (got {median!r})"
+        )
+
+    return RegimesConfig(
+        evaluation_median=float(median),
+        evaluation_median_source=f"{src['file']}#{src['key']}",
+        macro_data_contract_id=macro_id.strip(),
+        min_obs_conditional=int(moc),
     )
