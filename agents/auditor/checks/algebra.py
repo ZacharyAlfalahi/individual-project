@@ -17,10 +17,16 @@ factors; the schema-producing wrappers assume the real ToggleId labels.
 
 from __future__ import annotations
 
+import math
 from itertools import combinations
 from typing import Hashable, Mapping, Sequence
 
-from ..schemas.decomposition import CornerMarginals, SaturatedBasis
+from ..schemas.decomposition import (
+    BiasClassPartition,
+    CornerMarginals,
+    SaturatedBasis,
+)
+from ..schemas.toggle import construction_toggles, data_quality_toggles
 
 
 def all_subsets(toggles: Sequence[Hashable]) -> list[frozenset]:
@@ -144,4 +150,71 @@ def saturated_basis(
         harsanyi=harsanyi_dividends(Y, toggles),
         walsh=walsh,
         doe=doe_effects(walsh),
+    )
+
+
+def bias_class_partition(
+    harsanyi: Mapping[frozenset, float],
+    toggles: Sequence[Hashable],
+) -> BiasClassPartition:
+    """Partition the endpoint gap Y(N)-Y(∅) by `bias_class` (ADR §5.2), from the
+    Harsanyi dividends restricted to coalitions PRESENT in `toggles` (the runnable
+    lattice). Every non-empty coalition falls in exactly one bucket:
+
+      method       — S touches only methodological-construction toggles
+      data_quality — S touches only data-quality-correction toggles
+      cross_class  — S mixes both classes (a modulation term, |S|>1)
+
+    Each component is **None when its bucket of present coalitions is empty** — never
+    a summed-from-nothing 0.0 (CF-2 / ADR §5.4). The three buckets sum to
+    `endpoint_gap` (= Σ present non-empty h(S) = Y(N)-Y(∅) by Möbius);
+    `reconciliation_residual` is the float error of that identity.
+
+    NOTE: the classes are read from the registry (`construction_toggles()` /
+    `data_quality_toggles()`), so a future third class extends here with no design
+    change. Today `data_quality_toggles()` is exactly `("meas_err",)`."""
+    present = set(toggles)
+    m_set = set(construction_toggles()) & present
+    d_set = set(data_quality_toggles()) & present
+
+    method_bucket: list[float] = []
+    dq_bucket: list[float] = []
+    cross_bucket: list[float] = []
+    all_present: list[float] = []
+    for S, h in harsanyi.items():
+        if not S or not (S <= present):
+            # h(∅) is the grand-mean offset (not part of the gap); coalitions
+            # outside the lattice are ignored defensively (a caller may pass the
+            # full 2^k harsanyi with a reduced toggle set).
+            continue
+        all_present.append(h)
+        touches_m = bool(S & m_set)
+        touches_d = bool(S & d_set)
+        if touches_m and touches_d:
+            cross_bucket.append(h)
+        elif touches_d:
+            dq_bucket.append(h)
+        else:                       # touches only construction toggles
+            method_bucket.append(h)
+
+    def _sum_or_none(bucket: list[float]) -> float | None:
+        return math.fsum(bucket) if bucket else None
+
+    method = _sum_or_none(method_bucket)
+    data_quality = _sum_or_none(dq_bucket)
+    cross_class = _sum_or_none(cross_bucket)
+    endpoint_gap = math.fsum(all_present)
+    # Explicit None->0 (not `x or 0.0`) so a genuine 0.0 component is unambiguous and
+    # the None-not-zero discipline reads clearly next to the None-returning buckets.
+    def _z(v: float | None) -> float:
+        return v if v is not None else 0.0
+
+    residual = _z(method) + _z(data_quality) + _z(cross_class) - endpoint_gap
+    return BiasClassPartition(
+        methodological_construction_component=method,
+        data_quality_component=data_quality,
+        cross_class_modulation=cross_class,
+        endpoint_gap=endpoint_gap,
+        reconciliation_residual=residual,
+        data_quality_present=bool(d_set),
     )

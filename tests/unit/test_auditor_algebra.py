@@ -9,6 +9,7 @@ a small hand-computed decomposition.
 from __future__ import annotations
 
 import math
+from itertools import combinations, permutations
 
 import pytest
 
@@ -100,6 +101,61 @@ def test_corner_marginals_and_bracket():
     assert add_in["x"] == 3.0            # Y{x}-Y∅
     assert leave_out["x"] == 4.0          # Y{xy}-Y{y} = 6-2
     assert bracket["x"] == -1.0           # 3 - 4
+
+
+# --------------------------------------------------------------------------
+# ADR bias_class §9.1 — the saturated transforms are invariant to which factor
+# is "pulled out" (toggle ordering). This is the isomorphism the ADR §3 relies on:
+# restructuring the 2^5 into 2^4×2 is a pure relabelling of coefficients already
+# computed, so the k=4 "drop meas_err" restructure is unnecessary.
+# --------------------------------------------------------------------------
+
+def _all_subsets(toggles):
+    out = []
+    for r in range(len(toggles) + 1):
+        out.extend(frozenset(c) for c in combinations(toggles, r))
+    return out
+
+
+def test_walsh_doe_harsanyi_invariant_to_toggle_ordering():
+    from agents.auditor.schemas.toggle import TOGGLE_IDS
+
+    toggles = list(TOGGLE_IDS)
+    # A fixed, arbitrary metric over all 32 cells (deterministic, no RNG).
+    Y = {s: (len(s) * 1.7 - 0.3 * sum(hash(t) % 7 for t in s)) for s in _all_subsets(toggles)}
+
+    base_w = walsh_coefficients(Y, toggles)
+    base_d = doe_effects(base_w)
+    base_h = harsanyi_dividends(Y, toggles)
+
+    # Every permutation "pulls out" a different factor first; coefficients are
+    # keyed by frozenset coalition, so they must be identical per-coalition.
+    orderings = [list(reversed(toggles)), ["meas_err"] + toggles[1:][::-1]]
+    orderings += [list(p) for p in list(permutations(toggles))[::37][:6]]  # a spread of perms
+    for order in orderings:
+        w = walsh_coefficients(Y, order)
+        d = doe_effects(w)
+        h = harsanyi_dividends(Y, order)
+        for T in _all_subsets(toggles):
+            assert math.isclose(w[T], base_w[T], rel_tol=0, abs_tol=1e-12)
+            assert math.isclose(d[T], base_d[T], rel_tol=0, abs_tol=1e-12)
+            assert math.isclose(h[T], base_h[T], rel_tol=0, abs_tol=1e-12)
+
+
+def test_meas_err_doe_equals_the_two_block_contrast():
+    # The "E main effect" IS the average contrast between the E=ON and E=OFF halves
+    # of the lattice — the number the 2^5 basis already reports (ADR §3).
+    from agents.auditor.schemas.toggle import TOGGLE_IDS
+
+    toggles = list(TOGGLE_IDS)
+    Y = {s: (2.0 * len(s) + 0.11 * sum(hash(t) % 5 for t in s)) for s in _all_subsets(toggles)}
+    doe = doe_effects(walsh_coefficients(Y, toggles))
+
+    on = [s for s in _all_subsets(toggles) if "meas_err" in s]
+    off = [s for s in _all_subsets(toggles) if "meas_err" not in s]
+    assert len(on) == 16 and len(off) == 16
+    block_contrast = sum(Y[s] for s in on) / 16.0 - sum(Y[s] for s in off) / 16.0
+    assert math.isclose(doe[frozenset({"meas_err"})], block_contrast, abs_tol=1e-12)
 
 
 # --------------------------------------------------------------------------

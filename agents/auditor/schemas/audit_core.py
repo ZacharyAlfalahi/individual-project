@@ -92,6 +92,14 @@ class InvarianceResult:
         }
 
 
+def _bias_class_partition_dict(harsanyi, runnable_toggles) -> dict:
+    """Serialised bias_class partition for the runnable lattice (ADR §5.2). Local
+    import so the schema layer never eagerly loads the checks layer at module init."""
+    from ..checks.algebra import bias_class_partition
+
+    return bias_class_partition(harsanyi, runnable_toggles).to_dict()
+
+
 @dataclass(frozen=True, eq=False)
 class AuditCore:
     """The instrument-core verdict for one strategy (steps 2-11)."""
@@ -108,12 +116,18 @@ class AuditCore:
     shapley: ShapleyResult
     invariance: tuple[InvarianceResult, ...]
     pre_registration_tag: str | None = None
+    # Toggles excluded because NO estimand exists for this strategy (ADR §5.4). This
+    # is a first-class part of the verdict ("the paper could not have committed this
+    # bias"), distinct from a construct failure (input_unavailable) or a measured
+    # no-op. Empty for every all-runnable audit; declared per strategy, never derived.
+    not_applicable_toggles: tuple[ToggleId, ...] = ()
 
     def to_dict(self) -> dict:
         return {
             "strategy_label": self.strategy_label,
             "audit_scope": self.audit_scope,
             "runnable_toggles": list(self.runnable_toggles),
+            "not_applicable_toggles": list(self.not_applicable_toggles),
             "conditioning_signature": [
                 {"toggle_id": t, "fixed_state": s}
                 for (t, s) in self.conditioning_signature
@@ -123,6 +137,14 @@ class AuditCore:
             "support": self.support.to_dict(),
             "corner_marginals": self.corner_marginals.to_dict(),
             "saturated_bases": self.saturated.to_dict(),
+            # The bias_class headline (ADR §5.2): the endpoint gap split into
+            # methodological-construction / data-quality / cross-class components.
+            # Derived from the saturated Harsanyi dividends over the runnable
+            # lattice — a pure recombination, no re-fit. A local import breaks the
+            # schemas<->checks module ordering cleanly.
+            "bias_class_partition": _bias_class_partition_dict(
+                self.saturated.harsanyi, self.runnable_toggles
+            ),
             "shapley": self.shapley.to_dict(),
             "invariance": [r.to_dict() for r in self.invariance],
             "pre_registration_tag": self.pre_registration_tag,

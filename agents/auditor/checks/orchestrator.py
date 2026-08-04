@@ -97,6 +97,7 @@ def audit_spine(
         ),
         invariance=run_invariance_tests(lattice, pf.facts),
         pre_registration_tag=pre_registration_tag,
+        not_applicable_toggles=pf.not_applicable_toggles,
     )
     return pf, lattice, core
 

@@ -126,6 +126,44 @@ def test_signature_is_canonical_order():
     assert r.conditioning_signature == (("stale_price", "OFF"), ("lib_gap", "ON"))
 
 
+# --------------------------------------------------------------------------
+# not_applicable — the third disposition (ADR §5.4 / CF-1)
+# --------------------------------------------------------------------------
+
+def test_not_applicable_toggle_keeps_the_audit_complete():
+    # CF-1 regression: a not_applicable toggle must NOT be treated as REFUSED.
+    facts = _facts(
+        lib_gap=ToggleFacts(
+            "lib_gap", runnable=False, not_applicable=True,
+            not_applicable_reason="mom6 signal is already lagged; no lag choice exists",
+        )
+    )
+    r = derive_scope("mom6", facts)
+    assert r.audit_scope == "COMPLETE"          # NOT REFUSED, NOT PARTIAL
+    assert "lib_gap" not in r.runnable_toggles   # excluded from the lattice
+    assert "lib_gap" not in dict(r.conditioning_signature)  # nothing is "held"
+    assert r.conditioning_statement is None
+    assert r.refused_toggles == ()
+    assert r.not_applicable_toggles == ("lib_gap",)
+
+
+def test_not_applicable_alongside_a_real_refusal_is_still_refused():
+    facts = _facts(
+        lib_gap=ToggleFacts(
+            "lib_gap", runnable=False, not_applicable=True,
+            not_applicable_reason="no lag choice exists",
+        ),
+        lab_trim=ToggleFacts(
+            "lab_trim", runnable=False,
+            runnable_reason="PAPER_RULE_NOT_STATED", fixed_state=None,
+        ),
+    )
+    r = derive_scope("s", facts)
+    assert r.audit_scope == "REFUSED"
+    assert r.refused_toggles == ("lab_trim",)
+    assert r.not_applicable_toggles == ("lib_gap",)
+
+
 def test_requires_all_five_toggles():
     with pytest.raises(ValueError, match="one fact per registered toggle"):
         derive_scope("s", [ToggleFacts("meas_err", runnable=True)])

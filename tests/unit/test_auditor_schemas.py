@@ -15,12 +15,15 @@ import pytest
 
 from agents.auditor.schemas import (
     TOGGLE_AXES,
+    TOGGLE_BIAS_CLASS,
     TOGGLE_IDS,
     CellReturns,
     LatticeResult,
     MetricSet,
     ToggleFacts,
     conditioning_statement_for,
+    construction_toggles,
+    data_quality_toggles,
 )
 from agents.auditor.schemas.toggle import ToggleFacts as _ToggleFactsClass
 from agents.quant.library.run_config import corrected, uncorrected
@@ -81,6 +84,66 @@ def test_is_no_op_cannot_be_declared_on_the_input_spec():
 
 
 # --------------------------------------------------------------------------
+# not_applicable — the third disposition (ADR §5.4)
+# --------------------------------------------------------------------------
+
+def test_not_applicable_toggle_is_valid_with_a_reason():
+    tf = ToggleFacts(
+        "lib_gap", runnable=False, not_applicable=True,
+        not_applicable_reason="no lag choice exists for this strategy",
+    )
+    assert tf.not_applicable and not tf.runnable
+    assert tf.runnable_reason is None and tf.fixed_state is None
+
+
+def test_not_applicable_requires_a_reason():
+    with pytest.raises(ValueError, match="requires a not_applicable_reason"):
+        ToggleFacts("lib_gap", runnable=False, not_applicable=True)
+
+
+def test_runnable_toggle_cannot_be_not_applicable():
+    with pytest.raises(ValueError, match="cannot be not_applicable"):
+        ToggleFacts("meas_err", runnable=True, not_applicable=True,
+                    not_applicable_reason="x")
+
+
+def test_not_applicable_must_not_carry_a_runnable_reason():
+    with pytest.raises(ValueError, match="must not carry a runnable_reason"):
+        ToggleFacts("lib_gap", runnable=False, not_applicable=True,
+                    not_applicable_reason="x", runnable_reason="ENGINE_UNSUPPORTED")
+
+
+def test_not_applicable_must_not_be_held():
+    with pytest.raises(ValueError, match="excluded, not held"):
+        ToggleFacts("lib_gap", runnable=False, not_applicable=True,
+                    not_applicable_reason="x", fixed_state="OFF")
+
+
+def test_not_applicable_reason_only_on_a_not_applicable_toggle():
+    with pytest.raises(ValueError, match="only valid on a not_applicable"):
+        ToggleFacts("lib_gap", runnable=False,
+                    runnable_reason="ENGINE_UNSUPPORTED",
+                    not_applicable_reason="stray")
+
+
+def test_classify_dummy_over_the_three_states_and_the_non_dummy():
+    from agents.auditor.schemas.toggle import classify_dummy
+
+    na = ToggleFacts("lib_gap", runnable=False, not_applicable=True,
+                     not_applicable_reason="no lag choice")
+    unavailable = ToggleFacts("survivorship", runnable=False,
+                              runnable_reason="MISSING_EXIT_DATA", fixed_state="OFF")
+    runnable = ToggleFacts("meas_err", runnable=True)
+
+    assert classify_dummy(na) == "not_applicable"
+    assert classify_dummy(unavailable) == "input_unavailable"
+    assert classify_dummy(runnable, is_no_op=True) == "no_treatment_support"
+    # runnable with a real effect / empirical null is NOT a dummy
+    assert classify_dummy(runnable, is_no_op=False) is None
+    assert classify_dummy(runnable, is_no_op=None) is None
+
+
+# --------------------------------------------------------------------------
 # Toggle -> RunConfig axis mapping (the single source of truth, SEAM 1)
 # --------------------------------------------------------------------------
 
@@ -96,6 +159,31 @@ def test_axes_match_the_verified_endpoints():
         block_on = getattr(on, axis.block)
         assert getattr(block_off, axis.field) == axis.off, tid
         assert getattr(block_on, axis.field) == axis.on, tid
+
+
+# --------------------------------------------------------------------------
+# bias_class registry (ADR §5.1)
+# --------------------------------------------------------------------------
+
+def test_bias_class_covers_every_toggle():
+    assert set(TOGGLE_BIAS_CLASS) == set(TOGGLE_IDS)
+    assert set(TOGGLE_BIAS_CLASS.values()) <= {
+        "data_quality_correction", "methodological_construction"
+    }
+
+
+def test_meas_err_is_the_sole_data_quality_correction():
+    assert TOGGLE_BIAS_CLASS["meas_err"] == "data_quality_correction"
+    assert data_quality_toggles() == ("meas_err",)
+
+
+def test_construction_toggles_are_the_other_four_in_canonical_order():
+    assert construction_toggles() == (
+        "stale_price", "survivorship", "lib_gap", "lab_trim"
+    )
+    # The two classes partition the five toggles exactly.
+    assert set(construction_toggles()) | set(data_quality_toggles()) == set(TOGGLE_IDS)
+    assert set(construction_toggles()).isdisjoint(data_quality_toggles())
 
 
 # --------------------------------------------------------------------------

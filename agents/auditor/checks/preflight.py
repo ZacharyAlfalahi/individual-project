@@ -64,6 +64,7 @@ class PreflightResult:
     conditioning_statement: str | None
     facts: Mapping[ToggleId, ToggleFacts]
     refused_toggles: tuple[ToggleId, ...]             # non-runnable with no fixed_state
+    not_applicable_toggles: tuple[ToggleId, ...] = () # no estimand exists (ADR §5.4)
 
     @property
     def is_refused(self) -> bool:
@@ -75,13 +76,20 @@ def derive_scope(
 ) -> PreflightResult:
     """Derive `audit_scope` and the conditioning from the five toggle facts.
 
-        COMPLETE  iff every registered toggle is runnable
-        PARTIAL   iff every non-runnable toggle has a defensible fixed_state
-        REFUSED   iff any non-runnable toggle lacks a defensible fixed_state
+        COMPLETE  iff every APPLICABLE toggle is runnable
+        PARTIAL   iff every non-runnable APPLICABLE toggle has a defensible fixed_state
+        REFUSED   iff any non-runnable APPLICABLE toggle lacks a defensible fixed_state
 
-    Requires exactly one fact per registered toggle (§3.1's five). The
-    conditioning signature is the sorted (canonical-order) list of held
-    non-runnable toggles and their fixed states — empty for COMPLETE.
+    A `not_applicable` toggle (no estimand exists, ADR §5.4) is a THIRD disposition:
+    it is stripped before scope is derived, so it appears in neither `runnable`,
+    `refused`, `held` nor the conditioning signature, and it does NOT downgrade the
+    audit — a strategy whose only non-runnable toggle is not_applicable is COMPLETE.
+    Excluding it (like any non-runnable toggle) also keeps its coordinate out of the
+    saturated basis, so no zero is ever materialised for it (CF-1, ADR §9.4).
+
+    Requires exactly one fact per registered toggle (§3.1's five). The conditioning
+    signature is the sorted (canonical-order) list of held non-runnable toggles and
+    their fixed states — empty for COMPLETE.
     """
     by_id: dict[ToggleId, ToggleFacts] = {}
     for f in facts:
@@ -96,15 +104,25 @@ def derive_scope(
             f"{TOGGLE_IDS}; missing={sorted(missing)} extra={sorted(extra)}"
         )
 
+    not_applicable = tuple(t for t in TOGGLE_IDS if by_id[t].not_applicable)
     runnable = tuple(t for t in TOGGLE_IDS if by_id[t].runnable)
-    non_runnable = [t for t in TOGGLE_IDS if not by_id[t].runnable]
+    # applicable but not runnable == a construct failure (input_unavailable); only
+    # these determine PARTIAL/REFUSED. not_applicable toggles are excluded entirely.
+    non_runnable_applicable = [
+        t for t in TOGGLE_IDS
+        if not by_id[t].runnable and not by_id[t].not_applicable
+    ]
 
-    refused = tuple(t for t in non_runnable if by_id[t].fixed_state is None)
-    held = {t: by_id[t].fixed_state for t in non_runnable if by_id[t].fixed_state is not None}
+    refused = tuple(t for t in non_runnable_applicable if by_id[t].fixed_state is None)
+    held = {
+        t: by_id[t].fixed_state
+        for t in non_runnable_applicable
+        if by_id[t].fixed_state is not None
+    }
 
     if refused:
         scope: AuditScope = "REFUSED"
-    elif non_runnable:
+    elif non_runnable_applicable:
         scope = "PARTIAL"
     else:
         scope = "COMPLETE"
@@ -125,4 +143,5 @@ def derive_scope(
         conditioning_statement=statement,
         facts=by_id,
         refused_toggles=refused,
+        not_applicable_toggles=not_applicable,
     )
