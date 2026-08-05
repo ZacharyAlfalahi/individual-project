@@ -330,6 +330,33 @@ meas_err_distressed_filters:
   # band); dip_threshold=35 (the 2002-07 first-change filter) is a documented
   # deferral, not yet wired (citations_verified.md §1).
 
+# Per-paper baseline-profile UNKNOWN-primitive promotion rule (FL-D21e / R1).
+# An UNSTATED cleaning primitive (one a paper does not state) is toggled ALONE
+# against the profile baseline on the DEVELOPMENT window only (2002-2021; NO
+# holdout rows); it is PROMOTED to a run-both-ways envelope if ANY criterion
+# fires. Non-promoted primitives take the faithful-to-silence default (not
+# applied; except P4 as-of = retain, FL-D21h), tagged UNKNOWN with the diagnostic
+# recorded. These are a PRE-REGISTERED, fail-loud constant set: the freeze is the
+# committed + git-tagged state (FL-D21e). All three criteria are DATA-LEVEL
+# (Δr and signal ranks are panel data; the D16 line sits at portfolio formation
+# / premia, not returns). Promotion allocates COMPUTE, not truth — every
+# non-promoted default keeps its UNKNOWN tag + recorded diagnostic.
+cleaning_promotion:
+  # (a) diffuse materiality — share of bond-months with |Δr| >= 1bp.
+  diffuse_share_min: 0.005          # >= 0.5%
+  diffuse_delta_bp: 1.0             # |Δr| >= 1 bp counts
+  # (b) concentrated magnitude — max |Δr| (the str pathology). 30% is anchored to
+  # the corpus's own smallest ex-post materiality bound (Jostova's trim), not invented.
+  max_abs_delta_r: 0.30             # >= 30%
+  # (c) selection-concentration lift = P(extreme | affected) / P(extreme | unaffected).
+  # Few affected rows selected into the sort tails move a factor while (a) sleeps.
+  selection_lift_min: 2.0           # >= 2
+  # Fixed conventions for (c), frozen:
+  #   signal set = the registered anchor sorts (frozen);
+  #   extreme    = top ∪ bottom signal decile (diagnostic convention, any paper's grid).
+  extreme_decile_frac: 0.10
+  window: development_only          # 2002-2021; holdout never touched
+
 # FISD reference preprocessing (scripts/build_fisd_reference.py).
 # Source: WRDS Mergent FISD reference tables (data/fisd/*). This block governs
 # the FISD-restricted universe definition, the rating letter→numeric ladder,
