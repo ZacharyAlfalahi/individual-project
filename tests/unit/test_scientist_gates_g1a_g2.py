@@ -5,8 +5,6 @@ G2 fires; contemporaneous regime -> G2 fires; double-sort held>1 -> G1a fails.""
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 

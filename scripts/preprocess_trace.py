@@ -49,6 +49,7 @@ import json
 import os
 import sys
 from collections import Counter
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -98,8 +99,6 @@ KEEP_COLUMNS = [
 # (always dropped). ISO date strings compare lexicographically, so the regime
 # split is a plain string comparison on trd_exctn_dt.
 # ---------------------------------------------------------------------------
-
-from dataclasses import dataclass, field
 
 REGIME_SPLIT_ISO = "2012-02-06"   # DN-2014 Feb-2012 reporting change
 

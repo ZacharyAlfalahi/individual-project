@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -60,7 +59,8 @@ def test_random_eligible_is_deterministic_in_seed():
                          prompt_version="v0", generated_at=GEN_AT)
     b = S.run_generation(src, case, elig, LIB, seed=0, m=6, model="deterministic",
                          prompt_version="v0", generated_at=GEN_AT)
-    ids = lambda r: [p.proposal_id for p in r.proposal_set.proposals]
+    def ids(r):
+        return [p.proposal_id for p in r.proposal_set.proposals]
     assert ids(a) == ids(b)                                   # same seed -> identical
     assert a.proposal_set.content_hash == b.proposal_set.content_hash
 
@@ -126,7 +126,8 @@ def test_invalid_and_duplicate_are_counted_never_regenerated():
     case, elig = _case(), _elig()
     good = S.RandomEligibleSource().candidates(case, elig, LIB, seed=0, m=2, model="d",
                                                prompt_version="v0", generated_at=GEN_AT)
-    invalid = dict(good[0]); invalid.pop("prediction")       # missing required field -> invalid
+    invalid = dict(good[0])
+    invalid.pop("prediction")                                 # missing required field -> invalid
     duplicate = dict(good[0])                                 # same equivalence key as good[0]
     src = _FixedSource([good[0], invalid, duplicate, good[1]])
     r = S.run_generation(src, case, elig, LIB, seed=0, m=4, model="d", prompt_version="v0",
@@ -166,7 +167,8 @@ def test_emitted_proposals_have_no_magnitude_keys():
     def keys(o):
         if isinstance(o, dict):
             for k, v in o.items():
-                yield str(k); yield from keys(v)
+                yield str(k)
+                yield from keys(v)
         elif isinstance(o, (list, tuple)):
             for v in o:
                 yield from keys(v)

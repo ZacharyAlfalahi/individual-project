@@ -11,13 +11,12 @@ estimation field.
 
 import pytest
 
-from agents.quant.config import Evidence, Inherited, Locator
+from agents.quant.config import Evidence, Inherited
 
 from agents.librarian.errors import LibrarianSchemaError
 from agents.librarian.schema import (
     ESTIMATION_FIELD_TYPES,
     ESTIMATION_FIELDS,
-    EstimationBlock,
     InstrumentRef,
     InstrumentSet,
     DescribedSignal,

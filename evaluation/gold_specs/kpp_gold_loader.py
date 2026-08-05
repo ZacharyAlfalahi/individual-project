@@ -22,7 +22,6 @@ instrument registry (fail-closed).
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from agents.quant.config import Evidence, Inherited, Locator  # noqa: F401 (Locator via primitives)
 

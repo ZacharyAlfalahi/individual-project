@@ -42,13 +42,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))  # runnable as `python scripts/run_auditor_calibration.py`
 
-from agents.auditor.data.synthetic_panel import (
+from agents.auditor.data.synthetic_panel import (  # noqa: E402
     DEFAULT_MAGNITUDES,
     INTERACTION_MECHANISMS,
 )
-from agents.auditor.schemas.toggle import TOGGLE_IDS
-from agents.auditor.thresholds import load_bootstrap_config
-from agents.auditor.validation.layer_b_calibration import (
+from agents.auditor.schemas.toggle import TOGGLE_IDS  # noqa: E402
+from agents.auditor.thresholds import load_bootstrap_config  # noqa: E402
+from agents.auditor.validation.layer_b_calibration import (  # noqa: E402
     _BOOT,
     detection_rate,
     false_positive_rate,

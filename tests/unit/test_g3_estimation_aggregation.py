@@ -24,11 +24,9 @@ from evaluation.harness.kpp_aggregation import aggregate_kpp  # noqa: E402
 from evaluation.harness.reportability import load_g3_thresholds  # noqa: E402
 
 from _librarian_fixtures import (  # noqa: E402
-    build_estimation_block,
     build_instrument_set,
     build_kpp_spec,
     instrument_ref,
-    stated,
 )
 
 

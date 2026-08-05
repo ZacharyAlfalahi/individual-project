@@ -93,7 +93,7 @@ def render(m_values: list[int], q: float, n_months: int) -> str:
     lines = [
         "# Scientist MDE table (generated — do not edit by hand)",
         "",
-        f"Source: `scripts/generate_scientist_mde.py` from `docs/scientist_protocol.yaml`.",
+        "Source: `scripts/generate_scientist_mde.py` from `docs/scientist_protocol.yaml`.",
         f"Parameters: q = {q}, T = {n_months} primary-inference months "
         f"(2004-08…2021-12, DRF/CRF-bound). Normal/independence approximation; the audited "
         f"NW-HAC bar is stronger.",

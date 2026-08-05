@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from agents.quant.config import TrimRule
 
 from ..schemas.audit_core import AuditCore
 from ..schemas.lattice_types import LatticeResult

@@ -15,9 +15,12 @@ here (the mom6-skip subtlety, §3.5 / O-A2), defaulting to OFF=0, ON=1.
 from __future__ import annotations
 
 from itertools import combinations
-from typing import Mapping, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from agents.quant.config import TrimRule
 
 from agents.quant.library.run_config import (
     ConstructionConfig,
