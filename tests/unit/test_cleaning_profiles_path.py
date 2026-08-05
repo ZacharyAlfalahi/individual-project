@@ -38,12 +38,13 @@ _COLUMNS = [
     "rptd_pr", "entrd_vol_qt", "sub_prdct", "rpt_side_cd", "trdg_mkt_cd",
     "trd_mod_3", "bloomberg_identifier", "scrty_type_cd",
     "msg_seq_nb", "orig_msg_seq_nb", "trc_st", "asof_cd", "wis_fl",
-    "cmsn_trd", "pr_trd_dt",
+    "cmsn_trd", "pr_trd_dt", "lckd_in_ind", "spcl_trd_fl", "sale_cndtn_cd",
+    "days_to_sttl_ct",
 ]
 
 
 def _row(bond, date, msg, *, pr, vol, trc="T", orig="", asof="", wis="N",
-         side="S", cmsn="N", pr_trd=""):
+         side="S", cmsn="N", pr_trd="", lckd="", spcl="", cndtn="@", sttl="1"):
     return {
         "bond_sym_id": bond, "cusip_id": f"CUSIP{bond}", "company_symbol": bond,
         "trd_exctn_dt": date, "trd_exctn_tm": "10:00:00",
@@ -52,6 +53,8 @@ def _row(bond, date, msg, *, pr, vol, trc="T", orig="", asof="", wis="N",
         "bloomberg_identifier": f"BB{bond}", "scrty_type_cd": "C",
         "msg_seq_nb": msg, "orig_msg_seq_nb": orig, "trc_st": trc,
         "asof_cd": asof, "wis_fl": wis, "cmsn_trd": cmsn, "pr_trd_dt": pr_trd,
+        "lckd_in_ind": lckd, "spcl_trd_fl": spcl, "sale_cndtn_cd": cndtn,
+        "days_to_sttl_ct": sttl,
     }
 
 

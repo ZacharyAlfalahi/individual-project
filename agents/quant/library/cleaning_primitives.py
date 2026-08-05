@@ -114,6 +114,30 @@ def when_issued_mask(df: pd.DataFrame) -> pd.Series:
     return df["wis_fl"].astype("string").fillna("") != "Y"
 
 
+def locked_in_mask(df: pd.DataFrame) -> pd.Series:
+    """BBW locked-in removal (STATED §3.1): drop lckd_in_ind == 'Y'. Sample basis
+    (fl_d21_gate_results): the column is 'Y' (~1.2%) or NA."""
+    return df["lckd_in_ind"].astype("string").fillna("") != "Y"
+
+
+def special_sales_mask(df: pd.DataFrame) -> pd.Series:
+    """BBW special-sales-condition removal (STATED §3.1): keep only regular-way
+    trades — sale_cndtn_cd blank/NA or '@'; drop the special codes (Z/R/A/N/W/C,
+    ~2.7% of the sample) and any spcl_trd_fl == 'Y' special-price row."""
+    cndtn = df["sale_cndtn_cd"].astype("string").fillna("")
+    regular = cndtn.isin(["", "@"])
+    not_special_px = df["spcl_trd_fl"].astype("string").fillna("") != "Y"
+    return regular & not_special_px
+
+
+def settlement_mask(df: pd.DataFrame, max_days: float = 2.0) -> pd.Series:
+    """BBW settlement removal (STATED §3.1): drop settlement > max_days days
+    (days_to_sttl_ct). Rows with a MISSING settlement count are KEPT — the field
+    is ~59% NA and a missing value cannot be judged (declared convention)."""
+    d = pd.to_numeric(df["days_to_sttl_ct"], errors="coerce")
+    return d.isna() | (d <= max_days)
+
+
 def commission_mask(df: pd.DataFrame) -> pd.Series:
     """Jostova commission removal (STATED via BKMX, FL-D21c): drop cmsn_trd == 'Y'.
     NB (G3): the cmsn_trd flag is ~100% NA post-2012, so this executes only
@@ -176,6 +200,9 @@ BBW_2019_SCREENS = (
     ("price_range", price_range_mask, "INFERRED"),      # FL-D21i (obs-level)
     ("min_volume", min_volume_mask, "STATED"),          # fn 12
     ("when_issued", when_issued_mask, "STATED"),        # §3.1
+    ("locked_in", locked_in_mask, "STATED"),            # §3.1
+    ("special_sales", special_sales_mask, "STATED"),    # §3.1
+    ("settlement", settlement_mask, "STATED"),          # §3.1 (> 2 days)
 )
 JOSTOVA_2013_SCREENS = (
     ("commission", commission_mask, "STATED"),          # via BKMX; pre-2012 only (G3)

@@ -40,6 +40,25 @@ def test_when_issued_drops_Y():
     assert list(when_issued_mask(df)) == [False, True, True, True]
 
 
+def test_locked_in_special_sales_settlement():
+    from agents.quant.library.cleaning_primitives import (
+        locked_in_mask,
+        settlement_mask,
+        special_sales_mask,
+    )
+    df = _frame({
+        "lckd_in_ind":     ["Y", None, "",  None, None],
+        "spcl_trd_fl":     [None, "Y", "",  None, None],
+        "sale_cndtn_cd":   ["@",  "@", "Z", "@",  None],
+        "days_to_sttl_ct": ["1",  "1", "1", "5",  None],
+    })
+    assert list(locked_in_mask(df)) == [False, True, True, True, True]
+    # row1 special price flag; row2 special condition code Z
+    assert list(special_sales_mask(df)) == [True, False, False, True, True]
+    # settlement > 2 dropped; MISSING kept (declared convention)
+    assert list(settlement_mask(df)) == [True, True, True, False, True]
+
+
 # --- Jostova screens ---
 
 def test_commission_drops_Y_keeps_NA():
@@ -102,12 +121,17 @@ def test_daily_vwap_weights_by_volume():
 
 def test_bbw_profile_screens_compose():
     df = _frame({
-        "rptd_pr":      [101.3, 4.0,  101.3, 101.3],
-        "entrd_vol_qt": [25000.0, 25000.0, 9999.0, 25000.0],
-        "wis_fl":       ["",    "",   "",    "Y"],
+        "rptd_pr":         [101.3, 4.0,  101.3, 101.3, 101.3],
+        "entrd_vol_qt":    [25000.0, 25000.0, 9999.0, 25000.0, 25000.0],
+        "wis_fl":          ["",    "",   "",    "Y",   ""],
+        "lckd_in_ind":     ["",    "",   "",    "",    ""],
+        "spcl_trd_fl":     ["",    "",   "",    "",    ""],
+        "sale_cndtn_cd":   ["@",   "@",  "@",   "@",   "Z"],
+        "days_to_sttl_ct": ["1",   "1",  "1",   "1",   "1"],
     })
-    # row0 passes; row1 fails price; row2 fails volume; row3 fails when-issued.
-    assert list(apply_profile_screens(df, "bbw_2019")) == [True, False, False, False]
+    # row0 passes; row1 fails price; row2 fails volume; row3 fails when-issued;
+    # row4 fails special-sales.
+    assert list(apply_profile_screens(df, "bbw_2019")) == [True, False, False, False, False]
 
 
 def test_jostova_profile_has_no_price_range():
