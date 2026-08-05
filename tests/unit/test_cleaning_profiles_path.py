@@ -83,6 +83,9 @@ def _make_raw_csv(path: Path) -> None:
         # H — interdealer B/S same-key pair (E1 envelope discriminator)
         _row("BH", "2015-08-03", "H1", pr=95.0, vol=18000.0, side="S"),
         _row("BH", "2015-08-03", "H2", pr=95.0, vol=18000.0, side="B"),
+        # I — asof 'D' row (P5): dropped by every default; retained only by the
+        # p5_asof_retain OFAT variant
+        _row("BI", "2015-10-01", "I1", pr=94.0, vol=21000.0, asof="D"),
         # Z — clean row
         _row("BZ", "2015-09-01", "Z1", pr=102.0, vol=20000.0),
     ]
@@ -193,9 +196,62 @@ def test_jostova_2013_profile_dedup_on(raw_csv, monkeypatch):
     assert len(dev) == 6
 
 
+def _run_variant(tmp_path, profile_id, variant):
+    import dataclasses
+
+    from preprocess_trace import build_variant_profile
+    prof = build_variant_profile(profile_id, variant)
+    prof = dataclasses.replace(
+        prof,
+        dev_out=tmp_path / f"dev_{profile_id}_{variant}.parquet",
+        hold_out=tmp_path / f"hold_{profile_id}_{variant}.parquet",
+        report_out=tmp_path / f"report_{profile_id}_{variant}.json",
+    )
+    counts = run_pandas(_CFG, prof)
+    dev = pd.read_parquet(prof.dev_out)
+    return counts, dev
+
+
+def test_ofat_variants_flip_exactly_one_dimension(raw_csv, monkeypatch):
+    # Baseline bbw keeps: A2, D1, G1, H1, Z1 (see test_bbw_2019_profile).
+    # p4_asof_drop: ONLY the asof-'A' row (D1) disappears.
+    _, dev = _run_variant(raw_csv, "bbw_2019", "p4_asof_drop")
+    kept = _msgs(dev)
+    assert ("BD", 99.0) not in kept
+    assert ("BA", 101.0) in kept and ("BG", 96.0) in kept and ("BZ", 102.0) in kept
+    assert len(dev) == 4
+
+    # p5_asof_retain: ONLY the asof-'D' row (I1) appears.
+    _, dev = _run_variant(raw_csv, "bbw_2019", "p5_asof_retain")
+    kept = _msgs(dev)
+    assert ("BI", 94.0) in kept
+    assert len(dev) == 6
+
+    # commission flip on bbw: ONLY the cmsn-'Y' row (G1) disappears.
+    counts, dev = _run_variant(raw_csv, "bbw_2019", "commission")
+    kept = _msgs(dev)
+    assert ("BG", 96.0) not in kept
+    assert len(dev) == 4
+    assert counts["dropped_profile_screens"] == 4       # F1, F2, G2 + now G1
+
+    # min_volume flip on jostova: the $9,999 row (F2) disappears; the $4 print
+    # (F1) still SURVIVES (price range remains unapplied); dedup at ON reference
+    # drops the H buy.
+    counts, dev = _run_variant(raw_csv, "jostova_2013", "min_volume")
+    kept = _msgs(dev)
+    assert ("BF", 100.0) not in kept and ("BF", 4.0) in kept
+    assert counts["dropped_interdealer_duplicate"] == 1
+    assert len(dev) == 5                                # D1, E1, F1, H1, Z1
+
+
 def test_unknown_profile_rejected():
+    from preprocess_trace import build_variant_profile
     with pytest.raises(KeyError):
         build_profile("nope", dedup=True)
+    with pytest.raises(KeyError):
+        build_variant_profile("bbw_2019", "when_issued")   # not promoted
+    with pytest.raises(KeyError):
+        build_variant_profile("jostova_2013", "commission")  # bbw-only variant
 
 
 def test_raw_profile_is_default_config():

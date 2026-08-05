@@ -135,6 +135,11 @@ class CleaningProfile:
     apply_wis: bool = True
     dedup: bool = True
     screens: str | None = None
+    # OFAT envelope knobs (FL-D21e promoted primitives): retain_asof_dx flips
+    # P5 ('D'/'X' rows retained instead of dropped); screen_names overrides the
+    # profile's default screen list (None = PROFILE_SCREENS[screens]).
+    retain_asof_dx: bool = False
+    screen_names: "tuple | None" = None
     dev_out: "Path | None" = field(default=None)
     hold_out: "Path | None" = field(default=None)
     report_out: "Path | None" = field(default=None)
@@ -161,6 +166,46 @@ _PROFILE_SPECS = {
     "jostova_2013": dict(correction_mode="delete_both", retain_asof=True,
                          net_reversals=True, apply_wis=False, screens="jostova_2013"),
 }
+
+
+# OFAT envelope variants (FL-D21e R1 promotions, user decision 2026-08-05):
+# each flips ONE promoted primitive against the profile baseline, all other
+# knobs at default, dedup held at the declared OFAT reference arm (ON — the
+# as-built DN posture). `when_issued` did NOT promote (default stands).
+_OFAT_VARIANTS = {
+    "bbw_2019": ("p4_asof_drop", "p5_asof_retain", "commission"),
+    "jostova_2013": ("p4_asof_drop", "p5_asof_retain", "price_range",
+                     "min_volume", "locked_in", "special_sales", "settlement"),
+}
+
+
+def build_variant_profile(profile_id: str, variant: str) -> CleaningProfile:
+    """The OFAT envelope build for one promoted primitive: the profile baseline
+    with exactly that primitive flipped (dedup at the ON reference arm)."""
+    if variant not in _OFAT_VARIANTS.get(profile_id, ()):
+        raise KeyError(
+            f"unknown OFAT variant {variant!r} for {profile_id!r}; "
+            f"promoted: {_OFAT_VARIANTS.get(profile_id, ())}"
+        )
+    spec = dict(_PROFILE_SPECS[profile_id])
+    overrides: dict = {}
+    if variant == "p4_asof_drop":
+        overrides["retain_asof"] = False
+    elif variant == "p5_asof_retain":
+        overrides["retain_asof_dx"] = True
+    else:
+        # A screen flip: ADD the unstated screen to the profile's default list.
+        from agents.quant.library.cleaning_primitives import profile_screen_names
+        overrides["screen_names"] = (*profile_screen_names(profile_id), variant)
+    stem = f"trace_clean_{profile_id}__var_{variant}"
+    return CleaningProfile(
+        profile_id=profile_id, dedup=True,
+        dev_out=REPO_ROOT / "data" / "development" / f"{stem}.parquet",
+        hold_out=REPO_ROOT / "data" / "holdout" / f"{stem}.parquet",
+        report_out=REPO_ROOT / "data" / "development"
+                   / f"cleaning_report_{profile_id}__var_{variant}.json",
+        **{**spec, **overrides},
+    )
 
 
 def build_profile(profile_id: str, *, dedup: bool,
@@ -236,15 +281,19 @@ def _composite_hash(*parts) -> int:
     return int.from_bytes(hashlib.sha256(repr(parts).encode()).digest()[:8], "big")
 
 
-def _asof_keep_mask(chunk, asof_keep: str, retain_asof: bool):
+def _asof_keep_mask(chunk, asof_keep: str, retain_asof: bool,
+                    retain_dx: bool = False):
     """Filter-2 keep mask. As-built (raw): blank/NaN asof only. Profiles
     (FL-D21h P4): additionally retain 'A' (as-of/late executions, execution-
     dated). 'R' records are dropped here in every mode (the reversal RECORD is
     not a trade; profiles net out its ORIGINAL separately); 'D'/'X' (P5) take
-    the faithful-to-silence default (dropped)."""
+    the faithful-to-silence default (dropped) unless `retain_dx` (the promoted
+    p5_asof_retain OFAT variant) flips them to retained."""
     keep = chunk["asof_cd"].isna() | (chunk["asof_cd"] == asof_keep)
     if retain_asof:
         keep = keep | (chunk["asof_cd"] == "A")
+    if retain_dx:
+        keep = keep | chunk["asof_cd"].isin(["D", "X"])
     return keep
 
 
@@ -390,7 +439,7 @@ def _collect_sets(cfg: dict, chunk_size: int = 500_000,
             if chunk.empty:
                 continue
         # 2 (profile-aware asof policy)
-        chunk = chunk[_asof_keep_mask(chunk, asof_keep, profile.retain_asof)]
+        chunk = chunk[_asof_keep_mask(chunk, asof_keep, profile.retain_asof, profile.retain_asof_dx)]
         if chunk.empty:
             continue
         # 3 (skipped when the profile does not state when-issued removal)
@@ -527,7 +576,7 @@ def run_pandas(cfg: dict, profile: CleaningProfile = RAW_PROFILE) -> dict:
             # Filter 2: asof policy — as-built keeps blank only (Dick-Nielsen
             # 2009 Table 1 Panel B); profiles additionally retain 'A' (P4,
             # FL-D21h). Reversal RECORDS ('R') are dropped in every mode.
-            chunk = chunk[_asof_keep_mask(chunk, asof_keep, profile.retain_asof)]
+            chunk = chunk[_asof_keep_mask(chunk, asof_keep, profile.retain_asof, profile.retain_asof_dx)]
             counts["after_asof_cd_blank"] += len(chunk)
             if chunk.empty:
                 continue
@@ -600,7 +649,11 @@ def run_pandas(cfg: dict, profile: CleaningProfile = RAW_PROFILE) -> dict:
                         apply_profile_screens,
                     )
                 before_screens = len(chunk)
-                chunk = chunk[apply_profile_screens(chunk, profile.screens)]
+                if profile.screen_names is not None:
+                    from agents.quant.library.cleaning_primitives import apply_screens
+                    chunk = chunk[apply_screens(chunk, profile.screen_names)]
+                else:
+                    chunk = chunk[apply_profile_screens(chunk, profile.screens)]
                 counts["dropped_profile_screens"] += before_screens - len(chunk)
                 if chunk.empty:
                     continue
@@ -766,6 +819,12 @@ def main():
         help="E1 interdealer-dedup envelope setting (profiles only; FL-D21g). "
              "The raw family always dedups (as-built).",
     )
+    parser.add_argument(
+        "--variant", default=None,
+        help="OFAT envelope variant: flip ONE promoted primitive against the "
+             "profile baseline (FL-D21e; dedup held at the ON reference arm). "
+             "Mutually exclusive with --dedup off.",
+    )
     args = parser.parse_args()
 
     if not RAW_FILE.exists():
@@ -773,7 +832,15 @@ def main():
         sys.exit(1)
 
     if args.profile == "raw":
+        if args.variant:
+            print("ERROR: --variant requires a profile", file=sys.stderr)
+            sys.exit(1)
         profile = RAW_PROFILE
+    elif args.variant:
+        if args.dedup == "off":
+            print("ERROR: --variant holds dedup at the ON reference arm", file=sys.stderr)
+            sys.exit(1)
+        profile = build_variant_profile(args.profile, args.variant)
     else:
         profile = build_profile(args.profile, dedup=(args.dedup == "on"))
 

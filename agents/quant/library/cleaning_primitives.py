@@ -214,14 +214,38 @@ PROFILE_SCREENS = {
     "jostova_2013": JOSTOVA_2013_SCREENS,
 }
 
+# Name -> mask registry for OFAT envelope variants (FL-D21e R1 promotions): a
+# variant build flips ONE screen against the profile default list.
+SCREEN_REGISTRY = {
+    "price_range": price_range_mask,
+    "min_volume": min_volume_mask,
+    "when_issued": when_issued_mask,
+    "locked_in": locked_in_mask,
+    "special_sales": special_sales_mask,
+    "settlement": settlement_mask,
+    "commission": commission_mask,
+    "data_entry": data_entry_mask,
+}
 
-def apply_profile_screens(df: pd.DataFrame, profile_id: str) -> pd.Series:
-    """The AND of a profile's transaction-screen keep-masks (order-independent for
-    a boolean AND). Returns the keep-mask; the caller applies it and then the
-    matching engine / dedup / VWAP. Raises for an unknown profile."""
+
+def profile_screen_names(profile_id: str) -> tuple:
+    """The profile's default screen names, in registry order."""
     if profile_id not in PROFILE_SCREENS:
         raise KeyError(f"unknown profile {profile_id!r}; known: {sorted(PROFILE_SCREENS)}")
+    return tuple(name for name, _fn, _prov in PROFILE_SCREENS[profile_id])
+
+
+def apply_screens(df: pd.DataFrame, names) -> pd.Series:
+    """The AND of the named screens' keep-masks (order-independent AND)."""
     keep = pd.Series(True, index=df.index)
-    for _name, fn, _prov in PROFILE_SCREENS[profile_id]:
-        keep &= fn(df)
+    for name in names:
+        if name not in SCREEN_REGISTRY:
+            raise KeyError(f"unknown screen {name!r}; known: {sorted(SCREEN_REGISTRY)}")
+        keep &= SCREEN_REGISTRY[name](df)
     return keep
+
+
+def apply_profile_screens(df: pd.DataFrame, profile_id: str) -> pd.Series:
+    """The AND of a profile's default transaction-screen keep-masks. Returns the
+    keep-mask; the caller applies it and then the matching engine / dedup / VWAP."""
+    return apply_screens(df, profile_screen_names(profile_id))
