@@ -41,10 +41,13 @@ def build_run_config(
     states: Mapping[ToggleId, ToggleState],
     *,
     lib_gap_lags: tuple[int, int] = (0, 1),
+    meas_err_off_family: str = "raw",
 ) -> RunConfig:
     """Assemble a RunConfig from a full OFF/ON state for all five toggles, via the
     canonical TOGGLE_AXES mapping. `lib_gap_lags` = (off_lag, on_lag) sets the
-    signal_lag values for lib_gap OFF/ON."""
+    signal_lag values for lib_gap OFF/ON. `meas_err_off_family` sets the meas_err
+    OFF price_family per-anchor (spec v4 D1): 'raw' (default), or a
+    per-paper baseline profile 'bbw_2019' / 'jostova_2013'; ON is always 'corr'."""
     missing = set(TOGGLE_IDS) - set(states)
     if missing:
         raise LatticeError(f"build_run_config needs all five toggle states; missing {sorted(missing)}")
@@ -58,6 +61,8 @@ def build_run_config(
         axis = TOGGLE_AXES[t]
         if t == "lib_gap":
             value: object = lib_gap_lags[1] if state == "ON" else lib_gap_lags[0]
+        elif t == "meas_err":
+            value = axis.on if state == "ON" else meas_err_off_family
         else:
             value = axis.on if state == "ON" else axis.off
         if axis.block == "panel_view":
@@ -78,6 +83,7 @@ def build_lattice_configs(
     *,
     lib_gap_lags: tuple[int, int] = (0, 1),
     not_applicable_toggles: Sequence[ToggleId] = (),
+    meas_err_off_family: str = "raw",
 ) -> list[tuple[frozenset, RunConfig]]:
     """Enumerate the 2^k (on_set, RunConfig) pairs over the runnable toggles.
     Non-runnable toggles are held at their fixed_state. A `not_applicable` toggle
@@ -109,7 +115,10 @@ def build_lattice_configs(
                     states[t] = "ON"
                 else:
                     states[t] = fixed_states[t]
-            out.append((on_set, build_run_config(states, lib_gap_lags=lib_gap_lags)))
+            out.append((on_set, build_run_config(
+                states, lib_gap_lags=lib_gap_lags,
+                meas_err_off_family=meas_err_off_family,
+            )))
     return out
 
 
@@ -125,6 +134,7 @@ def run_lattice(
     benchmark: pd.DataFrame | None = None,
     expost_trim_off: "TrimRule | None" = None,
     not_applicable_toggles: Sequence[ToggleId] = (),
+    meas_err_off_family: str = "raw",
 ) -> LatticeResult:
     """Run every cell of the lattice, reusing materialised panels by
     panel_view_hash (§3.9). Returns a LatticeResult. `expost_trim_off` is the
@@ -141,6 +151,7 @@ def run_lattice(
     configs = build_lattice_configs(
         runnable_toggles, fixed_states, lib_gap_lags=lib_gap_lags,
         not_applicable_toggles=not_applicable_toggles,
+        meas_err_off_family=meas_err_off_family,
     )
 
     view_cache: dict[str, pd.DataFrame] = {}

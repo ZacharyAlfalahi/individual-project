@@ -37,16 +37,25 @@ import yaml
 # Sub-configs
 # ---------------------------------------------------------------------------
 
+# The valid meas_err price families. `raw`/`corr` are the global OFF/ON endpoints;
+# the per-paper profiles are as-published OFF baselines selected per-anchor (spec
+# v4 D1): bbw_2019 (drf/crf), jostova_2013 (mom6). Adding VALUES (not a field)
+# keeps every existing raw/corr config's panel_view_hash byte-identical.
+PRICE_FAMILIES: tuple[str, ...] = ("raw", "corr", "bbw_2019", "jostova_2013")
+
+
 @dataclass(frozen=True)
 class PanelViewConfig:
     """Panel-layer toggles. OFF = as-published; ON = corrected.
 
     Attributes
     ----------
-    price_family : 'raw' | 'corr'
-        meas_err toggle. OFF (= 'raw') reads the raw column family (no
-        decimal-shift, no bounce-back, no distressed filters). ON
-        (= 'corr') reads the corrected family.
+    price_family : 'raw' | 'corr' | 'bbw_2019' | 'jostova_2013'
+        meas_err toggle. ON (= 'corr') reads the corrected (DRR full-cleaning)
+        family. OFF is the as-published family: the global 'raw' (no cleaning), or
+        a per-paper baseline profile — 'bbw_2019' (drf/crf) / 'jostova_2013' (mom6)
+        — selected per-anchor by the auditor (spec v4 D1). str's meas_err is
+        excluded (not_applicable), so it never selects an OFF family.
     stale_mask : bool
         stale_price toggle. True masks bond-months where
         month_end − last_trade_date > θ per A3 (θ from thresholds.yaml).
@@ -55,14 +64,14 @@ class PanelViewConfig:
         exit_reason column is NaN everywhere so this toggle is a
         documented no-op.
     """
-    price_family: Literal["raw", "corr"]
+    price_family: Literal["raw", "corr", "bbw_2019", "jostova_2013"]
     stale_mask: bool
     include_terminal_rows: bool
 
     def __post_init__(self):
-        if self.price_family not in ("raw", "corr"):
+        if self.price_family not in PRICE_FAMILIES:
             raise ValueError(
-                f"price_family must be 'raw' or 'corr'; got {self.price_family!r}"
+                f"price_family must be one of {PRICE_FAMILIES}; got {self.price_family!r}"
             )
         if not isinstance(self.stale_mask, bool):
             raise TypeError(f"stale_mask must be bool; got {type(self.stale_mask).__name__}")

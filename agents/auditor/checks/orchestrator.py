@@ -100,6 +100,7 @@ def audit_spine(
     support_gate: SupportGate,
     lib_gap_lags: tuple[int, int] = (0, 1),
     expost_trim_off: "TrimRule | None" = None,
+    meas_err_off_family: str = "raw",
     months_per_year: int = 12,
     nw_lags: int | None = None,
     pre_registration_tag: str | None = None,
@@ -119,6 +120,7 @@ def audit_spine(
         signals=signals, lib_gap_lags=lib_gap_lags,
         expost_trim_off=expost_trim_off,
         not_applicable_toggles=pf.not_applicable_toggles,
+        meas_err_off_family=meas_err_off_family,
     )
 
     info = support_info(lattice.cells, support_gate)
@@ -162,6 +164,7 @@ def run_audit(
     support_gate: SupportGate | None = None,
     lib_gap_lags: tuple[int, int] = (0, 1),
     expost_trim_off: "TrimRule | None" = None,
+    meas_err_off_family: str = "raw",
     months_per_year: int = 12,
     nw_lags: int | None = None,
     pre_registration_tag: str | None = None,
@@ -184,6 +187,7 @@ def run_audit(
         percentage_denominator_min=percentage_denominator_min,
         support_gate=support_gate, lib_gap_lags=lib_gap_lags,
         expost_trim_off=expost_trim_off,
+        meas_err_off_family=meas_err_off_family,
         months_per_year=months_per_year, nw_lags=nw_lags,
         pre_registration_tag=pre_registration_tag,
     )

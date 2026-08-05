@@ -257,3 +257,38 @@ def test_str_meas_err_excluded_reduced_lattice():
     assert part["data_quality_component"] is None
     assert part["cross_class_modulation"] is None
     assert part["methodological_construction_component"] is not None
+
+
+# --------------------------------------------------------------------------
+# 7. Part D — the per-anchor meas_err OFF-family axis (spec D1). meas_err OFF is
+#    the anchor's as-published baseline profile; ON is always 'corr'. The
+#    per-anchor mapping is GUARDED until the profile columns are built.
+# --------------------------------------------------------------------------
+
+def test_meas_err_off_family_axis(monkeypatch):
+    import run_auditor
+    from agents.auditor.checks.lattice import build_run_config
+    from agents.quant.library.run_config import PRICE_FAMILIES, PanelViewConfig
+    from run_auditor import load_anchor_meas_err_off_family
+
+    # PanelViewConfig accepts the profile families (hash-safe added VALUES).
+    assert set(PRICE_FAMILIES) == {"raw", "corr", "bbw_2019", "jostova_2013"}
+    PanelViewConfig(price_family="bbw_2019", stale_mask=False, include_terminal_rows=False)
+    PanelViewConfig(price_family="jostova_2013", stale_mask=False, include_terminal_rows=False)
+
+    all_off = {t: "OFF" for t in ("meas_err", "stale_price", "survivorship", "lib_gap", "lab_trim")}
+    # meas_err OFF uses the per-anchor family; ON is always 'corr'.
+    assert build_run_config(all_off, meas_err_off_family="bbw_2019").panel_view.price_family == "bbw_2019"
+    on_meas = {**all_off, "meas_err": "ON"}
+    assert build_run_config(on_meas, meas_err_off_family="bbw_2019").panel_view.price_family == "corr"
+    # Default 'raw' (the default behaviour) — existing configs byte-identical.
+    assert build_run_config(all_off).panel_view.price_family == "raw"
+
+    # The per-anchor mapping is GUARDED (PROFILES_BUILT=False) -> everyone 'raw'.
+    assert load_anchor_meas_err_off_family("drf") == "raw"
+    assert load_anchor_meas_err_off_family("mom6") == "raw"
+    # Once the profile columns exist, the mapping activates.
+    monkeypatch.setattr(run_auditor, "PROFILES_BUILT", True)
+    assert run_auditor.load_anchor_meas_err_off_family("drf") == "bbw_2019"
+    assert run_auditor.load_anchor_meas_err_off_family("crf") == "bbw_2019"
+    assert run_auditor.load_anchor_meas_err_off_family("mom6") == "jostova_2013"

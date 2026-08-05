@@ -160,6 +160,25 @@ def load_anchor_expost_trim_off(anchor_id: str, thresholds_path: str | Path | No
     )
 
 
+# The per-anchor as-published cleaning profile = the meas_err OFF price_family
+# (spec v4 D1): drf/crf -> bbw_2019, mom6 -> jostova_2013, str -> excluded
+# (not_applicable, no OFF arm). ACTIVE only once the profile columns exist in the
+# maximal panel (Part D pipeline execution); until then every anchor uses 'raw'
+# (the default behaviour) so no run selects a family the panel lacks. Flip
+# PROFILES_BUILT when build_monthly_panel emits *_bbw_2019 / *_jostova_2013 columns.
+PROFILES_BUILT = False
+_ANCHOR_OFF_PROFILE = {"drf": "bbw_2019", "crf": "bbw_2019", "mom6": "jostova_2013"}
+
+
+def load_anchor_meas_err_off_family(anchor_id: str) -> str:
+    """The meas_err OFF price_family for an anchor (spec v4 D1). 'raw' until the
+    per-paper profile columns are built (PROFILES_BUILT), then the anchor's profile.
+    str never reaches here (its meas_err is excluded, not_applicable)."""
+    if not PROFILES_BUILT:
+        return "raw"
+    return _ANCHOR_OFF_PROFILE.get(anchor_id, "raw")
+
+
 def audit_anchor(
     strategy,
     maximal_panel: pd.DataFrame,
@@ -171,18 +190,21 @@ def audit_anchor(
     primary_metric: str | None = None,
     support_gate=None,
     expost_trim_off=None,
+    meas_err_off_family: str = "raw",
 ) -> AuditCore:
     """Run the deterministic analytical spine for one strategy -> AuditCore. Thin wrapper
     over `run_audit` so the synthetic tests can inject a strategy/panel/facts without the
     real loaders. `primary_metric`/`support_gate` default to None, so a real run reads them
     fail-loud from thresholds; the synthetic tests pass a small gate for short panels.
-    `expost_trim_off` re-injects the per-anchor published trim on the lab_trim OFF arm."""
+    `expost_trim_off` re-injects the per-anchor published trim on the lab_trim OFF arm;
+    `meas_err_off_family` sets the per-anchor meas_err OFF baseline profile (spec D1)."""
     return run_audit(
         strategy, maximal_panel, facts,
         signals=signals,
         primary_metric=primary_metric,
         support_gate=support_gate,
         expost_trim_off=expost_trim_off,
+        meas_err_off_family=meas_err_off_family,
         pre_registration_tag=pre_registration_tag,
         thresholds_path=thresholds_path,
     )
@@ -245,9 +267,11 @@ def run_anchor(
     strategy = load_anchor_strategy(anchor_id)
     facts = default_anchor_facts(anchor_id)
     expost_trim_off = load_anchor_expost_trim_off(anchor_id, thresholds_path)
+    meas_err_off_family = load_anchor_meas_err_off_family(anchor_id)
     core = audit_anchor(
         strategy, maximal_panel, facts, signals,
         thresholds_path=thresholds_path, expost_trim_off=expost_trim_off,
+        meas_err_off_family=meas_err_off_family,
     )
     # CORE-SYNC-1 tests meas_err × stale_price; for an anchor with meas_err
     # EXCLUDED (not_applicable, e.g. str), that interaction has no coordinate on the
