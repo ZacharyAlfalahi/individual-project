@@ -84,6 +84,104 @@ KEEP_COLUMNS = [
     "scrty_type_cd",
 ]
 
+# ---------------------------------------------------------------------------
+# Cleaning profiles (FL-D21a): ONE code path, a profile is a CONFIG.
+#
+# The as-published baseline profiles (bbw_2019, jostova_2013) and the existing
+# raw family run through the same three-scan engine below; a profile selects
+# which primitives apply. The "raw" profile reproduces the as-built behaviour
+# EXACTLY (regression-pinned by tests/unit/test_preprocess_trace.py).
+#
+# Regime note (FL-D21 G3, fl_d21_gate_results.md): the trc_st vocabulary shifts
+# at Feb-2012 — pre-2012 `C` is a CORRECTION record (its values are the
+# corrected trade; keep-replacement keeps it), post-2012 `C` is a CANCELLATION
+# (always dropped). ISO date strings compare lexicographically, so the regime
+# split is a plain string comparison on trd_exctn_dt.
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass, field
+
+REGIME_SPLIT_ISO = "2012-02-06"   # DN-2014 Feb-2012 reporting change
+
+
+@dataclass(frozen=True)
+class CleaningProfile:
+    """One cleaning configuration through the shared three-scan engine.
+
+    correction_mode (P2, FL-D21c):
+      'delete_both'              — drop correction records AND their originals
+                                   (as-built; Jostova per the BKMX rung-2 read).
+      'keep_replacement_pre2012' — pre-2012 keep the C record (it carries the
+                                   corrected values) while its original is still
+                                   dropped via 1b; post-2012 C is a cancellation
+                                   and is dropped in every mode (BBW "adjust").
+    retain_asof (P4, FL-D21h): keep asof_cd 'A' rows (genuine late-reported
+      executions, execution-dated). Raw as-built drops them (blank-only keep).
+    net_reversals (P3, FL-D21d): net out the ORIGINAL of an asof-'R' reversal
+      record by value-matching (bond, pr_trd_dt, price, vol). The as-built raw
+      path drops only the reversal RECORD and leaves the original in place.
+    apply_wis: drop when-issued (wis_fl == 'Y'). STATED for BBW; UNKNOWN-default
+      (not applied, FL-D21f R2) for Jostova.
+    dedup (P6/P7, FL-D21g E1): interdealer dedup — the UNKNOWN envelope axis,
+      run both ways per profile. Raw as-built: always on.
+    screens: cleaning_primitives.PROFILE_SCREENS key for the profile-specific
+      transaction screens (price range / volume floor / commission / data-entry),
+      applied AFTER dedup, or None.
+    """
+    profile_id: str
+    correction_mode: str = "delete_both"
+    retain_asof: bool = False
+    net_reversals: bool = False
+    apply_wis: bool = True
+    dedup: bool = True
+    screens: str | None = None
+    dev_out: "Path | None" = field(default=None)
+    hold_out: "Path | None" = field(default=None)
+    report_out: "Path | None" = field(default=None)
+
+    def keep_1a_mask(self, chunk):
+        """The pass-2 / scan-2 filter-1a keep mask under this profile's
+        correction mode. Raw/delete_both: trc_st == 'T' (as-built)."""
+        trc = chunk["trc_st"]
+        if self.correction_mode == "keep_replacement_pre2012":
+            pre2012 = chunk["trd_exctn_dt"].astype(str) < REGIME_SPLIT_ISO
+            return (trc == "T") | ((trc == "C") & pre2012)
+        return trc == "T"
+
+
+RAW_PROFILE = CleaningProfile(profile_id="raw")
+
+_PROFILE_SPECS = {
+    # BBW 2019 (drf/crf): keep-replacement corrections ("adjust"), retain as-of,
+    # net reversals, when-issued STATED, BBW transaction screens.
+    "bbw_2019": dict(correction_mode="keep_replacement_pre2012", retain_asof=True,
+                     net_reversals=True, apply_wis=True, screens="bbw_2019"),
+    # Jostova 2013 (mom6): delete-both corrections (BKMX rung-2), retain as-of,
+    # net reversals, when-issued NOT applied (R2 UNKNOWN-default), Jostova screens.
+    "jostova_2013": dict(correction_mode="delete_both", retain_asof=True,
+                         net_reversals=True, apply_wis=False, screens="jostova_2013"),
+}
+
+
+def build_profile(profile_id: str, *, dedup: bool,
+                  dev_out=None, hold_out=None, report_out=None) -> CleaningProfile:
+    """Factory for the as-published profiles. `dedup` is the E1 envelope axis
+    (both settings are built per FL-D21g). Default outputs are keyed by
+    (profile, dedup) so the four family builds never collide."""
+    if profile_id not in _PROFILE_SPECS:
+        raise KeyError(f"unknown cleaning profile {profile_id!r}; "
+                       f"known: {sorted(_PROFILE_SPECS)} (or 'raw')")
+    tag = "on" if dedup else "off"
+    stem = f"trace_clean_{profile_id}__dedup_{tag}"
+    return CleaningProfile(
+        profile_id=profile_id, dedup=dedup,
+        dev_out=dev_out or (REPO_ROOT / "data" / "development" / f"{stem}.parquet"),
+        hold_out=hold_out or (REPO_ROOT / "data" / "holdout" / f"{stem}.parquet"),
+        report_out=report_out or (REPO_ROOT / "data" / "development"
+                                  / f"cleaning_report_{profile_id}__dedup_{tag}.json"),
+        **_PROFILE_SPECS[profile_id],
+    )
+
 
 def load_thresholds() -> dict:
     with open(THRESHOLDS_FILE) as f:
@@ -118,6 +216,12 @@ def _csv_reader(chunk_size: int = 500_000):
             # infers int64 ("20200101") — the two-scan split makes that mismatch
             # silently un-drop a cancelled trade or split a dedup key.
             "trd_exctn_dt": str,
+            # Profile-path columns (FL-D21): the reversal value-match key uses
+            # pr_trd_dt (same string-identity argument as trd_exctn_dt), and the
+            # Jostova commission screen reads cmsn_trd. Pinning unused dtype keys
+            # is a no-op for the raw path.
+            "pr_trd_dt": str,
+            "cmsn_trd": str,
         },
         on_bad_lines="skip",
     )
@@ -132,7 +236,52 @@ def _composite_hash(*parts) -> int:
     return int.from_bytes(hashlib.sha256(repr(parts).encode()).digest()[:8], "big")
 
 
-def _collect_sets(cfg: dict, chunk_size: int = 500_000):
+def _asof_keep_mask(chunk, asof_keep: str, retain_asof: bool):
+    """Filter-2 keep mask. As-built (raw): blank/NaN asof only. Profiles
+    (FL-D21h P4): additionally retain 'A' (as-of/late executions, execution-
+    dated). 'R' records are dropped here in every mode (the reversal RECORD is
+    not a trade; profiles net out its ORIGINAL separately); 'D'/'X' (P5) take
+    the faithful-to-silence default (dropped)."""
+    keep = chunk["asof_cd"].isna() | (chunk["asof_cd"] == asof_keep)
+    if retain_asof:
+        keep = keep | (chunk["asof_cd"] == "A")
+    return keep
+
+
+def _apply_reversal_netout(chunk, rev_counter: Counter):
+    """P3 net-out (FL-D21d): drop surviving originals value-matched by a
+    reversal record — key (bond, trd_exctn_dt, price, vol) against the pool
+    keyed on (bond, pr_trd_dt, price, vol). Consumes one pool count per drop,
+    in file order (deterministic across scan 2 / pass 2, each on its own copy).
+    Non-finite rows can never match (the pool excludes them). Returns
+    (chunk, n_dropped)."""
+    if not rev_counter or chunk.empty:
+        return chunk, 0
+    finite = (
+        np.isfinite(chunk["rptd_pr"].to_numpy())
+        & np.isfinite(chunk["entrd_vol_qt"].to_numpy())
+    )
+    idx = chunk.index[finite]
+    sub = chunk.loc[idx]
+    drop = []
+    for i, b, d, pr, v in zip(
+        idx,
+        sub["bond_sym_id"].astype(str).tolist(),
+        sub["trd_exctn_dt"].astype(str).tolist(),
+        sub["rptd_pr"].tolist(),
+        sub["entrd_vol_qt"].tolist(),
+    ):
+        h = _composite_hash(b, d, pr, v)
+        if rev_counter.get(h, 0) > 0:
+            rev_counter[h] -= 1
+            drop.append(i)
+    if drop:
+        chunk = chunk.drop(index=drop)
+    return chunk, len(drop)
+
+
+def _collect_sets(cfg: dict, chunk_size: int = 500_000,
+                  profile: CleaningProfile = RAW_PROFILE):
     """Build cross-chunk matching state in TWO scans of the raw file.
 
     Returns (cancelled_keys, sell_counts):
@@ -162,34 +311,65 @@ def _collect_sets(cfg: dict, chunk_size: int = 500_000):
     """
     asof_keep = cfg["asof_cd_keep"]
 
-    # --- Scan 1/3: cancellation keys only -----------------------------------
+    # --- Scan 1/3: cancellation keys (+ profile reversal pool) ---------------
     cancelled: set = set()
+    reversal_pool: Counter = Counter()
     print("Scan 1/3: collecting cancellation keys...")
     for chunk in tqdm(_csv_reader(chunk_size), desc="scan1", unit="chunk"):
         non_t = chunk[chunk["trc_st"] != "T"]
-        if non_t.empty:
-            continue
-        origs = non_t["orig_msg_seq_nb"]
-        mask = origs.notna() & (origs.astype(str) != "")
-        valid = non_t[mask]
-        if valid.empty:
-            continue
-        for b, d, m in zip(
-            valid["bond_sym_id"].astype(str).tolist(),
-            valid["trd_exctn_dt"].astype(str).tolist(),
-            valid["orig_msg_seq_nb"].astype(str).tolist(),
-        ):
-            cancelled.add(_composite_hash(b, d, m))
+        if not non_t.empty:
+            origs = non_t["orig_msg_seq_nb"]
+            mask = origs.notna() & (origs.astype(str) != "")
+            valid = non_t[mask]
+            for b, d, m in zip(
+                valid["bond_sym_id"].astype(str).tolist(),
+                valid["trd_exctn_dt"].astype(str).tolist(),
+                valid["orig_msg_seq_nb"].astype(str).tolist(),
+            ):
+                cancelled.add(_composite_hash(b, d, m))
+        # P3 reversal value-match pool (profiles only, FL-D21d): an asof-'R'
+        # record references its original by (bond, prior-trade date, price,
+        # volume). The original is netted out downstream; the reversal RECORD
+        # itself is dropped by the asof policy. Non-finite price/vol and blank
+        # pr_trd_dt records cannot match and are skipped (counted nowhere —
+        # the unmatched-reversal count comes out of pass 2's bookkeeping).
+        if profile.net_reversals and "pr_trd_dt" in chunk.columns:
+            rev = chunk[chunk["asof_cd"] == "R"]
+            if not rev.empty:
+                prd = rev["pr_trd_dt"]
+                ok = (
+                    prd.notna() & (prd.astype(str) != "")
+                    & np.isfinite(rev["rptd_pr"].to_numpy())
+                    & np.isfinite(rev["entrd_vol_qt"].to_numpy())
+                )
+                rev = rev[ok]
+                for b, d, pr, v in zip(
+                    rev["bond_sym_id"].astype(str).tolist(),
+                    rev["pr_trd_dt"].astype(str).tolist(),
+                    rev["rptd_pr"].tolist(),
+                    rev["entrd_vol_qt"].tolist(),
+                ):
+                    reversal_pool[_composite_hash(b, d, pr, v)] += 1
     cancelled_keys = frozenset(cancelled)
+
+    if not profile.dedup:
+        # E1 dedup OFF: no sell pool — pass 2 skips the dedup step entirely.
+        print(f"  Scan 1 done: {len(cancelled_keys):,} cancellation keys; "
+              f"dedup OFF for profile {profile.profile_id!r} (scan 2 skipped).")
+        return cancelled_keys, Counter(), reversal_pool
 
     # --- Scan 2/3: interdealer sell-side dedup pool (post-1b) ----------------
     # cancelled_keys is now complete, so 1b can be applied. Filter order
-    # mirrors Pass 2 exactly so the pool == Pass 2's surviving sells.
+    # mirrors Pass 2 exactly so the pool == Pass 2's surviving sells — including
+    # the profile's correction mode, asof policy, wis policy, and reversal
+    # net-out (each consuming its OWN copy of the reversal pool; same file
+    # order ⇒ identical outcomes).
     sell_counts: Counter = Counter()
+    scan2_reversals = Counter(reversal_pool)
     print("Scan 2/3: collecting interdealer sell-side keys (post-1b)...")
     for chunk in tqdm(_csv_reader(chunk_size), desc="scan2", unit="chunk"):
-        # 1a
-        chunk = chunk[chunk["trc_st"] == "T"]
+        # 1a (profile-aware: keep-replacement keeps pre-2012 C records)
+        chunk = chunk[profile.keep_1a_mask(chunk)]
         if chunk.empty:
             continue
         # 1b — drop T records cancelled by a later C/W/X/Y/R record
@@ -209,14 +389,20 @@ def _collect_sets(cfg: dict, chunk_size: int = 500_000):
             chunk = chunk[~is_cancelled]
             if chunk.empty:
                 continue
-        # 2
-        chunk = chunk[chunk["asof_cd"].isna() | (chunk["asof_cd"] == asof_keep)]
+        # 2 (profile-aware asof policy)
+        chunk = chunk[_asof_keep_mask(chunk, asof_keep, profile.retain_asof)]
         if chunk.empty:
             continue
-        # 3
-        chunk = chunk[chunk["wis_fl"] != "Y"]
-        if chunk.empty:
-            continue
+        # 3 (skipped when the profile does not state when-issued removal)
+        if profile.apply_wis:
+            chunk = chunk[chunk["wis_fl"] != "Y"]
+            if chunk.empty:
+                continue
+        # P3 reversal net-out (profiles; scan-2 copy of the pool)
+        if profile.net_reversals:
+            chunk, _ = _apply_reversal_netout(chunk, scan2_reversals)
+            if chunk.empty:
+                continue
 
         sells = chunk[chunk["rpt_side_cd"] == "S"]
         if sells.empty:
@@ -241,10 +427,10 @@ def _collect_sets(cfg: dict, chunk_size: int = 500_000):
     print(f"  Scans 1-2 done: {len(cancelled_keys):,} cancellation keys, "
           f"{total_sells:,} sell-side records "
           f"({len(sell_counts):,} distinct keys).")
-    return cancelled_keys, sell_counts
+    return cancelled_keys, sell_counts, reversal_pool
 
 
-def run_pandas(cfg: dict) -> dict:
+def run_pandas(cfg: dict, profile: CleaningProfile = RAW_PROFILE) -> dict:
     import pandas as pd
     import pyarrow as pa
     import pyarrow.parquet as pq
@@ -254,7 +440,13 @@ def run_pandas(cfg: dict) -> dict:
     holdout_end_year = cfg["holdout_end_year"]
     chunk_size = 500_000
 
-    cancelled_keys, sell_counts = _collect_sets(cfg, chunk_size)
+    # Profile output paths default to the module globals (the raw family), so
+    # the test harness's monkeypatched paths keep working unchanged.
+    dev_out = profile.dev_out or DEV_OUT
+    hold_out = profile.hold_out or HOLD_OUT
+
+    cancelled_keys, sell_counts, reversal_pool = _collect_sets(cfg, chunk_size, profile)
+    pass2_reversals = Counter(reversal_pool)  # pass-2's own copy (scan 2 had its own)
 
     # Explicit output schema: prevents schema drift when pandas infers mixed-type
     # columns differently across chunks.
@@ -297,14 +489,19 @@ def run_pandas(cfg: dict) -> dict:
         # logical pipeline position not the literal file.
         "cusip_populated_post_dn": 0,
         "cusip_blank_post_dn": 0,
+        # Profile-path counters (always present; identically zero on the raw
+        # profile, whose path skips both steps).
+        "dropped_reversal_netout": 0,
+        "dropped_profile_screens": 0,
     }
 
     try:
         for chunk in tqdm(_csv_reader(chunk_size), desc="pass2", unit="chunk"):
             counts["raw_total"] += len(chunk)
 
-            # Filter 1a: trade status
-            chunk = chunk[chunk["trc_st"] == "T"]
+            # Filter 1a: trade status (profile-aware — keep-replacement mode
+            # additionally keeps pre-2012 C correction records, FL-D21c)
+            chunk = chunk[profile.keep_1a_mask(chunk)]
 
             # Filter 1b: drop T records cancelled by a later C/W/X/Y/R record.
             if cancelled_keys and not chunk.empty:
@@ -327,17 +524,30 @@ def run_pandas(cfg: dict) -> dict:
             if chunk.empty:
                 continue
 
-            # Filter 2: keep only blank asof_cd — Dick-Nielsen (2009) Table 1 Panel B
-            chunk = chunk[chunk["asof_cd"].isna() | (chunk["asof_cd"] == asof_keep)]
+            # Filter 2: asof policy — as-built keeps blank only (Dick-Nielsen
+            # 2009 Table 1 Panel B); profiles additionally retain 'A' (P4,
+            # FL-D21h). Reversal RECORDS ('R') are dropped in every mode.
+            chunk = chunk[_asof_keep_mask(chunk, asof_keep, profile.retain_asof)]
             counts["after_asof_cd_blank"] += len(chunk)
             if chunk.empty:
                 continue
 
-            # Filter 3: when-issued trades
-            chunk = chunk[chunk["wis_fl"] != "Y"]
+            # Filter 3: when-issued trades (skipped when the profile does not
+            # state the step — Jostova R2 UNKNOWN-default, FL-D21f)
+            if profile.apply_wis:
+                chunk = chunk[chunk["wis_fl"] != "Y"]
             counts["after_wis_fl"] += len(chunk)
             if chunk.empty:
                 continue
+
+            # P3 reversal net-out (profiles, FL-D21d): drop the ORIGINAL a
+            # reversal record value-matches; pass 2 consumes its own pool copy
+            # in the same file order as scan 2, so the two stay in lockstep.
+            if profile.net_reversals:
+                chunk, n_rev = _apply_reversal_netout(chunk, pass2_reversals)
+                counts["dropped_reversal_netout"] += n_rev
+                if chunk.empty:
+                    continue
 
             # Filter 6: interdealer dedup on RAW prices (Dick-Nielsen B2).
             # The dedup price basis is raw — within-pair matches (same trade
@@ -375,6 +585,25 @@ def run_pandas(cfg: dict) -> dict:
             counts["after_interdealer_dedup"] += len(chunk)
             if chunk.empty:
                 continue
+
+            # Profile transaction screens (STATED steps: BBW price range /
+            # volume floor / when-issued; Jostova commission / data-entry) —
+            # composable primitives from cleaning_primitives (FL-D21a).
+            if profile.screens is not None:
+                try:
+                    from agents.quant.library.cleaning_primitives import (
+                        apply_profile_screens,
+                    )
+                except ImportError:  # `python scripts/...` puts scripts/ on path
+                    sys.path.insert(0, str(REPO_ROOT))
+                    from agents.quant.library.cleaning_primitives import (
+                        apply_profile_screens,
+                    )
+                before_screens = len(chunk)
+                chunk = chunk[apply_profile_screens(chunk, profile.screens)]
+                counts["dropped_profile_screens"] += before_screens - len(chunk)
+                if chunk.empty:
+                    continue
 
             # Date parse — track rows lost to unparseable dates explicitly
             before_date_drop = len(chunk)
@@ -416,16 +645,16 @@ def run_pandas(cfg: dict) -> dict:
             if not dev_chunk.empty:
                 table = pa.Table.from_pandas(dev_chunk, schema=OUTPUT_SCHEMA, preserve_index=False)
                 if dev_writer is None:
-                    DEV_OUT.parent.mkdir(parents=True, exist_ok=True)
-                    dev_writer = pq.ParquetWriter(str(DEV_OUT), OUTPUT_SCHEMA)
+                    dev_out.parent.mkdir(parents=True, exist_ok=True)
+                    dev_writer = pq.ParquetWriter(str(dev_out), OUTPUT_SCHEMA)
                 dev_writer.write_table(table)
                 counts["development_rows"] += len(dev_chunk)
 
             if not hold_chunk.empty:
                 table = pa.Table.from_pandas(hold_chunk, schema=OUTPUT_SCHEMA, preserve_index=False)
                 if hold_writer is None:
-                    HOLD_OUT.parent.mkdir(parents=True, exist_ok=True)
-                    hold_writer = pq.ParquetWriter(str(HOLD_OUT), OUTPUT_SCHEMA)
+                    hold_out.parent.mkdir(parents=True, exist_ok=True)
+                    hold_writer = pq.ParquetWriter(str(hold_out), OUTPUT_SCHEMA)
                 hold_writer.write_table(table)
                 counts["holdout_rows"] += len(hold_chunk)
 
@@ -445,13 +674,13 @@ def run_pandas(cfg: dict) -> dict:
     counts["dropped_wis_fl"] = counts["after_asof_cd_blank"] - counts["after_wis_fl"]
 
     # Verify written parquet row counts match accumulators
-    if DEV_OUT.exists():
-        actual = pq.read_metadata(str(DEV_OUT)).num_rows
+    if dev_out.exists():
+        actual = pq.read_metadata(str(dev_out)).num_rows
         assert actual == counts["development_rows"], (
             f"DEV parquet row count {actual:,} != counter {counts['development_rows']:,}"
         )
-    if HOLD_OUT.exists():
-        actual = pq.read_metadata(str(HOLD_OUT)).num_rows
+    if hold_out.exists():
+        actual = pq.read_metadata(str(hold_out)).num_rows
         assert actual == counts["holdout_rows"], (
             f"HOLD parquet row count {actual:,} != counter {counts['holdout_rows']:,}"
         )
@@ -462,7 +691,11 @@ def run_pandas(cfg: dict) -> dict:
     return counts
 
 
-def write_report(row_counts: dict, cfg: dict, git_commit: str) -> None:
+def write_report(row_counts: dict, cfg: dict, git_commit: str,
+                 profile: CleaningProfile = RAW_PROFILE) -> None:
+    dev_out = profile.dev_out or DEV_OUT
+    hold_out = profile.hold_out or HOLD_OUT
+    report_out = profile.report_out or REPORT_OUT
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
         "source_file": str(RAW_FILE.relative_to(REPO_ROOT)) if RAW_FILE.is_relative_to(REPO_ROOT) else str(RAW_FILE),
@@ -470,10 +703,21 @@ def write_report(row_counts: dict, cfg: dict, git_commit: str) -> None:
         "thresholds_sha256": thresholds_sha256(),
         "thresholds_used": cfg,
         "rows": row_counts,
-        "stage": "dick_nielsen_only",
+        "stage": ("dick_nielsen_only" if profile.profile_id == "raw"
+                  else f"as_published_profile_{profile.profile_id}"
+                       f"__dedup_{'on' if profile.dedup else 'off'}"),
+        "cleaning_profile": {
+            "profile_id": profile.profile_id,
+            "correction_mode": profile.correction_mode,
+            "retain_asof": profile.retain_asof,
+            "net_reversals": profile.net_reversals,
+            "apply_wis": profile.apply_wis,
+            "dedup": profile.dedup,
+            "screens": profile.screens,
+        },
         "outputs": {
-            "dev": str(DEV_OUT.relative_to(REPO_ROOT)),
-            "holdout": str(HOLD_OUT.relative_to(REPO_ROOT)),
+            "dev": str(dev_out.relative_to(REPO_ROOT)) if dev_out.is_relative_to(REPO_ROOT) else str(dev_out),
+            "holdout": str(hold_out.relative_to(REPO_ROOT)) if hold_out.is_relative_to(REPO_ROOT) else str(hold_out),
         },
         "downstream_pipeline": (
             "trace_clean_raw.parquet feeds (a) the raw column family directly "
@@ -485,12 +729,12 @@ def write_report(row_counts: dict, cfg: dict, git_commit: str) -> None:
         "output_columns": [c if c != "bond_sym_id" else "bond_id" for c in KEEP_COLUMNS],
         "git_commit": git_commit,
     }
-    REPORT_OUT.parent.mkdir(parents=True, exist_ok=True)
-    tmp = REPORT_OUT.with_suffix(".tmp")
+    report_out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = report_out.with_suffix(".tmp")
     with open(tmp, "w") as f:
         json.dump(report, f, indent=2)
-    os.replace(tmp, REPORT_OUT)
-    print(f"  Report written: {REPORT_OUT}")
+    os.replace(tmp, report_out)
+    print(f"  Report written: {report_out}")
 
 
 def get_git_commit() -> str:
@@ -508,25 +752,53 @@ def get_git_commit() -> str:
 
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    parser.add_argument(
+        "--profile", choices=["raw", *sorted(_PROFILE_SPECS)], default="raw",
+        help="Cleaning profile to emit (FL-D21a). 'raw' reproduces the as-built "
+             "Dick-Nielsen family; the as-published profiles emit "
+             "trace_clean_<profile>__dedup_<on|off>.parquet.",
+    )
+    parser.add_argument(
+        "--dedup", choices=["on", "off"], default="on",
+        help="E1 interdealer-dedup envelope setting (profiles only; FL-D21g). "
+             "The raw family always dedups (as-built).",
+    )
+    args = parser.parse_args()
+
     if not RAW_FILE.exists():
         print(f"ERROR: Raw file not found: {RAW_FILE}", file=sys.stderr)
         sys.exit(1)
+
+    if args.profile == "raw":
+        profile = RAW_PROFILE
+    else:
+        profile = build_profile(args.profile, dedup=(args.dedup == "on"))
 
     cfg = load_thresholds()
     print(f"Thresholds loaded from {THRESHOLDS_FILE}")
     print(f"  asof_cd_keep={cfg['asof_cd_keep']!r}, "
           f"holdout window={cfg['holdout_start_year']}–{cfg['holdout_end_year']}")
-    print("Stage: Dick-Nielsen filters only (no price plausibility, no decimal-shift).")
-    print("       Those are meas_err-gated and live in apply_decimal_shift.py downstream.")
+    if profile.profile_id == "raw":
+        print("Stage: Dick-Nielsen filters only (no price plausibility, no decimal-shift).")
+        print("       Those are meas_err-gated and live in apply_decimal_shift.py downstream.")
+    else:
+        print(f"Stage: as-published cleaning profile {profile.profile_id!r} "
+              f"(dedup {'ON' if profile.dedup else 'OFF'}) — FL-D21a fork from raw TRACE.")
 
     git_commit = get_git_commit()
-    row_counts = run_pandas(cfg)
-    write_report(row_counts, cfg, git_commit)
+    row_counts = run_pandas(cfg, profile)
+    write_report(row_counts, cfg, git_commit, profile)
 
+    dev_out = profile.dev_out or DEV_OUT
+    hold_out = profile.hold_out or HOLD_OUT
+    report_out = profile.report_out or REPORT_OUT
     print("\nDone.")
-    print(f"  Development: {row_counts['development_rows']:,} rows → {DEV_OUT}")
-    print(f"  Holdout:     {row_counts['holdout_rows']:,} rows → {HOLD_OUT}")
-    print(f"  Report:      {REPORT_OUT}")
+    print(f"  Development: {row_counts['development_rows']:,} rows → {dev_out}")
+    print(f"  Holdout:     {row_counts['holdout_rows']:,} rows → {hold_out}")
+    print(f"  Report:      {report_out}")
 
 
 if __name__ == "__main__":
