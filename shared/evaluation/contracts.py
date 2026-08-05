@@ -39,6 +39,7 @@ class RefusalCode(str, Enum):
     MISSING_MACRO_OBSERVATION = "missing_macro_observation"            # regime unassignable
     PREDICTION_NOT_EVALUABLE = "prediction_not_evaluable"             # no falsifiable contrast
     ARTEFACT_CAPABILITY_MISSING = "artefact_capability_missing"        # drifted/target weights absent
+    DEVELOPMENT_SCOPE_DIAGNOSTIC = "development_scope_diagnostic"      # A7: floor-invoking inference not computed on the holdout window
 
 
 class TurnoverMethod(str, Enum):
@@ -70,6 +71,23 @@ class EvaluationScope(str, Enum):
 class RegimeRole(str, Enum):
     FORMATION = "formation"          # determines positions; strictly past-only
     EVALUATION = "evaluation"        # decomposition only; frozen threshold
+
+
+class SampleWindow(str, Enum):
+    """Which evaluation sample a result was computed on (amendment A7).
+
+    The pre-registered 60-month floors were calibrated for the ~240-month development
+    window; the holdout window (2022–2025, 48 months per SC-SCI-10) is shorter than
+    every floor BY CONSTRUCTION of the walk-forward split. A7 scopes by claim type:
+    floor-invoking inference (the spanning/crowding regression, the conditional-alpha
+    supplementary) is refused on HOLDOUT with DEVELOPMENT_SCOPE_DIAGNOSTIC; mean/sign
+    point estimates remain computable but carry `short_sample` when below a floor, and
+    the reporting layer licenses point-estimate/direction sentences only. DEVELOPMENT
+    is the default everywhere so pre-A7 call sites are byte-identical.
+    """
+
+    DEVELOPMENT = "development"
+    HOLDOUT = "holdout"
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +256,7 @@ class SpanningResult:
     # governance
     scope: EvaluationScope
     provenance: EstimatorProvenance
+    window: SampleWindow = SampleWindow.DEVELOPMENT   # A7; defaulted so pre-A7 construction is unchanged
 
     def to_dict(self) -> dict:
         return {
@@ -264,6 +283,7 @@ class SpanningResult:
             "max_abs_pairwise_corr": self.max_abs_pairwise_corr,
             "scope": _enum_val(self.scope),
             "provenance": self.provenance.to_dict(),
+            "window": _enum_val(self.window),
         }
 
 
@@ -440,6 +460,11 @@ class RegimeResult:
     macro_data_contract_id: str
     scope: EvaluationScope
     provenance: EstimatorProvenance
+    window: SampleWindow = SampleWindow.DEVELOPMENT   # A7; defaulted so pre-A7 construction is unchanged
+    # A7 degrade path: True when computed on the holdout window with a regime state
+    # below the pre-registered conditional floor — the reporting layer then licenses
+    # point-estimate/direction sentences only. Always False on the development window.
+    short_sample: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -456,6 +481,8 @@ class RegimeResult:
             "macro_data_contract_id": self.macro_data_contract_id,
             "scope": _enum_val(self.scope),
             "provenance": self.provenance.to_dict(),
+            "window": _enum_val(self.window),
+            "short_sample": self.short_sample,
         }
 
 
@@ -474,6 +501,7 @@ class SharedEvaluationResult:
     regimes: RegimeResult
     config_hash: str
     code_version: str
+    window: SampleWindow = SampleWindow.DEVELOPMENT   # A7; defaulted so pre-A7 construction is unchanged
 
     def to_dict(self) -> dict:
         return _jsonsafe({
@@ -486,4 +514,5 @@ class SharedEvaluationResult:
             "regimes": self.regimes.to_dict(),
             "config_hash": self.config_hash,
             "code_version": self.code_version,
+            "window": _enum_val(self.window),
         })

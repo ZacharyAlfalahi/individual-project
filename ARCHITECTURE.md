@@ -5,8 +5,8 @@ Every implementation is validated and verifiable.
 ## Research Questions
 RQ1 — Librarian extraction fidelity on the gold-standard set (BBW, KPP, DG): field-level per-field accuracy, multi-model agreement rate, failure taxonomy (field-level reconstruction, NOT strategy-class routing).
 RQ2 — Quant compilation fidelity + coverage: anchor fidelity per the hierarchical gates (evaluation contract §7); layered coverage C_semantic / C_binding / C_execution / C_end-to-end over the frozen candidate set; FIR (headline safety) beside FRR; fraction of the corpus implementable via audited families vs correctly refused (typed refusal taxonomy).
-RQ3 — Bias prevalence (Auditor), differential: each strategy run uncorrected (as-published) vs corrected, bias = the gap; effect sizes with CIs (survival counts secondary); conservative lower bound on artefact; clean on the anchor set + traded-liquidity negative control, scale layer weaker/confounded.
-RQ4 — Repair rate (Scientist): fraction of proposals that repair failing strategies, retain in-sample alpha, survive BH-FDR, show positive OOS Sharpe on the 2022–2024 holdout (the locked evaluation split; the data-ingest partition boundary `holdout_end_year: 2025` is separate).
+RQ3 — Bias prevalence (Auditor), differential: each strategy run uncorrected (as-published) vs corrected, bias = the gap; effect sizes with CIs (survival counts secondary); scoped, partial estimate over enumerated biases; clean on the anchor set + traded-liquidity negative control, scale layer weaker/confounded.
+RQ4 — Repair rate (Scientist): fraction of proposals that repair failing strategies, retain in-sample alpha, survive BH-FDR, show positive OOS Sharpe on the 2022–2025 holdout (48 months — the full `/data/holdout/` partition; ruled 2026-08-05 as post-tag amendment SC-SCI-10, superseding the interim pre-registration's 2022–2024 window).
 Each RQ has a structurally independent validation path — failure in one component cannot contaminate another.
 
 ## Data Rules (inviolable)

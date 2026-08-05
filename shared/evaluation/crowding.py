@@ -22,8 +22,8 @@ wires it POST-BH-FDR in one line:
     measurements = dataclasses.replace(
         measurements, crowding=crowding_diagnostic(candidate_returns))
 
-Layer 2 (recursive-OOS IPCA factor spanning) is deferred — see
-docs/backlog/remaining_work.md.
+Layer 2 (recursive-OOS IPCA factor spanning) is BUILT beside this module — see
+crowding_l2.py, wired as the second G4 lens.
 """
 
 from __future__ import annotations

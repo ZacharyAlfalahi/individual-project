@@ -21,7 +21,7 @@ from . import costs as costs_mod
 from . import regimes as regimes_mod
 from . import spanning as spanning_mod
 from .alignment import align_monthly
-from .contracts import EvaluationScope, SharedEvaluationResult, WeightingScheme
+from .contracts import EvaluationScope, SampleWindow, SharedEvaluationResult, WeightingScheme
 from .thresholds import (
     CostsConfig,
     CrowdingConfig,
@@ -40,24 +40,28 @@ def _config_hash(
     regimes: RegimesConfig,
     stage: str,
     scope: EvaluationScope,
+    window: SampleWindow,
 ) -> str:
-    payload = json.dumps(
-        {
-            "crowding_factor_set": list(crowding.factor_set),
-            "crowding_hac_lag_rule": crowding.hac_lag_rule,
-            "crowding_min_obs": crowding.min_obs,
-            "costs_scenarios": [
-                [s.scenario_id, s.ig_bps, s.hy_bps, s.unit.value, s.usable]
-                for s in costs.scenarios
-            ],
-            "costs_break_even_denom": costs.break_even_alpha_denominator,
-            "regimes_evaluation_median": regimes.evaluation_median,
-            "regimes_min_obs_conditional": regimes.min_obs_conditional,
-            "stage": stage,
-            "scope": scope.value,
-        },
-        sort_keys=True,
-    )
+    payload_dict = {
+        "crowding_factor_set": list(crowding.factor_set),
+        "crowding_hac_lag_rule": crowding.hac_lag_rule,
+        "crowding_min_obs": crowding.min_obs,
+        "costs_scenarios": [
+            [s.scenario_id, s.ig_bps, s.hy_bps, s.unit.value, s.usable]
+            for s in costs.scenarios
+        ],
+        "costs_break_even_denom": costs.break_even_alpha_denominator,
+        "regimes_evaluation_median": regimes.evaluation_median,
+        "regimes_min_obs_conditional": regimes.min_obs_conditional,
+        "stage": stage,
+        "scope": scope.value,
+    }
+    # A7: the window enters the hash only when non-default, so every pre-A7 development
+    # config_hash stays byte-identical (the same identity-preservation rule the
+    # panel_view_hash used when the per-anchor OFF-family axis was added).
+    if window is not SampleWindow.DEVELOPMENT:
+        payload_dict["window"] = window.value
+    payload = json.dumps(payload_dict, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -78,6 +82,7 @@ def evaluate(
     mechanically_implied: bool = False,
     weighting_scheme: WeightingScheme = WeightingScheme.PAR,
     scope: EvaluationScope = EvaluationScope.SUPPLEMENTARY,
+    window: SampleWindow = SampleWindow.DEVELOPMENT,
 ) -> SharedEvaluationResult:
     """Compose the three diagnostics for one candidate.
 
@@ -85,13 +90,18 @@ def evaluate(
     `spread` / `run_artefact` enable the alignment, regime, and cost blocks respectively;
     omitting any yields a typed not-applicable / refusal sub-result, never a crash.
     Configs default to the pre-registered fail-loud loaders when omitted.
+
+    `window=HOLDOUT` (A7): the spanning regression returns a typed development-scope
+    refusal (its 60-month floor cannot be met on the 48-month holdout by construction),
+    and the regime result carries `short_sample` when a state is below its floor.
     """
     crowding_config = crowding_config or load_crowding_config()
     costs_config = costs_config or load_costs_config()
     regimes_config = regimes_config or load_regimes_config()
 
     spanning = spanning_mod.spanning_regression(
-        candidate_returns, config=crowding_config, factors=crowding_factors, scope=scope
+        candidate_returns, config=crowding_config, factors=crowding_factors, scope=scope,
+        window=window,
     )
 
     # Costs: turnover is not sourceable from the current artefact -> typed refusal (P4).
@@ -108,10 +118,12 @@ def evaluate(
             predicted_sign=predicted_sign,
             mechanically_implied=mechanically_implied,
             scope=scope,
+            window=window,
         )
     else:
         regimes = regimes_mod.not_applicable_result(
-            config=regimes_config, scope=scope, mechanically_implied=mechanically_implied
+            config=regimes_config, scope=scope, mechanically_implied=mechanically_implied,
+            window=window,
         )
 
     # Alignment: month-level pairing of the candidate against the corrected parent.
@@ -129,6 +141,9 @@ def evaluate(
         spanning=spanning,
         costs=costs,
         regimes=regimes,
-        config_hash=_config_hash(crowding_config, costs_config, regimes_config, stage, scope),
+        config_hash=_config_hash(
+            crowding_config, costs_config, regimes_config, stage, scope, window
+        ),
         code_version=CODE_VERSION,
+        window=window,
     )

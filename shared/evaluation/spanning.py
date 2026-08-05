@@ -34,6 +34,7 @@ from .contracts import (
     EstimatorProvenance,
     EvaluationScope,
     RefusalCode,
+    SampleWindow,
     SpanningResult,
 )
 from .crowding import _resolve_nw_lags, load_crowding_factor_bundle
@@ -157,6 +158,7 @@ def spanning_regression(
     factors: pd.DataFrame | None = None,
     min_obs: int | None = None,
     scope: EvaluationScope = EvaluationScope.SUPPLEMENTARY,
+    window: SampleWindow = SampleWindow.DEVELOPMENT,
 ) -> SpanningResult:
     """Typed factor-spanning regression of one candidate against the fixed corrected
     control set.
@@ -166,11 +168,46 @@ def spanning_regression(
     (passing `factors` avoids re-reading the parquets). `min_obs` defaults to
     `config.min_obs` (the pre-registered 60-month floor). Never raises on data shape —
     degenerate cases return a typed refusal, not NaN or an exception (D-E3).
+
+    `window=HOLDOUT` refuses BEFORE loading factors or fitting (A7): the floor was
+    calibrated for the development window, and the holdout (48 months, SC-SCI-10) is
+    below it by construction, so a holdout HAC inference is never computed.
     """
     if not isinstance(candidate_returns, pd.Series):
         raise TypeError("candidate_returns must be a pandas Series indexed by date")
     if config is None:
         config = load_crowding_config()
+
+    if window is SampleWindow.HOLDOUT:
+        control_set_id, control_set_hash = _control_set_identity(config)
+        n = int(pd.Series(candidate_returns).notna().sum())
+        return SpanningResult(
+            estimable=False,
+            refusal_code=RefusalCode.DEVELOPMENT_SCOPE_DIAGNOSTIC,
+            alpha_monthly=None,
+            alpha_se=None,
+            t_hac=None,
+            ci_low=None,
+            ci_high=None,
+            betas=tuple(),
+            r_squared=None,
+            n_obs=n,
+            n_controls=len(config.factor_set),
+            min_obs=config.min_obs if min_obs is None else int(min_obs),
+            sample_id="not_computed:holdout_window",
+            control_set_id=control_set_id,
+            control_set_hash=control_set_hash,
+            control_correction_state="corrected",
+            condition_number=None,
+            design_rank=None,
+            vif_by_control=tuple(),
+            leave_one_control_out_alpha=tuple(),
+            max_abs_pairwise_corr=None,
+            scope=scope,
+            provenance=_provenance(config, 0),
+            window=window,
+        )
+
     if factors is None:
         factors = load_crowding_factor_bundle(config)
 
@@ -218,6 +255,7 @@ def spanning_regression(
             max_abs_pairwise_corr=max_corr,
             scope=scope,
             provenance=_provenance(config, lag_used),
+            window=window,
         )
 
     # (1) Insufficient observations — refuse before fitting; no conditioning diagnostics
@@ -283,4 +321,5 @@ def spanning_regression(
         max_abs_pairwise_corr=max_corr,
         scope=scope,
         provenance=_provenance(config, lag_used),
+        window=window,
     )

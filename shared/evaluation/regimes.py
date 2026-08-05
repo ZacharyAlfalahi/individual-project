@@ -36,6 +36,7 @@ from .contracts import (
     RefusalCode,
     RegimeResult,
     RegimeRole,
+    SampleWindow,
 )
 from .thresholds import RegimesConfig, load_regimes_config
 
@@ -183,11 +184,17 @@ def evaluate_regimes(
     mechanically_implied: bool = False,
     contrast_definition: str = "delta_vs_corrected_parent_in_high_spread_state",
     scope: EvaluationScope = EvaluationScope.SUPPLEMENTARY,
+    window: SampleWindow = SampleWindow.DEVELOPMENT,
 ) -> RegimeResult:
     """Decompose the candidate's realised returns by the FROZEN-median evaluation regime
     (high = spread > frozen median), and — where a falsifiable state prediction is
     registered and the corrected parent is supplied — score the prediction contrast. The
-    formation regime is referenced for identity only; it is DEFERRED (A3 + P2)."""
+    formation regime is referenced for identity only; it is DEFERRED (A3 + P2).
+
+    The decomposition means and the sign contrast are deliberately mean/sign statistics
+    (D-E16) and REMAIN computable on `window=HOLDOUT`; per A7 the result then carries
+    `short_sample=True` when either regime state falls below `min_obs_conditional`,
+    which licenses point-estimate/direction sentences only at the reporting layer."""
     if config is None:
         config = load_regimes_config()
 
@@ -231,6 +238,9 @@ def evaluate_regimes(
         )
         applicable = False
 
+    short_sample = window is SampleWindow.HOLDOUT and (
+        months_high < config.min_obs_conditional or months_low < config.min_obs_conditional
+    )
     return RegimeResult(
         applicable=applicable,
         formation_regime_id="expanding_past_only_median:DEFERRED(A3+P2)",
@@ -245,6 +255,8 @@ def evaluate_regimes(
         macro_data_contract_id=config.macro_data_contract_id,
         scope=scope,
         provenance=_regime_provenance(),
+        window=window,
+        short_sample=short_sample,
     )
 
 
@@ -254,6 +266,7 @@ def not_applicable_result(
     scope: EvaluationScope = EvaluationScope.SUPPLEMENTARY,
     mechanically_implied: bool = False,
     reason: str = "no_spread_series_supplied",
+    window: SampleWindow = SampleWindow.DEVELOPMENT,
 ) -> RegimeResult:
     """A not-applicable RegimeResult for the orchestrator when no macro spread series is
     supplied (nothing to decompose). Carries a real PREDICTION_NOT_EVALUABLE refusal."""
@@ -287,4 +300,5 @@ def not_applicable_result(
         macro_data_contract_id=config.macro_data_contract_id,
         scope=scope,
         provenance=_regime_provenance(),
+        window=window,
     )

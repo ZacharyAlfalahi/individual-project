@@ -27,7 +27,9 @@ from .contracts import (
 )
 
 # Vocabulary that asserts more than the computation licenses. Enforced by test over the
-# generated notes (D-E7, D-E10, D-E17).
+# generated notes (D-E7, D-E10, D-E17). "statistically significant" joined under A7:
+# short-sample (holdout) results license point-estimate/direction sentences only, so
+# the significance claim must be unwriteable, not merely discouraged.
 FORBIDDEN_STRINGS = (
     "spanned",
     "crowded",
@@ -36,11 +38,19 @@ FORBIDDEN_STRINGS = (
     "implementable",
     "mechanism confirmed",
     "capacity",
+    "statistically significant",
 )
 
 
 def spanning_sentence(r: SpanningResult) -> str:
     if not r.estimable:
+        if r.refusal_code is RefusalCode.DEVELOPMENT_SCOPE_DIAGNOSTIC:
+            return (
+                "The spanning regression is a development-window diagnostic and was "
+                "not computed on the holdout window: its pre-registered "
+                f"{r.min_obs}-month floor cannot be met there by construction of the "
+                "walk-forward split (amendment A7)."
+            )
         if r.refusal_code is RefusalCode.INSUFFICIENT_OBSERVATIONS:
             return (
                 f"The spanning regression was not estimable: {r.n_obs} monthly "
@@ -111,15 +121,22 @@ def _sign_word(sign: int | None) -> str:
     return {1: "positive", -1: "negative", 0: "zero"}.get(sign if sign is not None else 99, "unspecified")
 
 
+_SHORT_SAMPLE_QUALIFIER = (
+    " Sample below the pre-registered conditional floor (short sample): point estimate "
+    "and direction only, no inferential claim (amendment A7)."
+)
+
+
 def regime_sentence(r: RegimeResult) -> str:
     p = r.prediction
+    qualifier = _SHORT_SAMPLE_QUALIFIER if r.short_sample else ""
     if not r.applicable:
         return (
             "No falsifiable regime prediction was registered for this candidate; the "
-            "regime decomposition is descriptive only."
+            "regime decomposition is descriptive only." + qualifier
         )
     if not p.evaluable:
-        return "The registered regime prediction was not evaluable on this sample."
+        return "The registered regime prediction was not evaluable on this sample." + qualifier
     outcome = "was borne out" if p.hit else "was not borne out"
     tail = " (mechanically implied by the template; excluded from the headline count)" if p.mechanically_implied_by_template else ""
     return (
@@ -128,7 +145,7 @@ def regime_sentence(r: RegimeResult) -> str:
         f"{p.delta_mean_vs_parent_in_target_state:.4f} in the target state "
         f"(n = {p.n_months_target_state}) versus "
         f"{p.delta_mean_vs_parent_in_other_state:.4f} otherwise "
-        f"(n = {p.n_months_other_state}){tail}."
+        f"(n = {p.n_months_other_state}){tail}." + qualifier
     )
 
 

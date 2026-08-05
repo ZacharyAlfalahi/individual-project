@@ -213,3 +213,18 @@ amendments:                      # logged amendments appended here post-tag (see
       phase_f (Sonnet 4.6 + Gemini 3.5-flash) + SKU/cost authorization. A LIVE run additionally needs
       GEMINI_API_KEY/MISTRAL_API_KEY + the vendor SDKs installed. The upstream blocker (a real Auditor
       AuditReport / corrected QuantConfig) cleared 2026-08-03 (the core-lattice runs executed).
+  - id: SC-SCI-10
+    date: 2026-08-05
+    summary: >
+      POST-TAG AMENDMENT — holdout evaluation window ruled 2022-2025 (48 months), the full
+      /data/holdout/ partition, superseding the 2022-2024 window stated at the tag (the holdout
+      block comment in this file, the SC-SCI-3 caveat, ARCHITECTURE.md RQ4) and resolving FINAL decision
+      log open item O6. A definitional deviation from the interim pre-registration, ruled
+      2026-08-05 BEFORE any holdout read (no holdout artefact accessed; the walk-forward split is
+      intact — every evaluation month remains post-development, so this is added forward sample,
+      not leakage). Consequences: OOS T rises 36 -> 48 months; the 60-month support floors still
+      bind (48 < 60), so amendment A7 (docs/shared_evaluation_amendments_index.md — floors scoped
+      to development-window diagnostics, short_sample degrade path, no holdout bootstrap
+      intervals) applies unchanged; extension_1's frozen development median classifies the
+      2022-2025 months (the config's 2022-2024 references are updated to 2022-2025 as
+      propagation of this ruling, not a methodology change).
