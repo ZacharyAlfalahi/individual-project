@@ -58,12 +58,16 @@ def test_out_of_enum_weighting_refuses():
 
 
 def test_unsupported_trim_variant_refuses():
+    # Percentile bounds are now supported (spec E); the still-unsupported axis is
+    # the trim SAMPLE — only 'full_sample' is implemented, so a by-month trim
+    # refuses with UNSUPPORTED_TRIM_VARIANT.
     r = build_quant_config(
         "s4",
         _score(),
         trim=Inherited(
-            {"method": "truncate", "bounds": {"type": "percentile", "lo": 0.01, "hi": 0.99}},
-            "STATED", Evidence(locator=_LOC, quote="winsorised at 1/99 percentiles"),
+            {"method": "truncate", "bounds": {"type": "absolute", "hi": 0.30},
+             "sample": "by_month_cross_section"},
+            "STATED", Evidence(locator=_LOC, quote="trimmed by-month at 30%"),
         ),
     )
     assert isinstance(r, ConfigRefusal)

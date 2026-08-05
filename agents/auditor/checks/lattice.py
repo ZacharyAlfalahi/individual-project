@@ -77,17 +77,22 @@ def build_lattice_configs(
     fixed_states: Mapping[ToggleId, ToggleState],
     *,
     lib_gap_lags: tuple[int, int] = (0, 1),
+    not_applicable_toggles: Sequence[ToggleId] = (),
 ) -> list[tuple[frozenset, RunConfig]]:
     """Enumerate the 2^k (on_set, RunConfig) pairs over the runnable toggles.
-    Non-runnable toggles are held at their fixed_state; a toggle that is neither
-    runnable nor held is a REFUSED audit and raises."""
+    Non-runnable toggles are held at their fixed_state. A `not_applicable` toggle
+    (spec D1 / ADR §5.4 — e.g. str's meas_err) is NOT a lattice axis and carries no
+    OFF/ON contrast; it is held at its ON (corrected/baseline) state in every cell,
+    so the anchor runs a reduced 2^(k-|na|) lattice with no coordinate for it. A
+    toggle that is neither runnable, held, nor not_applicable is a REFUSED audit."""
     runnable = tuple(t for t in TOGGLE_IDS if t in set(runnable_toggles))
+    na = set(not_applicable_toggles)
     non_runnable = [t for t in TOGGLE_IDS if t not in set(runnable)]
     for t in non_runnable:
-        if t not in fixed_states:
+        if t not in fixed_states and t not in na:
             raise LatticeError(
-                f"toggle {t!r} is neither runnable nor held at a fixed_state — "
-                "this is a REFUSED audit and has no lattice (§3.4)"
+                f"toggle {t!r} is neither runnable, held at a fixed_state, nor "
+                "not_applicable — this is a REFUSED audit and has no lattice (§3.4)"
             )
 
     out: list[tuple[frozenset, RunConfig]] = []
@@ -99,6 +104,9 @@ def build_lattice_configs(
             for t in TOGGLE_IDS:
                 if t in runnable:
                     states[t] = "ON" if t in on_set else "OFF"
+                elif t in na:
+                    # Held at the anchor's baseline (= corrected/ON), not a coordinate.
+                    states[t] = "ON"
                 else:
                     states[t] = fixed_states[t]
             out.append((on_set, build_run_config(states, lib_gap_lags=lib_gap_lags)))
@@ -115,9 +123,15 @@ def run_lattice(
     lib_gap_lags: tuple[int, int] = (0, 1),
     safe_rate: pd.DataFrame | None = None,
     benchmark: pd.DataFrame | None = None,
+    expost_trim_off: "TrimRule | None" = None,
+    not_applicable_toggles: Sequence[ToggleId] = (),
 ) -> LatticeResult:
     """Run every cell of the lattice, reusing materialised panels by
-    panel_view_hash (§3.9). Returns a LatticeResult."""
+    panel_view_hash (§3.9). Returns a LatticeResult. `expost_trim_off` is the
+    per-anchor published trim re-injected on the lab_trim OFF arm (spec E; None =
+    the default behaviour). It reaches run_cell, NOT build_run_config, so the
+    RunConfig / panel_view hashes are unchanged. `not_applicable_toggles` are held
+    at their baseline (ON) and excluded as lattice axes (spec D1 / ADR §5.4)."""
     if getattr(strategy, "refused", False):
         raise LatticeError(
             f"strategy {getattr(strategy, 'strategy_label', '?')!r} is refused; "
@@ -125,7 +139,8 @@ def run_lattice(
         )
 
     configs = build_lattice_configs(
-        runnable_toggles, fixed_states, lib_gap_lags=lib_gap_lags
+        runnable_toggles, fixed_states, lib_gap_lags=lib_gap_lags,
+        not_applicable_toggles=not_applicable_toggles,
     )
 
     view_cache: dict[str, pd.DataFrame] = {}
@@ -139,6 +154,7 @@ def run_lattice(
             run_cell(
                 strategy, rc, on_set, panel,
                 safe_rate=safe_rate, benchmark=benchmark,
+                expost_trim_off=expost_trim_off,
             )
         )
 

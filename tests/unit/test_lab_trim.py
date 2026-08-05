@@ -98,6 +98,61 @@ class TestTrimRuleWinsorise:
         assert result["monthly_returns"]["strategy_ret"].iloc[0] == pytest.approx(0.07)
 
 
+class TestTrimRulePercentile:
+    """Percentile bounds resolved to absolute ONCE per cell over the full-sample
+    eligible next_ret (spec E). The eligible full-sample series here is the four
+    Jan-formation forward returns [0.50, 0.02, -0.01, -0.01]."""
+
+    def _rulebook(self, trim_rule, min_bonds=3):
+        return {"score": "score", "groups": 2, "weighting": "equal",
+                "min_bonds": min_bonds, "trim_rule": trim_rule}
+
+    def test_resolves_on_eligible_next_ret_one_sided_right(self):
+        import numpy as np
+        panel = _build_outlier_panel()
+        result = run_characteristic_sort(panel, self._rulebook({
+            "target": "return", "method": "truncate",
+            "bounds": {"type": "percentile", "hi": 0.75, "percentile_method": "linear"},
+            "sample": "full_sample",
+        }))
+        realised = result["bookkeeping"]["realised_trim_threshold"]
+        expected_hi = float(np.quantile([0.50, 0.02, -0.01, -0.01], 0.75, method="linear"))
+        assert realised["percentile_method"] == "linear"
+        assert realised["n_obs"] == 4                    # condition 1: same series
+        assert realised["hi"]["level"] == 0.75
+        assert realised["hi"]["threshold"] == pytest.approx(expected_hi)   # condition 4
+        assert "lo" not in realised                      # one-sided right (Jostova)
+
+    def test_equivalent_to_absolute_at_realised_threshold(self):
+        # Condition 5: percentile-resolved output == absolute-specified output at
+        # the same realised threshold, byte-identical.
+        panel = _build_outlier_panel()
+        pct = run_characteristic_sort(panel, self._rulebook({
+            "target": "return", "method": "truncate",
+            "bounds": {"type": "percentile", "hi": 0.75, "percentile_method": "linear"},
+            "sample": "full_sample",
+        }))
+        hi_abs = pct["bookkeeping"]["realised_trim_threshold"]["hi"]["threshold"]
+        absolute = run_characteristic_sort(panel, self._rulebook({
+            "target": "return", "method": "truncate",
+            "bounds": {"type": "absolute", "hi": hi_abs},
+            "sample": "full_sample",
+        }))
+        pd.testing.assert_frame_equal(pct["monthly_returns"], absolute["monthly_returns"])
+
+    def test_absolute_trim_untouched_by_resolver(self):
+        # Condition 6: absolute trims pass through the resolver with no realised
+        # threshold and the original spread.
+        panel = _build_outlier_panel()
+        result = run_characteristic_sort(panel, self._rulebook({
+            "target": "return", "method": "truncate",
+            "bounds": {"type": "absolute", "lo": -0.1, "hi": 0.1},
+            "sample": "full_sample",
+        }))
+        assert result["bookkeeping"]["realised_trim_threshold"] is None
+        assert result["monthly_returns"]["strategy_ret"].iloc[0] == pytest.approx(0.03)
+
+
 class TestTrimRuleValidation:
     def test_invalid_method_raises(self):
         with pytest.raises(ValueError, match="trim_rule.method"):
@@ -106,13 +161,38 @@ class TestTrimRuleValidation:
                 "trim_rule": {"method": "trim"},
             })
 
-    def test_percentile_bounds_raise_not_implemented(self):
-        with pytest.raises(NotImplementedError, match="percentile"):
+    def test_percentile_bounds_now_supported(self):
+        # Percentile bounds are supported when a pre-registered percentile_method
+        # is given (spec E); _apply_defaults accepts them for later resolution.
+        settings = _apply_defaults({
+            "score": "score",
+            "trim_rule": {
+                "method": "truncate",
+                "bounds": {"type": "percentile", "hi": 0.995,
+                           "percentile_method": "linear"},
+            },
+        })
+        assert settings["trim_rule"]["bounds"]["type"] == "percentile"
+
+    def test_percentile_bounds_require_method(self):
+        # No library default for the interpolation method (spec E condition 2).
+        with pytest.raises(ValueError, match="percentile_method"):
             _apply_defaults({
                 "score": "score",
                 "trim_rule": {
                     "method": "truncate",
-                    "bounds": {"type": "percentile", "lo": 0.01, "hi": 0.99},
+                    "bounds": {"type": "percentile", "hi": 0.995},
+                },
+            })
+
+    def test_percentile_level_out_of_range_raises(self):
+        with pytest.raises(ValueError, match="percentile level"):
+            _apply_defaults({
+                "score": "score",
+                "trim_rule": {
+                    "method": "truncate",
+                    "bounds": {"type": "percentile", "hi": 1.5,
+                               "percentile_method": "linear"},
                 },
             })
 

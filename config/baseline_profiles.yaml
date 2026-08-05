@@ -1,0 +1,87 @@
+# Baseline-profile registry — per-paper as-published step-0 cleaning (spec v4 B1/D1).
+#
+# Each profile is the strategy's as-published (meas_err = OFF) cleaning. The ON arm
+# is always DRR's full cleaning (the corrected panel, price_family="corr"). Only
+# TWO new profiles are declared here; drr_2026 IS the existing corrected panel.
+#
+# A profile's `baseline_signature` = sha256 over the canonical serialisation of its
+# entry (loaded by agents/quant/library/baseline_profiles.py — NOT stored here,
+# self-reference; mirrors standing_substitutions_v1.yaml / STANDING_SUBS_V1_SHA256).
+# It is recorded in every run's provenance beside thresholds_auditor_hash and
+# standing_subs_sha256 (B1), so a differential always traces to the baseline that
+# produced it.
+#
+# Each step carries a provenance tag: STATED (the paper states it) | INFERRED
+# (via a documented source) | ASSUMED (a declared default). A load-bearing
+# ASSUMED/UNKNOWN step used for PAPER-SPECIFIC attribution triggers typed refusal
+# or a sensitivity envelope (spec B3) — never silent. Both profiles here are
+# all-STATED, so that guard is dormant, not active.
+#
+# Universe-level exclusions (BBW criteria 1-3,5-6; Jostova preferred/non-USD/
+# warrants/unit-deals) are handled by the universe layer — confirmed, not
+# duplicated here (spec D1). BBW retains callable bonds (~67%, fn 11).
+
+version: v1
+
+profiles:
+  bbw_2019:
+    source: "Bai, Bali, Wen (2019, JFE) 'Common risk factors in the cross-section of corporate bond returns' §3.1"
+    consumed_by: [drf, crf]        # byte-identical output for both (spec D1)
+    steps:
+      - op: price_range
+        lo: 5.0
+        hi: 1000.0
+        unit: dollars_per_100_par
+        provenance: STATED
+        quote_ref: "§3.1 criterion 4: 'remove bonds that trade under $5 or above $1,000'"
+      - op: remove_cancelled
+        provenance: STATED
+        quote_ref: "§3.1: remove cancelled trades"
+      - op: adjust_corrected_reversed
+        provenance: STATED
+        quote_ref: "§3.1: adjust corrected/reversed trades"
+      - op: min_volume
+        threshold: 10000.0
+        unit: dollars
+        provenance: STATED
+        quote_ref: "fn 12: $10,000 volume threshold (a deliberate deviation from Bessembinder et al. 2009's $100,000)"
+      - op: remove_special_conditions
+        conditions: [when_issued, locked_in, special_sales, settlement_gt_2_days]
+        provenance: STATED
+        quote_ref: "§3.1: remove when-issued / locked-in / special-sales-condition / settlement > 2 days"
+      - op: daily_price
+        method: volume_weighted_intraday_average
+        provenance: STATED
+        quote_ref: "§3.1: daily price = volume-weighted intraday average"
+    absent:
+      # A definitive absence (spec A3 / D1): BBW state NO winsorisation, trimming,
+      # or return-level outlier filter anywhere in the paper -> mom6's lab_trim has
+      # no BBW analogue; drf/crf lab_trim OFF stays 'none'.
+      return_outlier_filter: "none stated in BBW 2019"
+
+  jostova_2013:
+    source: "Jostova, Nikolova, Philipov, Stahel (2013, RFS) 'Momentum in corporate bond returns' §1.1"
+    consumed_by: [mom6]
+    steps:
+      - op: remove_cancelled_corrected_commission
+        provenance: STATED
+        quote_ref: "§1.1: remove cancelled / corrected / commission trades"
+      - op: remove_data_entry_errors
+        kinds: [negative_prices, impossible_date_orderings]
+        provenance: STATED
+        quote_ref: "§1.1: remove obvious data-entry errors"
+      - op: daily_price
+        method: tradesize_weighted_intraday_average
+        provenance: STATED
+        quote_ref: "§1.1: daily price = trade-size-weighted intraday average"
+      - op: month_end_price
+        window_days: 5
+        else: missing
+        provenance: STATED
+        quote_ref: "month-end price = last available daily price within the final five trading days, else missing"
+    absent:
+      # Deliberate absence (spec D3): Jostova state NO price range, so mom6's
+      # as-published arm admits near-zero prices. Jostova's OUTLIER control is the
+      # 99.5th-pct return trim (fn 16) -> the lab_trim toggle (Part E), NOT a
+      # price-level filter here. This is the real lab_trim x meas_err interaction.
+      price_range: "none stated in Jostova 2013 (fn 16 return trim is the lab_trim toggle instead)"

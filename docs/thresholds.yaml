@@ -152,14 +152,29 @@ signals:
 # published defect on demand; both OFF (as-published) and ON (corrected) states
 # are produced and the gap is the measured bias.
 bias_toggles:
-  # lab_filter — mom6 look-ahead (§7.1). Ex-post (full-sample 99.5th right-tail
-  # winsorization, embeds future info → biased +0.30%/mo) vs ex-ante (expanding
-  # past-only threshold → ≈0). The EP−EA gap is the look-ahead bias. wins=clip,
-  # not trim; loc=right is one-sided (asymmetric, DRR Table 3).
+  # lab_filter — mom6 return-level outlier trim (Jostova fn.16). TWO EXPLICIT MODES
+  # (spec E1). jostova_faithful = DELETE (truncate) returns above the full-sample
+  # 99.5th right-tail percentile, RECOMPUTED per lattice cell on that cell's own
+  # panel (method-faithful, not a fixed ~30%; spec E1/E2a) — this is the AUDITOR
+  # LATTICE OFF arm. drr_triangulation = winsorise/clip at the same threshold —
+  # EXTERNAL triangulation only (the standalone gates run_mom6_lab_gate.py /
+  # run_accrual_validation.py, which winsorise). The lattice estimand is
+  # `expost_return_filter` — a registered operationalisation of LAB, NOT a pure
+  # timing estimate (spec E2). loc=right is one-sided (Jostova).
   lab_filter:
     level: 99.5
     loc: right
-    adj: wins
+    adj: wins                        # the drr_triangulation (external) action = clip
+    # PRE-REGISTERED CONSTANT (spec E binding condition 2, committed before any run):
+    # the interpolation convention for the full-sample percentile resolution. The
+    # engine must NOT inherit a library default; numpy/pandas 'linear' is the
+    # standard, made explicit here — a project on researcher degrees of freedom
+    # cannot leave the convention implicit.
+    percentile_interpolation: linear
+    # The AUDITOR LATTICE OFF arm uses jostova_faithful = truncate (delete), per the
+    # gold's 'eliminated' wording (gold_mom6_jnps_2013.md); adj:wins above is the
+    # EXTERNAL-triangulation action only. Do not conflate the two.
+    lattice_action: truncate
   # lead_lag — BBW factor lead/lag (look-ahead) error (§7 toggle 1). OFF injects
   # the original BBW defect, ON is the correct contemporaneous alignment; the
   # signature is the original↔replicated correlation collapse (~0.26 DRF / ~0.44

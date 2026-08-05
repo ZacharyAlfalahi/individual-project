@@ -140,14 +140,31 @@ def _apply_defaults(rulebook: dict) -> dict:
         bounds = tr.get("bounds", {})
         if not isinstance(bounds, dict):
             raise TypeError("trim_rule.bounds must be a dict")
-        if bounds.get("type", "absolute") != "absolute":
+        btype = bounds.get("type", "absolute")
+        if btype not in ("absolute", "percentile"):
             raise NotImplementedError(
-                "trim_rule.bounds.type='percentile' not implemented in this "
-                "build; only 'absolute' bounds are supported. Percentile "
-                "trims need per-paper encoding in the gold-spec YAML."
+                f"trim_rule.bounds.type={btype!r} not supported; only 'absolute' "
+                "and 'percentile' are implemented in this build."
             )
         if bounds.get("lo") is None and bounds.get("hi") is None:
             raise ValueError("trim_rule.bounds must set at least one of lo/hi")
+        if btype == "percentile":
+            # Percentile levels are resolved to absolute bounds ONCE per cell in
+            # run_characteristic_sort, over the full-sample series being trimmed
+            # (spec E). The interpolation method is pre-registered and passed in;
+            # the engine never defaults it (spec E condition 2).
+            if bounds.get("percentile_method") is None:
+                raise ValueError(
+                    "trim_rule.bounds.type='percentile' requires "
+                    "bounds.percentile_method (pre-registered in thresholds.yaml)"
+                )
+            for k in ("lo", "hi"):
+                v = bounds.get(k)
+                if v is not None and not (0.0 < v < 1.0):
+                    raise ValueError(
+                        f"trim_rule.bounds.{k}={v!r} must be a percentile level in "
+                        "(0, 1) when bounds.type='percentile'"
+                    )
         if tr.get("sample", "full_sample") != "full_sample":
             raise NotImplementedError(
                 "trim_rule.sample='by_month_cross_section' not implemented "
@@ -362,6 +379,63 @@ def _apply_trim_rule(eligible: pd.DataFrame, trim_rule: dict) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Eligibility + full-sample percentile resolution (spec E)
+# ---------------------------------------------------------------------------
+
+def _eligibility_mask(df: pd.DataFrame, settings: dict) -> pd.Series:
+    """Row-wise sort eligibility: ranking_score, size, next_ret present (and a
+    control value present when a control axis is set). This is the SINGLE
+    definition of the trimmed series, shared by ``_month_step`` and the
+    full-sample percentile resolution so the percentile is computed on the exact
+    series being trimmed, not a parallel construction (spec E condition 1)."""
+    mask = (
+        df["ranking_score"].notna() & df["size"].notna() & df["next_ret"].notna()
+    )
+    if settings["control"] is not None:
+        mask = mask & df[settings["control"]].notna()
+    return mask
+
+
+def _resolve_percentile_trim(work: pd.DataFrame, settings: dict) -> tuple[dict, dict | None]:
+    """Resolve a percentile ``trim_rule`` to absolute bounds ONCE per cell, over
+    the full-sample eligible ``next_ret`` (via ``_eligibility_mask`` — same series
+    the per-month trim operates on). Returns ``(settings, realised)`` where
+    ``settings`` carries an absolute-bounds trim (so ``_apply_trim_rule`` is
+    unchanged) and ``realised`` records the method, n_obs, and the realised
+    absolute threshold per level (spec E condition 4). Non-percentile trims (and
+    ``method='none'``) pass through untouched (condition 6: no regression)."""
+    tr = settings["trim_rule"]
+    if tr.get("method", "none") == "none":
+        return settings, None
+    bounds = tr.get("bounds", {})
+    if bounds.get("type", "absolute") != "percentile":
+        return settings, None
+
+    method = bounds["percentile_method"]
+    series = work.loc[_eligibility_mask(work, settings), "next_ret"].dropna()
+    abs_bounds: dict = {"type": "absolute"}
+    realised: dict = {"percentile_method": method, "n_obs": int(len(series))}
+    if len(series) == 0:
+        # No eligible returns to trim — make the trim a no-op (every month will
+        # be skipped anyway). Record the empty resolution.
+        new_settings = dict(settings)
+        new_settings["trim_rule"] = {"method": "none"}
+        realised["resolved"] = "empty_series_noop"
+        return new_settings, realised
+    for k in ("lo", "hi"):
+        lvl = bounds.get(k)
+        if lvl is not None:
+            thr = float(series.quantile(lvl, interpolation=method))
+            abs_bounds[k] = thr
+            realised[k] = {"level": lvl, "threshold": thr}
+    new_tr = dict(tr)
+    new_tr["bounds"] = abs_bounds  # now absolute; _apply_trim_rule unchanged
+    new_settings = dict(settings)
+    new_settings["trim_rule"] = new_tr
+    return new_settings, realised
+
+
+# ---------------------------------------------------------------------------
 # Per-month step
 # ---------------------------------------------------------------------------
 
@@ -387,14 +461,11 @@ def _month_step(
         ((has_score & has_size) & ~has_next).sum()
     )
 
-    eligibility = has_score & has_size & has_next
-    if settings["control"] is not None:
-        # A bond with a missing control value cannot be assigned to a stripe;
-        # drop it from eligibility rather than silently lumping it into the
-        # lowest-numbered stripe via NaN-sort behaviour.
-        eligibility = eligibility & month_df[settings["control"]].notna()
-
-    eligible = month_df[eligibility].copy()
+    # A bond with a missing control value cannot be assigned to a stripe; the
+    # shared _eligibility_mask drops it rather than silently lumping it into the
+    # lowest-numbered stripe via NaN-sort behaviour. Same mask the full-sample
+    # percentile resolution uses (spec E condition 1).
+    eligible = month_df[_eligibility_mask(month_df, settings)].copy()
     if len(eligible) < settings["min_bonds"]:
         return None
 
@@ -851,10 +922,16 @@ def run_characteristic_sort(
 
     work = _build_lagged_panel(panel, settings["score"], settings["signal_lag"])
 
+    # Resolve a percentile trim_rule to absolute bounds ONCE per cell, over the
+    # full-sample eligible next_ret (spec E). No-op for absolute / none trims, so
+    # every existing strategy is byte-identical (condition 6).
+    settings, realised_trim = _resolve_percentile_trim(work, settings)
+
     bookkeeping: dict = {
         "months_skipped": [],
         "bond_months_dropped_no_next_ret": 0,
         "stripes_skipped_by_month": {},
+        "realised_trim_threshold": realised_trim,
     }
 
     rows: list[dict] = []

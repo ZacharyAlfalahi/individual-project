@@ -39,7 +39,11 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from agents.auditor.checks.orchestrator import AuditRefused, run_audit  # noqa: E402
+from agents.auditor.checks.orchestrator import (  # noqa: E402
+    AuditRefused,
+    IncompleteLatticeError,
+    run_audit,
+)
 from agents.auditor.ipca_differential.runner import load_dev_inputs  # noqa: E402
 from agents.auditor.schemas.audit_core import AuditCore  # noqa: E402
 from agents.auditor.schemas.toggle import TOGGLE_IDS, ToggleFacts  # noqa: E402
@@ -91,25 +95,70 @@ def load_anchor_strategy(anchor_id: str):
     return adapt_spec(load_gold_spec(anchor_id), standing_subs=standing_subs)
 
 
-def default_anchor_facts() -> list[ToggleFacts]:
-    """The five ToggleFacts for a first CORE-SYNC-1 run: all toggles runnable, with the
-    registered `stale_price` no-op hypothesis carried as `expect_no_op` (a hypothesis the
+def default_anchor_facts(anchor_id: str | None = None) -> list[ToggleFacts]:
+    """The ToggleFacts for an anchor: all toggles runnable, with the registered
+    `stale_price` no-op hypothesis carried as `expect_no_op` (a hypothesis the
     invariance machinery TESTS post-run — it never prunes the lattice, §3.3/§3.5).
 
-    The CORE-SYNC-1 coordinates (`E_stale`, `meas_err × stale_price`) require only that
-    `meas_err` and `stale_price` are runnable, so they are computed even if a later, more
-    conservative facts assignment refuses `survivorship`/`lib_gap`/`lab_trim` (which would
-    merely downgrade the audit to PARTIAL). Per-anchor runnability from Librarian provenance
-    is a pre-run decision — see the pre-run notes doc."""
-    return [
-        ToggleFacts(t, runnable=True, expect_no_op=(t == "stale_price"))
-        for t in TOGGLE_IDS
-    ]
+    Per-anchor exception (spec D1 / ADR §5.4): for `str` (DRR-native), `meas_err` is
+    `not_applicable` — str's as-published baseline IS DRR's full cleaning (the
+    corrected panel), so there is no raw-vs-corr meas_err contrast to measure. The
+    coordinate is EXCLUDED from the runnable lattice (str runs 2^4), NOT rendered as
+    a zero. `anchor_id=None` keeps every toggle runnable (the synthetic-test default).
+
+    The CORE-SYNC-1 coordinates (`E_stale`, `meas_err × stale_price`) require `meas_err`
+    and `stale_price` runnable; for `str` the interaction has no coordinate (see
+    `run_anchor`, which reports CORE-SYNC-1 as not-applicable there rather than a fail)."""
+    facts: list[ToggleFacts] = []
+    for t in TOGGLE_IDS:
+        if anchor_id == "str" and t == "meas_err":
+            facts.append(ToggleFacts(
+                t, runnable=False, not_applicable=True,
+                not_applicable_reason=(
+                    "str is DRR-native: its as-published baseline IS DRR's full "
+                    "cleaning (the corrected panel), so there is no raw-vs-corr "
+                    "meas_err contrast. The coordinate is EXCLUDED, not measured "
+                    "(ADR §5.4)."
+                ),
+            ))
+        else:
+            facts.append(ToggleFacts(t, runnable=True, expect_no_op=(t == "stale_price")))
+    return facts
 
 
 # --------------------------------------------------------------------------
 # the audit + the CORE-SYNC-1 verdict (injectable / pure — unit-tested on synthetic panels)
 # --------------------------------------------------------------------------
+
+def load_anchor_expost_trim_off(anchor_id: str, thresholds_path: str | Path | None = None):
+    """The per-anchor PUBLISHED return trim re-injected on the lab_trim OFF arm
+    (spec E). Only mom6 has one — Jostova fn.16's 99.5th right-tail elimination,
+    which `lab_trim_delegation_v1` delegated out of the base rulebook. str/drf
+    published no return trim, so None (their lab_trim stays a structural zero,
+    correctly). Built as jostova_faithful = truncate (delete) at the full-sample
+    99.5th right-tail percentile, recomputed per cell; the interpolation method is
+    the pre-registered thresholds constant (never a library default — spec E)."""
+    if anchor_id != "mom6":
+        return None
+    import yaml
+
+    from agents.quant.config import TrimRule
+
+    path = Path(thresholds_path) if thresholds_path else (REPO_ROOT / "docs" / "thresholds.yaml")
+    lab = yaml.safe_load(path.read_text())["bias_toggles"]["lab_filter"]
+    if lab.get("lattice_action") != "truncate":
+        raise ValueError(
+            f"lab_filter.lattice_action must be 'truncate' (jostova_faithful); "
+            f"got {lab.get('lattice_action')!r}"
+        )
+    if lab.get("loc") != "right":
+        raise ValueError(f"lab_filter.loc must be 'right' (one-sided); got {lab.get('loc')!r}")
+    level = float(lab["level"]) / 100.0  # 99.5 -> 0.995 (right-tail level)
+    return TrimRule(
+        method="truncate", hi=level, bounds_type="percentile",
+        percentile_method=lab["percentile_interpolation"],
+    )
+
 
 def audit_anchor(
     strategy,
@@ -121,16 +170,19 @@ def audit_anchor(
     pre_registration_tag: str | None = AUDITOR_PREREG_TAG,
     primary_metric: str | None = None,
     support_gate=None,
+    expost_trim_off=None,
 ) -> AuditCore:
     """Run the deterministic analytical spine for one strategy -> AuditCore. Thin wrapper
     over `run_audit` so the synthetic tests can inject a strategy/panel/facts without the
     real loaders. `primary_metric`/`support_gate` default to None, so a real run reads them
-    fail-loud from thresholds; the synthetic tests pass a small gate for short panels."""
+    fail-loud from thresholds; the synthetic tests pass a small gate for short panels.
+    `expost_trim_off` re-injects the per-anchor published trim on the lab_trim OFF arm."""
     return run_audit(
         strategy, maximal_panel, facts,
         signals=signals,
         primary_metric=primary_metric,
         support_gate=support_gate,
+        expost_trim_off=expost_trim_off,
         pre_registration_tag=pre_registration_tag,
         thresholds_path=thresholds_path,
     )
@@ -191,9 +243,27 @@ def run_anchor(
     AuditCore, the CORE-SYNC-1 verdict, and the stale invariance note. Raises `AuditRefused`
     upward (the caller records it) rather than fabricating a verdict."""
     strategy = load_anchor_strategy(anchor_id)
-    facts = default_anchor_facts()
-    core = audit_anchor(strategy, maximal_panel, facts, signals, thresholds_path=thresholds_path)
-    verdict = core_sync_1_verdict(core.saturated.doe, tol=tol)
+    facts = default_anchor_facts(anchor_id)
+    expost_trim_off = load_anchor_expost_trim_off(anchor_id, thresholds_path)
+    core = audit_anchor(
+        strategy, maximal_panel, facts, signals,
+        thresholds_path=thresholds_path, expost_trim_off=expost_trim_off,
+    )
+    # CORE-SYNC-1 tests meas_err × stale_price; for an anchor with meas_err
+    # EXCLUDED (not_applicable, e.g. str), that interaction has no coordinate on the
+    # reduced 2^4 lattice, so the check is NOT-APPLICABLE, never a failure (ADR §5.4).
+    meas_err_na = any(f.toggle_id == "meas_err" and f.not_applicable for f in facts)
+    if meas_err_na:
+        verdict = {
+            "applicable": False,
+            "passed": True,
+            "reason": (
+                "meas_err is not_applicable (excluded) for this anchor; CORE-SYNC-1 "
+                "(meas_err × stale_price) has no coordinate on the reduced lattice."
+            ),
+        }
+    else:
+        verdict = core_sync_1_verdict(core.saturated.doe, tol=tol)
     return {
         "anchor": anchor_id,
         "audit_scope": core.audit_scope,
@@ -249,11 +319,21 @@ def run_all(
     maximal, signals, _registry = load_dev_inputs()  # holdout never read
     records: list[dict] = []
     refusals: list[dict] = []
+    incomplete_lattice: list[dict] = []
     for anchor_id in anchors:
         try:
             records.append(run_anchor(anchor_id, maximal, signals, tol=tol))
         except AuditRefused as exc:
             refusals.append({"anchor": anchor_id, "refused": str(exc)})
+        except IncompleteLatticeError as exc:
+            # Spec E2b: a non-computable cell -> a TYPED verdict, never an imputed
+            # or partial-surface attribution.
+            incomplete_lattice.append({
+                "anchor": anchor_id,
+                "incomplete_lattice": str(exc),
+                "non_computable": sorted("|".join(sorted(s)) or "empty"
+                                         for s in exc.non_computable),
+            })
 
     run_log = {
         "git_commit": _git_short(),
@@ -266,16 +346,23 @@ def run_all(
         "anchors_requested": list(anchors),
         "anchors_run": [r["anchor"] for r in records],
         "refusals": refusals,
+        "incomplete_lattice": incomplete_lattice,
     }
     out_dir = out_dir or (REPO_ROOT / "results" / "auditor" / f"run_{_git_short()}")
     write_results(out_dir, records, run_log)
 
-    all_pass = bool(records) and all(r["core_sync_1"]["passed"] for r in records) and not refusals
+    all_pass = (
+        bool(records)
+        and all(r["core_sync_1"]["passed"] for r in records)
+        and not refusals
+        and not incomplete_lattice
+    )
     print(json.dumps(
         {
             "out_dir": str(out_dir),
             "core_sync_1": {r["anchor"]: r["core_sync_1"] for r in records},
             "refusals": refusals,
+            "incomplete_lattice": incomplete_lattice,
             "ALL_PASS": all_pass,
         },
         indent=2, default=str,

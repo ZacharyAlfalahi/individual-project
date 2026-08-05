@@ -163,12 +163,19 @@ def _triage_trim(raw: dict) -> tuple[TrimRule | None, str | None]:
     if not isinstance(bounds, dict):
         return None, "trim bounds must be a mapping"
     btype = bounds.get("type", "absolute")
-    if btype != "absolute":
-        return None, f"trim bounds.type {btype!r} not supported (only 'absolute')"
+    if btype not in ("absolute", "percentile"):
+        return None, f"trim bounds.type {btype!r} not supported (absolute/percentile)"
     sample = raw.get("sample", "full_sample")
     if sample != "full_sample":
         return None, f"trim sample {sample!r} not supported (only 'full_sample')"
-    return TrimRule(method=method, lo=bounds.get("lo"), hi=bounds.get("hi")), None
+    kwargs: dict = {"method": method, "lo": bounds.get("lo"), "hi": bounds.get("hi")}
+    if btype == "percentile":
+        # percentile levels resolve to absolute bounds in the engine on the
+        # full-sample series it trims; percentile_method is pre-registered
+        # (thresholds.yaml), never defaulted here (spec E). TrimRule validates it.
+        kwargs["bounds_type"] = "percentile"
+        kwargs["percentile_method"] = bounds.get("percentile_method")
+    return TrimRule(**kwargs), None
 
 
 def build_quant_config(

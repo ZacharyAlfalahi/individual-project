@@ -99,10 +99,12 @@ def test_factory_emits_only_original_codes():
     )
     seen.add(r2.code.value)
 
-    # UNSUPPORTED_TRIM_VARIANT: a percentile trim.
+    # UNSUPPORTED_TRIM_VARIANT: percentile bounds are now supported (spec E), so
+    # exercise the still-unsupported axis — a by-month trim sample.
     r3 = build_quant_config(
         "s", _bound("mom6"),
-        trim=Inherited({"method": "truncate", "bounds": {"type": "percentile"}}, "STATED",
+        trim=Inherited({"method": "truncate", "bounds": {"type": "absolute", "hi": 0.30},
+                        "sample": "by_month_cross_section"}, "STATED",
                        Evidence(quote="q", locator=_loc())),
     )
     seen.add(r3.code.value)

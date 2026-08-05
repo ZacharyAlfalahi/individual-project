@@ -13,6 +13,7 @@ caller records it for the refusal accounting (§11) rather than fabricating a ga
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Sequence
 
@@ -48,6 +49,46 @@ class AuditRefused(RuntimeError):
         )
 
 
+def _fmt_on_set(s: frozenset) -> str:
+    return "{" + ",".join(sorted(s)) + "}" if s else "∅"
+
+
+class IncompleteLatticeError(RuntimeError):
+    """A required cell of the response surface is non-computable — its
+    common-support primary metric is non-finite (e.g. mom6's lab_trim ON cell
+    going unstable on a no-price-range baseline, spec D3/E2b). The Harsanyi /
+    Shapley / Walsh decompositions are NOT defined on a partial surface, so the
+    spine REFUSES rather than imputing, winsorising, deleting the cell, or
+    substituting a value (spec E2b — pre-registered so an agent cannot 'helpfully'
+    repair the exact instability that constitutes the finding). Carries the
+    non-computable coordinates for the incomplete-lattice accounting."""
+
+    def __init__(self, strategy_label: str, non_computable, runnable_toggles) -> None:
+        self.strategy_label = strategy_label
+        self.non_computable = frozenset(non_computable)
+        self.runnable_toggles = tuple(runnable_toggles)
+        coords = ", ".join(sorted(_fmt_on_set(s) for s in self.non_computable))
+        super().__init__(
+            f"strategy {strategy_label!r} INCOMPLETE LATTICE: non-computable "
+            f"cell(s) {coords} (non-finite primary metric). Harsanyi/Shapley are "
+            f"not defined on a partial surface (spec E2b) — no imputation."
+        )
+
+
+def check_lattice_complete(
+    Y: "dict[frozenset, float]", strategy_label: str, runnable_toggles
+) -> None:
+    """Raise ``IncompleteLatticeError`` if any cell's common-support primary metric
+    is non-finite (None / NaN / inf) — spec E2b. A pure guard called BEFORE the §5
+    transforms so no attribution is ever computed on a partial response surface."""
+    non_computable = frozenset(
+        on_set for on_set, v in Y.items()
+        if v is None or not math.isfinite(v)
+    )
+    if non_computable:
+        raise IncompleteLatticeError(strategy_label, non_computable, runnable_toggles)
+
+
 def audit_spine(
     strategy,
     maximal_panel: pd.DataFrame,
@@ -58,6 +99,7 @@ def audit_spine(
     percentage_denominator_min: float,
     support_gate: SupportGate,
     lib_gap_lags: tuple[int, int] = (0, 1),
+    expost_trim_off: "TrimRule | None" = None,
     months_per_year: int = 12,
     nw_lags: int | None = None,
     pre_registration_tag: str | None = None,
@@ -65,7 +107,9 @@ def audit_spine(
     """Run the deterministic analytical spine (steps 2-7) and return the pre-flight
     result, the executed lattice, and the AuditCore. Shared by `run_audit` (which
     returns just the core) and `run_full_audit` (which needs the lattice for the
-    bootstrap-based inference layers). Raises `AuditRefused` for a REFUSED scope."""
+    bootstrap-based inference layers). Raises `AuditRefused` for a REFUSED scope.
+    `expost_trim_off` re-injects the per-anchor published trim on the lab_trim OFF
+    arm (spec E; None = the default behaviour)."""
     pf = derive_scope(getattr(strategy, "strategy_label", "?"), facts)
     if pf.audit_scope == "REFUSED":
         raise AuditRefused(pf)
@@ -73,6 +117,8 @@ def audit_spine(
     lattice = run_lattice(
         strategy, pf.runnable_toggles, pf.fixed_states, maximal_panel,
         signals=signals, lib_gap_lags=lib_gap_lags,
+        expost_trim_off=expost_trim_off,
+        not_applicable_toggles=pf.not_applicable_toggles,
     )
 
     info = support_info(lattice.cells, support_gate)
@@ -81,6 +127,9 @@ def audit_spine(
         lattice.cells, common, primary_metric,
         months_per_year=months_per_year, nw_lags=nw_lags,
     )
+    # Spec E2b: refuse a typed verdict on a partial response surface (a
+    # non-computable cell) rather than imputing / computing Harsanyi on it.
+    check_lattice_complete(Y, pf.strategy_label, pf.runnable_toggles)
     core = AuditCore(
         strategy_label=pf.strategy_label,
         audit_scope=pf.audit_scope,
@@ -112,6 +161,7 @@ def run_audit(
     percentage_denominator_min: float | None = None,
     support_gate: SupportGate | None = None,
     lib_gap_lags: tuple[int, int] = (0, 1),
+    expost_trim_off: "TrimRule | None" = None,
     months_per_year: int = 12,
     nw_lags: int | None = None,
     pre_registration_tag: str | None = None,
@@ -119,7 +169,8 @@ def run_audit(
 ) -> AuditCore:
     """Audit one strategy's analytical spine -> AuditCore.
 
-    Raises `AuditRefused` if the derived audit scope is REFUSED."""
+    Raises `AuditRefused` if the derived audit scope is REFUSED. `expost_trim_off`
+    re-injects the per-anchor published trim on the lab_trim OFF arm (spec E)."""
     if primary_metric is None:
         primary_metric = load_primary_metric(thresholds_path)
     if percentage_denominator_min is None:
@@ -132,6 +183,7 @@ def run_audit(
         signals=signals, primary_metric=primary_metric,
         percentage_denominator_min=percentage_denominator_min,
         support_gate=support_gate, lib_gap_lags=lib_gap_lags,
+        expost_trim_off=expost_trim_off,
         months_per_year=months_per_year, nw_lags=nw_lags,
         pre_registration_tag=pre_registration_tag,
     )

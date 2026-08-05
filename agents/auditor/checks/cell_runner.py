@@ -52,11 +52,18 @@ class CellRunError(RuntimeError):
     """A cell could not be executed (e.g. a refused strategy reached the runner)."""
 
 
-def _override_construction(result: "AdaptResult", run_config: RunConfig) -> "AdaptResult":
+def _override_construction(
+    result: "AdaptResult",
+    run_config: RunConfig,
+    expost_trim_off: "TrimRule | None" = None,
+) -> "AdaptResult":
     """Return a copy of `result` with every leg's QuantConfig carrying the cell's
     construction-toggle states. signal_lag is set absolutely from the RunConfig;
-    trim_rule is forced to `none` only for lab_trim ON — lab_trim OFF keeps the
-    paper's published trim."""
+    trim_rule is forced to `none` only for lab_trim ON. For lab_trim OFF, if the
+    caller supplies a per-anchor `expost_trim_off` (the paper's published trim,
+    which lab_trim_delegation_v1 delegated OUT of the base rulebook — spec E),
+    re-inject it so the toggle is not inert; otherwise keep the base config's
+    trim_rule (the default behaviour for anchors with no published trim)."""
     lag = run_config.construction.signal_lag
     expost_trim = run_config.construction.expost_trim
 
@@ -77,9 +84,16 @@ def _override_construction(result: "AdaptResult", run_config: RunConfig) -> "Ada
                 TrimRule(method="none"), "DESIGN",
                 Evidence(note="auditor lattice: lab_trim ON (no ex-post trim)"),
             )
+        elif expost_trim_off is not None:
+            # lab_trim OFF with a per-anchor re-injected published trim (spec E).
+            # NEVER silently substitute 'none' (§3.3 cond. 2).
+            new_trim = Inherited(
+                expost_trim_off, "DESIGN",
+                Evidence(note="auditor lattice: lab_trim OFF -> re-injected "
+                              "published trim (expost_trim_off)"),
+            )
         else:
-            # lab_trim OFF: the paper's PUBLISHED trim — keep the base config's
-            # trim_rule unchanged. NEVER silently substitute 'none' (§3.3 cond. 2).
+            # lab_trim OFF, no re-injection: keep the base config's trim_rule.
             new_trim = cfg.trim_rule
         new_cfg = dataclasses.replace(cfg, signal_lag=new_lag, trim_rule=new_trim)
         new_legs.append(dataclasses.replace(lc, result=new_cfg))
@@ -106,18 +120,20 @@ def run_cell(
     *,
     safe_rate: pd.DataFrame | None = None,
     benchmark: pd.DataFrame | None = None,
+    expost_trim_off: "TrimRule | None" = None,
 ) -> CellReturns:
     """Execute one cell. `panel` is the ALREADY-view()'d engine-shape panel for
     `run_config.panel_view` (the lattice materialises + caches it by
     panel_view_hash). `on_set` is the set of runnable toggles held ON — the cell's
-    coordinate in the lattice."""
+    coordinate in the lattice. `expost_trim_off` is the per-anchor published trim
+    re-injected on the lab_trim OFF arm (spec E; None = the default behaviour)."""
     if getattr(strategy, "refused", False):
         raise CellRunError(
             f"strategy {getattr(strategy, 'strategy_label', '?')!r} is refused; "
             "the lattice must not be run for a refused strategy"
         )
 
-    overridden = _override_construction(strategy, run_config)
+    overridden = _override_construction(strategy, run_config, expost_trim_off)
     result = run_strategy(overridden, panel, safe_rate=safe_rate, benchmark=benchmark)
     if not isinstance(result, StrategyResult):
         raise CellRunError(
