@@ -136,10 +136,11 @@ def main():
         "arms": results,
         "gate": {"criterion": f"lead/lag error collapses correlation (< {collapse_max}) "
                               f"and the round-trip re-alignment restores it (>= {restore_min}), "
-                              f"sign-invariant (§8)",
+                              f"sign-invariant (§8); two-sided mechanism gate, hard under "
+                              f"D-Q1 bias_attribution",
                  "collapse": bool(all_collapse),
                  "restored": bool(all_restore),
-                 "pass": bool(all_collapse and all_restore)},
+                 "direction_pass": bool(all_collapse and all_restore)},
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     tmp = OUT.with_suffix(".json.tmp")

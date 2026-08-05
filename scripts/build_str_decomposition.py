@@ -257,10 +257,16 @@ def main():
             "arm_corr": 0.99, "lib_share": 0.83,
         },
         "gate": {
-            "criterion": "direction + proportion (§8), sign-aware, NOT signed level",
+            "criterion": "direction is the HARD gate (D-Q1: anchor_criterion = "
+                         "bias_attribution), sign-aware, NOT signed level. The LIB-share "
+                         "proportion band is a SOFT descriptive diagnostic, never gating.",
             "direction_reproduced": bool(direction_reproduced),
-            "lib_share_in_band": bool(lib_share_in_band),
-            "lib_share_band": [lib_share_lo, lib_share_hi],
+            "direction_pass": bool(direction_reproduced),
+            "magnitude_diagnostics": {
+                "status": "soft_diagnostic_descriptive_per_D-Q1",
+                "lib_share_in_band": bool(lib_share_in_band),
+                "lib_share_band": [lib_share_lo, lib_share_hi],
+            },
         },
         "note": "Leg = winners-losers deciles (gold construction, imported from "
                 "build_str.str_rulebook), so the §8 gate decomposes the SAME sort the "

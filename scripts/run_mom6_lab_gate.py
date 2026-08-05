@@ -179,13 +179,19 @@ def main():
         "convergence_confirmed": bool(convergence_confirmed),
         "targets_drr2026": {"ex_post": "≈ +0.30%/mo (biased)", "ex_ante": "≈ 0 (corrected)"},
         "gate": {
-            "criterion": "direction + collapse (§8), sign-aware; pass = direction_reproduced "
-                         "(the full ex-ante collapse is partial by expanding-window convergence)",
+            "criterion": "direction is the HARD gate (D-Q1: anchor_criterion = "
+                         "bias_attribution; direction_pass = direction_reproduced). "
+                         "Magnitude/band checks are SOFT descriptive diagnostics, "
+                         "never gating (the full ex-ante collapse is partial by "
+                         "expanding-window convergence).",
             "direction_reproduced": bool(direction_reproduced),
-            "ex_post_in_drr_band": bool(expost_matches_drr),
-            "ex_ante_closer_to_baseline_than_ex_post": bool(ea_closer_to_baseline),
-            "full_collapse_to_baseline": False,
-            "pass": bool(gate_pass),
+            "direction_pass": bool(gate_pass),
+            "magnitude_diagnostics": {
+                "status": "soft_diagnostic_descriptive_per_D-Q1",
+                "ex_post_in_drr_band": bool(expost_matches_drr),
+                "ex_ante_closer_to_baseline_than_ex_post": bool(ea_closer_to_baseline),
+                "full_collapse_to_baseline": False,
+            },
             "status": "PARTIAL — ex-post reproduces DRR's biased ≈+0.30%/mo and the "
                       "EP−EA gap is positive (look-ahead direction confirmed), but "
                       "ex-ante only partly collapses: an expanding past-only "
