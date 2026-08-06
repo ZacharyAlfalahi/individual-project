@@ -63,6 +63,11 @@ except ImportError:
         return it
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+# `python scripts/preprocess_trace.py` puts scripts/ (not the repo root) on
+# sys.path; the profile paths import agents.quant.library.cleaning_primitives,
+# so make the root importable once here rather than per-call-site fallbacks.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 RAW_FILE = REPO_ROOT / "data" / "trace_enhanced_repull.csv.gz"
 DEV_OUT = REPO_ROOT / "data" / "development" / "trace_clean_raw.parquet"
 HOLD_OUT = REPO_ROOT / "data" / "holdout" / "trace_clean_raw.parquet"
