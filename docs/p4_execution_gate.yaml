@@ -1,0 +1,12 @@
+# P4 execution gate (WS-D D6) — manual gate, off by default. The sweep runner refuses to
+# execute cells unless EVERY condition below holds; the flag is pinned to a
+# specific panel build via the recorded report hashes, not a bare boolean.
+# Protocol: docs/extensions/contracts/p4_optimisation_protocol.md (frozen);
+# execution is gated, protocol merge is not.
+panel_rebuild_complete: false        # flipped to true after the post-Phase-3 rebuild
+panel_report_sha256:                 # record the REBUILT panel report hashes before enabling
+  monthly_panel_total_return_report.json: null
+  monthly_panel_maximal_report.json: null
+scope_approved: false            # E4 — P4 scope approval
+signed_by: null
+date: null

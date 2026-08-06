@@ -39,6 +39,7 @@ from shared.stats.cpcv import (
     n_backtest_paths,
     partition_groups,
 )
+from shared.stats.pbo import PBOResult, pbo_cscv
 from shared.stats.posterior import (
     PosteriorSummary,
     PriorPosterior,
@@ -69,6 +70,9 @@ __all__ = [
     "cpcv_folds",
     "n_backtest_paths",
     "partition_groups",
+    # CSCV probability of backtest overfitting (net-new, pbo.py — WS-D/P4)
+    "PBOResult",
+    "pbo_cscv",
     # Scalar normal–normal posterior layer (net-new, posterior.py — WS-A/P3)
     "PosteriorSummary",
     "PriorPosterior",

@@ -962,6 +962,44 @@ shared_evaluation:
       key: median_split.median_baa_aaa_spread_pp   # = 0.935, computed on development only
 
 # ---------------------------------------------------------------------------
+# P4 optimisation-overfitting grids (extensions WS-D; EXPLORATORY).
+# APPROVED 2026-08-06 (E4), the D0 mom6 lag resolution having been recorded
+# in docs/extensions/contracts/p4_optimisation_protocol.md. Grids are stored
+# as OFFSETS/LEVELS only; centres are resolved AT RUNTIME from the signals:
+# block above (the machine-readable published values the oracle builders
+# consume) and cross-checked against the gold-typed fields that exist.
+# Optimised parameters are never promoted to recommendations.
+# ---------------------------------------------------------------------------
+p4_grids:
+  execution_gate_file: docs/p4_execution_gate.yaml
+  max_cells_per_module: 200
+  mom6:
+    formation_months: {offsets: [-3, 0, 3, 6]}   # centre signals.mom6.formation_months=6 -> {3,6,9,12}
+    # D0: the swept "skip" IS the engine signal_lag = the lib_gap bias toggle
+    # (uncorrected 0 / corrected 1). Lag 0 at the corrected corner would
+    # REINTRODUCE the enumerated look-ahead, so the grid sweeps the TOTAL
+    # signal-to-trade gap with the corrected floor: {1, 2}, centre = published
+    # skip = corrected value = 1.
+    total_signal_gap_months: {levels: [1, 2]}
+    min_obs_rule: equals_formation               # published: all formation months present
+  str:
+    # APPROVED 2026-08-06 (E4, over the refusal): str's published design has
+    # NO window parameter (the reversal signal is structurally the prior-month
+    # excess return). This dial is CONSTRUCTED — its sweep is a
+    # family-robustness measurement, categorically distinct from the mom6/drf
+    # published-vs-optimised premium and reported separately under that label.
+    # k-month trailing cumulative xret via the audited compute_mom6_signal.
+    reversal_window_months: {levels: [1, 2, 3]}  # centre = published 1-month prior return
+  drf:
+    window: {offsets: [-12, -6, 0, 6, 12]}       # centre signals.var_5pct.window=36 -> {24,30,36,42,48}
+    min_obs: {offsets: [-6, 0, 6]}               # centre signals.var_5pct.min_obs=24 -> {18,24,30}
+    # APPROVED 2026-08-06 (E4), decided by INVARIANCE: ceil(0.05 x 36) = 2, so
+    # the published centre is reproduced exactly while the swept object stays
+    # "estimation window for a fixed 5% VaR" rather than a window/quantile
+    # confound. fixed_2 remains the recorded alternative estimand.
+    rank_rule: ceil_5pct_of_window
+
+# ---------------------------------------------------------------------------
 # P1 codegen-ablation scoring + sandbox (extensions WS-C). APPROVED
 # 2026-08-06 (E3), conditional on the raw-metrics table in the report
 # template (condition met); mirrored in the frozen mini-contract
