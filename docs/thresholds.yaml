@@ -960,3 +960,25 @@ shared_evaluation:
     evaluation_median_source:
       file: docs/extension_1_config.yaml
       key: median_split.median_baa_aaa_spread_pp   # = 0.935, computed on development only
+
+# ---------------------------------------------------------------------------
+# P1 codegen-ablation scoring + sandbox (extensions WS-C). APPROVED
+# 2026-08-06 (E3), conditional on the raw-metrics table in the report
+# template (condition met); mirrored in the frozen mini-contract
+# docs/extensions/contracts/p1_codegen_ablation.md. Metric-specific ABSOLUTE
+# tolerances per evaluation contract §7.4 (no universal relative tolerance).
+# The RUNS_WRONG rate is a function of these thresholds, so the ablation
+# report always publishes the raw per-run similarity metrics table alongside
+# the verdicts (re-thresholdable by any reader).
+# ---------------------------------------------------------------------------
+p1_codegen:
+  scoring:
+    min_overlap_months: 24        # below -> RUNS_WRONG(insufficient_overlap)
+    correlation_min: 0.99
+    sign_agreement_min: 0.95
+    mean_abs_diff_max: 0.0005     # 5 bp/mo, absolute mean monthly difference
+    tracking_error_max: 0.001     # 10 bp/mo, sd of the monthly difference
+    exact_tier_max_abs_diff: 1.0e-8
+  sandbox:
+    wall_clock_seconds: 600
+    memory_mb: 8192
