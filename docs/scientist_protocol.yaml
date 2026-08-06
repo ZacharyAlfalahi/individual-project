@@ -232,3 +232,33 @@ amendments:                      # logged amendments appended here post-tag (see
       intervals) applies unchanged; extension_1's frozen development median classifies the
       2022-2025 months (the config's 2022-2024 references are updated to 2022-2025 as
       propagation of this ruling, not a methodology change).
+  - id: SC-SCI-11
+    date: 2026-08-05
+    status: APPROVED               # E2 approval 2026-08-06: sigmas approved as stated below;
+                                   # DRAFT->tagged transition recorded in the register; tag
+                                   # sc-sci-11-posterior-prereg applied at the WS-A commit —
+                                   # the door is provably shut before any credentialed run.
+    summary: >
+      POST-TAG AMENDMENT — Bayesian posterior PRESENTATION layer on holdout extension
+      alphas (extensions programme P3/WS-A; renumbered from the build spec's "SC-SCI-10", which
+      was consumed by the holdout-window decision). SCOPE: presentation only, over the
+      confirmatory outputs — BH-FDR remains the sole decision rule; no gate logic changes
+      (G0-G6 decisions are pinned unchanged by tests/unit/test_p3_gate_invariance.py). For each
+      extension evaluated on the holdout, P(alpha > 0 | data) is reported under three pre-stated
+      zero-centred normal priors on MONTHLY holdout alpha, beside the frequentist CI and paired
+      test, via shared/stats/posterior.py (the d=1 case of the Auditor's pre-registered normal
+      approximation; agreement pinned by unit test). PRIOR SET (sigmas APPROVED 2026-08-06, E2):
+      (i) wide sigma = 0.02 (weakly informative; matches auditor.bayes.prior_scale);
+      (ii) moderate sigma = COMMITTED FORMULA, not a number: the sample SD of the development-
+      window G3 extension alphas across the confirmatory proposal family, computed at the
+      G5->G6 boundary and logged BEFORE holdout access — development-only information, so
+      legitimately pre-holdout; FALLBACK sigma = 0.005 if the development generation stage has
+      not produced alphas when the posterior layer is exercised;
+      (iii) sceptical sigma = 0.0025. SENSITIVITY: all three reported, always — no single-prior
+      presentation. SE derivation: alpha/alpha_t from the G3 NW-HAC output
+      (shared.stats.alpha_se_from_t), or from the inference routing's CI under the same normal
+      approximation. HONESTY RULE (verbatim, binding): "The posterior is a re-expression of the
+      same data beside the frequentist interval — never independent corroboration."
+      INTERPRETATION LANGUAGE (pre-committed): posteriors are reported numerically; no
+      qualitative adjectives are attached to them in any report, and a mid-strength posterior
+      is never narrated as encouraging.

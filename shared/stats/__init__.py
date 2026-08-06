@@ -39,6 +39,12 @@ from shared.stats.cpcv import (
     n_backtest_paths,
     partition_groups,
 )
+from shared.stats.posterior import (
+    PosteriorSummary,
+    PriorPosterior,
+    alpha_se_from_t,
+    posterior_summary,
+)
 
 __all__ = [
     # FDR (fdr.py)
@@ -63,4 +69,9 @@ __all__ = [
     "cpcv_folds",
     "n_backtest_paths",
     "partition_groups",
+    # Scalar normal–normal posterior layer (net-new, posterior.py — WS-A/P3)
+    "PosteriorSummary",
+    "PriorPosterior",
+    "alpha_se_from_t",
+    "posterior_summary",
 ]

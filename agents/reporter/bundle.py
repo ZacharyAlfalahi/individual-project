@@ -208,23 +208,55 @@ def current_code_version() -> CodeVersion:
 
 
 @dataclass(frozen=True)
+class PriorPosteriorView:
+    """Reporter-owned posterior row (P3 / SC-SCI-11): one pre-stated prior's numeric
+    re-expression of the holdout alpha, produced upstream by `shared.stats.posterior_summary`.
+    Presentation only — BH-FDR remains the sole decision rule, and the posterior is a
+    re-expression of the same data beside the frequentist interval, never independent
+    corroboration. Rendered numerically; no qualitative adjectives attach to it."""
+
+    prior_label: str
+    prior_sigma: float
+    p_alpha_positive: float
+    post_mean: float
+    post_ci_low: float
+    post_ci_high: float
+
+    def to_dict(self) -> dict:
+        return {
+            "prior_label": self.prior_label,
+            "prior_sigma": self.prior_sigma,
+            "p_alpha_positive": self.p_alpha_positive,
+            "post_mean": self.post_mean,
+            "post_ci_low": self.post_ci_low,
+            "post_ci_high": self.post_ci_high,
+        }
+
+
+@dataclass(frozen=True)
 class HoldoutView:
     """Reporter-owned holdout consumer type (C5). No `HoldoutEvaluation` exists upstream, so
     this carries the fields the note renders — a sign, a Sharpe CI and a paired difference —
-    assembled in fixtures from `Measurements` (extension path is fixture-only, D1)."""
+    assembled in fixtures from `Measurements` (extension path is fixture-only, D1).
+    `posteriors` (SC-SCI-11, optional) carries the pre-stated-prior posterior rows; the
+    serialised key is emitted only when present so pre-amendment artefact hashes are unchanged."""
 
     sharpe_sign: int
     sharpe_ci_low: float
     sharpe_ci_high: float
     paired_difference: float | None = None
+    posteriors: tuple[PriorPosteriorView, ...] | None = None
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "sharpe_sign": self.sharpe_sign,
             "sharpe_ci_low": self.sharpe_ci_low,
             "sharpe_ci_high": self.sharpe_ci_high,
             "paired_difference": self.paired_difference,
         }
+        if self.posteriors is not None:
+            out["posteriors"] = [p.to_dict() for p in self.posteriors]
+        return out
 
 
 @dataclass(frozen=True)

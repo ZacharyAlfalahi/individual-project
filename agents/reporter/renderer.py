@@ -601,6 +601,46 @@ def render_holdout(bundle: ReportBundle) -> RenderedFragment:
             lines.append(
                 f"- `{pid}`: paired difference vs the corrected parent is {pd_tok}."
             )
+        if pr.holdout.posteriors:
+            # SC-SCI-11 posterior presentation layer: numeric only, every token
+            # claim-bound; the honesty rule is rendered verbatim beside the table.
+            lines.append(
+                f"- `{pid}`: posterior re-expression under the pre-stated priors of "
+                "`SC-SCI-11` (presentation only; BH-FDR remains the sole decision rule). "
+                "The posterior is a re-expression of the same data beside the frequentist "
+                "interval — never independent corroboration."
+            )
+            lines.append("")
+            lines.append(
+                "  | prior | prior sigma | probability of positive alpha "
+                "| posterior mean | central credible interval |"
+            )
+            lines.append("  |---|---|---|---|---|")
+            for j, post in enumerate(pr.holdout.posteriors):
+                cells = []
+                for suffix, pointer_leaf, formatter in (
+                    ("prior_sigma", "prior_sigma", "4dp"),
+                    ("p_positive", "p_alpha_positive", "2dp"),
+                    ("post_mean", "post_mean", "4dp"),
+                    ("ci_low", "post_ci_low", "4dp"),
+                    ("ci_high", "post_ci_high", "4dp"),
+                ):
+                    tok, rec = emit_from_mapping(
+                        claim_id=f"{pid}.holdout.posterior.{post.prior_label}.{suffix}",
+                        slot_id=f"holdout.posterior.{suffix}",
+                        source_artifact=ArtefactType.HOLDOUT_VIEW,
+                        pointer=f"/posteriors/{j}/{pointer_leaf}",
+                        formatter_id=formatter,
+                        unit=Unit.DECIMAL,
+                        mapping=hv,
+                        sha256=sha,
+                    )
+                    claims.append(rec)
+                    cells.append(tok)
+                lines.append(
+                    f"  | {post.prior_label} | {cells[0]} | {cells[1]} | {cells[2]} "
+                    f"| [{cells[3]}, {cells[4]}] |"
+                )
     lines.append("")
     return RenderedFragment(text="\n".join(lines), claims=tuple(claims))
 
