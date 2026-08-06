@@ -1,7 +1,8 @@
 """G6 — holdout (spec §9; F8 amendment). Single-access, ARTEFACT-gated — NOT a self-opening date.
 The bypass requires ALL of: the `scientist-prereg` tag exists, the frozen holdout-build script's
 hash matches its manifest, an explicit env var, and a single-access assertion; every access is
-logged. The 2022-2024 panel build IS the sanctioned single access (READ NEVER before then). A bare
+logged. The 2022-2025 panel build (48 months per SC-SCI-10; originally 2022-2024 at the tag) IS
+the sanctioned single access (READ NEVER before then). A bare
 date never opens the gate — a date opens itself regardless of tag / greenness / real run.
 HOLDOUT_VIOLATION on any breach.
 """

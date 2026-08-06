@@ -55,16 +55,20 @@ windows:
       would make T1/T2 candidates' first valid threshold ~2007-07 (T ~ 174) and the MDE bars
       would move by sqrt(209/174) ~ 1.10. This uses pre-sample macro data (1997-2001, outside the
       2002-2021 development window) PURELY to warm a threshold; it is NOT a holdout violation (the
-      holdout is forward, 2022-2024). Recorded here + in docs/data/registers/scope_changes.md so
-      an auditor reads it in a spec, not discovers it in a script.
+      holdout is forward, 2022-2025 per SC-SCI-10). Recorded here + in
+      docs/data/registers/scope_changes.md so an auditor reads it in a spec, not discovers it in
+      a script.
   evaluation_holdout:
+    # Amended per SC-SCI-10 (2026-08-05); originally {end: 2024-12, n_months: 36} at the tag,
+    # with a note forbidding "2022-2025" for this window — that instruction is superseded by
+    # the ruling below.
     start: 2022-01
-    end: 2024-12
-    n_months: 36
+    end: 2025-12
+    n_months: 48
     note: >
-      The locked out-of-sample split (the evaluation window). DISTINCT from the data-ingest
-      partition boundary holdout_end_year=2025 in thresholds.yaml: the /data/holdout/ PARTITION
-      runs to 2025, but the EVALUATION window is 2022-2024. Never write "2022-2025" for this.
+      The locked out-of-sample split (the evaluation window), ruled 2022-2025 (48 months) by
+      SC-SCI-10 — the FULL /data/holdout/ partition, so the evaluation window now COINCIDES
+      with the data-ingest partition boundary holdout_end_year=2025 in thresholds.yaml.
 
 entry:
   condition: failed_at_least_one_auditor_check
