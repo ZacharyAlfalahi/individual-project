@@ -955,7 +955,7 @@ shared_evaluation:
     macro_data_contract_id: baa_aaa_v1
     # Minimum months a state must INDEPENDENTLY clear for the SUPPLEMENTARY
     # conditional-alpha field to be populated (D-E16). 60 = the spanning NW-HAC floor;
-    # on development both states clear it, on the 36-48mo holdout neither does.
+    # on development both states clear it, on the 36-45mo holdout neither does.
     min_obs_conditional: 60
     evaluation_median_source:
       file: docs/extension_1_config.yaml
