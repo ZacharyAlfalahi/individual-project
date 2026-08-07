@@ -92,7 +92,7 @@ def evaluate(
     Configs default to the pre-registered fail-loud loaders when omitted.
 
     `window=HOLDOUT` (A7): the spanning regression returns a typed development-scope
-    refusal (its 60-month floor cannot be met on the 48-month holdout by construction),
+    refusal (its 60-month floor cannot be met on the 45-month holdout by construction),
     and the regime result carries `short_sample` when a state is below its floor.
     """
     crowding_config = crowding_config or load_crowding_config()

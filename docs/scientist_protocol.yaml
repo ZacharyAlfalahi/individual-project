@@ -274,9 +274,11 @@ amendments:                      # logged amendments appended here post-tag (see
       is never narrated as encouraging.
   - id: SC-SCI-12
     date: 2026-08-07
-    status: APPROVED               # Ruling 2026-08-07 ("45-month holdout"), CONDITIONAL on the
-                                   # completeness-evidence clause below. Ruled before any holdout
-                                   # read — no holdout artefact, listing, or metadata query accessed.
+    status: APPROVED               # Ruling 2026-08-07 ("45-month holdout"). CONDITION MET: the
+                                   # frontier-completeness evidence is cited in citations_verified.md
+                                   # §3 (2026-08-07), residual = raw WRDS query log, PI-side. Ruled
+                                   # before any holdout read — no holdout artefact/listing/metadata
+                                   # query accessed.
     summary: >
       POST-TAG SUPERSESSION — SC-SCI-10 is superseded; the holdout evaluation window is
       2022-01..2025-09 (45 months), the complete-months span of the ingest partition.

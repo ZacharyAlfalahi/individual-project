@@ -170,7 +170,7 @@ def spanning_regression(
     degenerate cases return a typed refusal, not NaN or an exception (D-E3).
 
     `window=HOLDOUT` refuses BEFORE loading factors or fitting (A7): the floor was
-    calibrated for the development window, and the holdout (48 months, SC-SCI-10) is
+    calibrated for the development window, and the holdout (45 months, SC-SCI-12) is
     below it by construction, so a holdout HAC inference is never computed.
     """
     if not isinstance(candidate_returns, pd.Series):

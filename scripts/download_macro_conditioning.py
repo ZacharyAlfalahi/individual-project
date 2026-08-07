@@ -10,8 +10,8 @@ WARMING (F6). Full history is kept below the dev-boundary cap: VIX from 1990, GS
 GS10 from 1953 — all reach >= 1997-07, i.e. >= 60 months before the 2002-07 panel start, so the
 templates' expanding_window_past_only(min 60) threshold is fully warm at the 2004-08 inference
 start and effective T stays 209 for every template. This retains pre-sample macro data
-(1997-2001) PURELY to warm a threshold — not a holdout violation (holdout is forward, 2022-2025
-per SC-SCI-10; originally 2022-2024 at the tag);
+(1997-2001) PURELY to warm a threshold — not a holdout violation (holdout is forward,
+2022-01..2025-09 per SC-SCI-12, correcting SC-SCI-10; originally 2022-2024 at the tag);
 see docs/data/registers/scope_changes.md F6. The upper cap is the dev boundary (no holdout-era
 rows in a development artefact); the holdout macro slice is built in the one-shot holdout frozen inventory.
 

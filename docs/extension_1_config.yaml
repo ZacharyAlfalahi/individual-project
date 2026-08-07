@@ -3,7 +3,7 @@
 # extension_1 — the pre-registered baseline arm: BAA-AAA credit-cycle regime conditioning for
 # the `binary_above_historical_median` template. The committed median splits high- vs low-spread
 # months. Computed on DEVELOPMENT ONLY (inviolable data rule) and committed before the holdout
-# opens; the SAME fixed median is applied on the 2022-2025 holdout (so there is no holdout
+# opens; the SAME fixed median is applied on the 2022-01..2025-09 holdout window (45mo, SC-SCI-12) (so there is no holdout
 # look-ahead — the split threshold is frozen from development).
 #
 # STATUS: DRAFT — not final. The decision flagged below (which window defines the
@@ -30,6 +30,6 @@ median_split:
     window: {start: 2004-08, end: 2021-12, n_months: 209}
     median_baa_aaa_spread_pp: 0.920
 
-# Holdout: the 2022-2025 BAA-AAA slice needed to classify holdout months is NOT stored under
+# Holdout: the 2022-01..2025-09 BAA-AAA slice (45 holdout months, SC-SCI-12) needed to classify them is NOT stored under
 # data/development/ — it is built inside the one-shot holdout frozen holdout inventory using this SAME frozen
 # 0.935 threshold. The development artefact above is capped at 2021-12 (no holdout-era rows).

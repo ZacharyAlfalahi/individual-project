@@ -77,7 +77,7 @@ class SampleWindow(str, Enum):
     """Which evaluation sample a result was computed on (amendment A7).
 
     The pre-registered 60-month floors were calibrated for the ~240-month development
-    window; the holdout window (2022–2025, 48 months per SC-SCI-10) is shorter than
+    window; the holdout window (2022-01..2025-09, 45 months per SC-SCI-12) is shorter than
     every floor BY CONSTRUCTION of the walk-forward split. A7 scopes by claim type:
     floor-invoking inference (the spanning/crowding regression, the conditional-alpha
     supplementary) is refused on HOLDOUT with DEVELOPMENT_SCOPE_DIAGNOSTIC; mean/sign
