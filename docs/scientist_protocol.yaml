@@ -55,20 +55,25 @@ windows:
       would make T1/T2 candidates' first valid threshold ~2007-07 (T ~ 174) and the MDE bars
       would move by sqrt(209/174) ~ 1.10. This uses pre-sample macro data (1997-2001, outside the
       2002-2021 development window) PURELY to warm a threshold; it is NOT a holdout violation (the
-      holdout is forward, 2022-2025 per SC-SCI-10). Recorded here + in
+      holdout is forward, 2022-01..2025-09 per SC-SCI-12, correcting SC-SCI-10). Recorded here + in
       docs/data/registers/scope_changes.md so an auditor reads it in a spec, not discovers it in
       a script.
   evaluation_holdout:
-    # Amended per SC-SCI-10 (2026-08-05); originally {end: 2024-12, n_months: 36} at the tag,
-    # with a note forbidding "2022-2025" for this window — that instruction is superseded by
-    # the ruling below.
+    # SC-SCI-12 (2026-08-07): {end: 2025-09, n_months: 45} — the TRUE full /data/holdout/
+    # partition. The pinned 2026-06-09 WRDS re-pull ends 2025-09-30 (clean month-end), so the
+    # partition is 45 complete months, not 48. Corrects SC-SCI-10 (2026-08-05), which set
+    # {end: 2025-12, n_months: 48} assuming a 2025-12 partition end (Oct-Dec 2025 do not exist).
+    # Tag baseline was {end: 2024-12, n_months: 36}; the tag-era "forbid 2022-2025 for this
+    # window" note stays superseded.
     start: 2022-01
-    end: 2025-12
-    n_months: 48
+    end: 2025-09
+    n_months: 45
     note: >
-      The locked out-of-sample split (the evaluation window), ruled 2022-2025 (48 months) by
-      SC-SCI-10 — the FULL /data/holdout/ partition, so the evaluation window now COINCIDES
-      with the data-ingest partition boundary holdout_end_year=2025 in thresholds.yaml.
+      The locked out-of-sample split (the evaluation window) = the FULL /data/holdout/ partition
+      = 45 complete months, 2022-01..2025-09, ruled by SC-SCI-12 (correcting SC-SCI-10's
+      48 / end-2025-12, which assumed the partition ran to 2025-12). This is DISTINCT from
+      holdout_end_year=2025 in thresholds.yaml, which is the ingest raise-CEILING (an explicit
+      upper bound, not the data end) — the window ends 2025-09 and does NOT coincide with it.
 
 entry:
   condition: failed_at_least_one_auditor_check
@@ -262,3 +267,34 @@ amendments:                      # logged amendments appended here post-tag (see
       INTERPRETATION LANGUAGE (pre-committed): posteriors are reported numerically; no
       qualitative adjectives are attached to them in any report, and a mid-strength posterior
       is never narrated as encouraging.
+  - id: SC-SCI-12
+    date: 2026-08-07
+    status: RULED                  # ruling; window ratification (FINAL-log O6) remains
+                                   # review-gated. Ruled from write-time ingest records only,
+                                   # before any /data/holdout/ read.
+    summary: >
+      POST-TAG AMENDMENT — evaluation window CORRECTED to 45 months (2022-01..2025-09),
+      superseding SC-SCI-10. The pinned 2026-06-09 WRDS re-pull terminates 2025-09-30 (confirmed
+      TRACE Enhanced max date; the fl_d21_gate_results.md pinned-input "~2025-09" record is
+      authoritative over the stale "~2025-06" profiles at trace_preprocessing.md:45 and
+      the data-sourcing brief §15 — the end-date E-item, resolved). So the FULL
+      /data/holdout/ partition is 45 COMPLETE months, NOT the 48 (end 2025-12) SC-SCI-10 asserted:
+      Oct-Dec 2025 do not exist in the pull, so SC-SCI-10's "48 months / coincides with the
+      partition boundary" was factually false. 2025-09-30 is a clean month-end, so the terminal
+      month is whole and the 45-count is verifiable from the write-time max date with NO holdout
+      read. This CORRECTS SC-SCI-10's arithmetic while keeping its intent — evaluate on the full
+      partition, discarding no complete OOS month — and is NOT a revert to the tag's 36.
+      Consequences: OOS T corrected 36 -> 45 (SC-SCI-10's "36 -> 48" is void); the 60-month
+      support floors still bind (45 < 60), so amendment A7 applies UNCHANGED, exactly as it did
+      under SC-SCI-10; extension_1's frozen development median classifies the 2022-01..2025-09
+      months. thresholds.yaml holdout_end_year=2025 is UNCHANGED and untouched by this ruling: it
+      is the ingest raise-CEILING (an explicit upper bound; preprocess_trace.py raises beyond it),
+      distinct from the evaluation window, which ends 2025-09 and does not coincide with the 2025
+      ceiling. Numbered SC-SCI-12 because SC-SCI-11 is the Bayesian posterior layer (tag
+      sc-sci-11-posterior-prereg). Config updated by this entry: the evaluation_holdout block in
+      this file and the tracked mirror prereg/scientist_prereg.yaml, both to {end: 2025-09,
+      n_months: 45}; the SC-SCI-3 forward-holdout cross-references (this file + scope_changes.md)
+      repointed to SC-SCI-12. Deferred, flagged not edited (outside this config pass): the
+      ARCHITECTURE.md RQ4 headline ("48 months"), the trace_preprocessing.md:19 partition-vs-window
+      wording and its :45 stale end-date, and the SC-SCI-10 propagation set enumerated in the
+      Gate-0 report.

@@ -23,9 +23,11 @@ status: PREREGISTERED
 windows:
   panel_development:   {start: 2002-07, end: 2021-12, n_months: 234}
   primary_inference:   {start: 2004-08, end: 2021-12, n_months: 209}   # T (DRF/CRF-bound)
-  # Amended per SC-SCI-10 (2026-08-05): ruled 2022-2025 (48 months, the full /data/holdout/
-  # partition); originally {end: 2024-12, n_months: 36} at the tag.
-  evaluation_holdout:  {start: 2022-01, end: 2025-12, n_months: 48}
+  # SC-SCI-12 (2026-08-07): corrected to {end: 2025-09, n_months: 45} — the TRUE full
+  # /data/holdout/ partition (2026-06-09 re-pull ends 2025-09-30; Oct-Dec 2025 do not exist).
+  # Supersedes SC-SCI-10 (2026-08-05)'s {end: 2025-12, n_months: 48}; tag baseline {end: 2024-12,
+  # n_months: 36}. holdout_end_year=2025 (thresholds.yaml) is the ingest ceiling, not the window.
+  evaluation_holdout:  {start: 2022-01, end: 2025-09, n_months: 45}
 
 entry_rule:
   # Stated once in the auditor block, referenced (R3). Resolved values recorded for the record.
