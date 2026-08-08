@@ -284,11 +284,13 @@ def test_meas_err_off_family_axis(monkeypatch):
     # Default 'raw' (the default behaviour) — existing configs byte-identical.
     assert build_run_config(all_off).panel_view.price_family == "raw"
 
-    # The per-anchor mapping is GUARDED (PROFILES_BUILT=False) -> everyone 'raw'.
-    assert load_anchor_meas_err_off_family("drf") == "raw"
-    assert load_anchor_meas_err_off_family("mom6") == "raw"
-    # Once the profile columns exist, the mapping activates.
-    monkeypatch.setattr(run_auditor, "PROFILES_BUILT", True)
-    assert run_auditor.load_anchor_meas_err_off_family("drf") == "bbw_2019"
-    assert run_auditor.load_anchor_meas_err_off_family("crf") == "bbw_2019"
-    assert run_auditor.load_anchor_meas_err_off_family("mom6") == "jostova_2013"
+    # The per-anchor mapping is now ACTIVE (PROFILES_BUILT flipped True 2026-08-08,
+    # profiles built): meas_err OFF selects each anchor's baseline profile.
+    assert load_anchor_meas_err_off_family("drf") == "bbw_2019"
+    assert load_anchor_meas_err_off_family("crf") == "bbw_2019"
+    assert load_anchor_meas_err_off_family("mom6") == "jostova_2013"
+    # The guard MECHANISM still holds: with PROFILES_BUILT off, everyone falls
+    # back to 'raw' (so nothing selects a missing family before the build).
+    monkeypatch.setattr(run_auditor, "PROFILES_BUILT", False)
+    assert run_auditor.load_anchor_meas_err_off_family("drf") == "raw"
+    assert run_auditor.load_anchor_meas_err_off_family("mom6") == "raw"
