@@ -56,6 +56,14 @@ def load_dev_signals(dev: Path = DEV) -> pd.DataFrame:
             df = df.rename(columns=_GAMMA_RENAME)
         merged = df if merged is None else merged.merge(df, on=["cusip", "date"], how="outer")
     assert merged is not None
+    # Per-paper baseline profile signal variants (FL-D21a), if built: the 8
+    # `<signal>_<pid>` columns join the dual-family frame so view()'s (now
+    # family-general) A9 resolver can select a profile OFF-arm family. ADDITIVE —
+    # absent file => raw/corr behaviour is byte-identical.
+    prof = dev / "signals" / "profiles_signals.parquet"
+    if prof.exists():
+        pdf = pd.read_parquet(prof)
+        merged = merged.merge(pdf, on=["cusip", "date"], how="outer")
     return merged
 
 
@@ -65,8 +73,18 @@ def load_registry(path: Path = REGISTRY) -> dict:
 
 
 def load_dev_inputs() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """(maximal_panel, merged_signals, registry) for the dev window. Holdout is never read."""
+    """(maximal_panel, merged_signals, registry) for the dev window. Holdout is never read.
+
+    The per-paper baseline profile family columns (FL-D21a), if built, are
+    LEFT-JOINED onto the maximal panel here so it carries `*_bbw_2019` /
+    `*_jostova_2013` alongside `*_raw` / `*_corr`. ADDITIVE — the committed
+    `monthly_panel_maximal.parquet` file is never modified, and an absent
+    profiles file leaves the panel byte-identical (raw/corr behaviour unchanged)."""
     maximal = pd.read_parquet(MAXIMAL_PANEL)
+    prof = DEV / "monthly_panel_profiles.parquet"
+    if prof.exists():
+        pdf = pd.read_parquet(prof)
+        maximal = maximal.merge(pdf, on=["cusip", "date"], how="left")
     return maximal, load_dev_signals(), load_registry()
 
 

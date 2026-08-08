@@ -198,34 +198,46 @@ def _apply_stale_mask(panel: pd.DataFrame, theta_days: int) -> pd.DataFrame:
 def _resolve_signals_family(signals: pd.DataFrame, family: str) -> pd.DataFrame:
     """Select the requested family's columns from a signals DataFrame.
 
-    For each "base name" in signals (e.g. `var_5pct`):
-      - If `<base>_<family>` is present, include and rename to `<base>`.
-      - Else if `<base>_<other_family>` is present (chimera case), RAISE
-        per A9.
-    Columns without a family suffix and the (cusip, date) keys pass through.
+    Generalised over every family in run_config.PRICE_FAMILIES (raw, corr, and
+    the per-paper baseline profiles bbw_2019 / jostova_2013 — spec v4 D1). For
+    each "base name" (e.g. `var_5pct`):
+      - `<base>_<family>` present → include and rename to `<base>`.
+      - Any `<base>_<other_family>` present but `<base>_<family>` missing →
+        RAISE per A9 (sorting a `family`-panel on another family's signal is a
+        chimera at no lattice point). A wrong-family column is NEVER passed
+        through (that would silently contaminate the view).
+    Columns matching no known family suffix and the (cusip, date) keys pass
+    through. Backward-compatible with raw/corr (the only families present in the
+    raw/corr signal files).
     """
-    other = "corr" if family == "raw" else "raw"
-    suffix_self = f"_{family}"
-    suffix_other = f"_{other}"
+    from .run_config import PRICE_FAMILIES
+
+    def _family_of(col: str) -> str | None:
+        # Longest matching suffix wins (families are distinct, non-overlapping,
+        # but match by explicit `_<fam>` so e.g. a bare base never matches).
+        for fam in PRICE_FAMILIES:
+            if col.endswith(f"_{fam}"):
+                return fam
+        return None
 
     bases: dict[str, dict[str, str]] = {}  # base_name -> {family: column_name}
     pass_through: list[str] = []
     for col in signals.columns:
         if col in ("cusip", "date"):
             pass_through.append(col)
-        elif col.endswith(suffix_self):
-            base = col[: -len(suffix_self)]
-            bases.setdefault(base, {})[family] = col
-        elif col.endswith(suffix_other):
-            base = col[: -len(suffix_other)]
-            bases.setdefault(base, {})[other] = col
+            continue
+        fam = _family_of(col)
+        if fam is None:
+            pass_through.append(col)          # a genuinely family-agnostic column
         else:
-            pass_through.append(col)
+            base = col[: -len(f"_{fam}")]
+            bases.setdefault(base, {})[fam] = col
 
-    # A9 enforcement: any base where the wrong family is present BUT the
-    # right family is missing is a chimeric request.
+    # A9 enforcement: a base carrying ANY other family but not the requested one
+    # is a chimeric request.
     for base, fams in bases.items():
-        if family not in fams and other in fams:
+        if family not in fams and fams:
+            other = sorted(fams)[0]
             raise ValueError(
                 f"A9: signal '{base}_{other}' provided but '{base}_{family}' "
                 f"missing; cannot resolve for price_family={family!r}. Sorting "

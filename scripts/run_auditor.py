@@ -166,7 +166,11 @@ def load_anchor_expost_trim_off(anchor_id: str, thresholds_path: str | Path | No
 # maximal panel (Part D pipeline execution); until then every anchor uses 'raw'
 # (the default behaviour) so no run selects a family the panel lacks. Flip
 # PROFILES_BUILT when build_monthly_panel emits *_bbw_2019 / *_jostova_2013 columns.
-PROFILES_BUILT = False
+# Flipped True 2026-08-08: the per-paper baseline profile family columns
+# (monthly_panel_profiles.parquet) + signal variants (profiles_signals.parquet)
+# are built, and load_dev_inputs / load_dev_signals join them, so meas_err OFF
+# selects the profile family (drf/crf->bbw_2019, mom6->jostova_2013).
+PROFILES_BUILT = True
 _ANCHOR_OFF_PROFILE = {"drf": "bbw_2019", "crf": "bbw_2019", "mom6": "jostova_2013"}
 
 
