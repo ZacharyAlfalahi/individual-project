@@ -76,6 +76,31 @@ OUTPUT_SCHEMA = pa.schema([
     pa.field("max_price",     pa.float64()),
 ])
 
+# As-published baseline profiles (FL-D21a): the meas_err OFF families. They flow
+# through the IDENTICAL aggregation path as raw/corr, so the shared
+# monthly_panel.min_vol_qt = $100k universe floor applies on every arm (the
+# profile↔universe boundary decision, 2026-08-08 — see fl_d21_gate_results.md).
+# `--profile <id> --dedup on|off` (or `--variant <v>`) resolves the family key.
+PROFILE_IDS = ("bbw_2019", "jostova_2013")
+
+
+def profile_family_paths(profile_id: str, *, dedup: str | None = None,
+                         variant: str | None = None) -> dict:
+    """FAMILY_PATHS-shaped dict for a profile panel. The clean transaction input
+    is the preprocess_trace profile output; the daily output mirrors its stem."""
+    if variant is not None:
+        stem = f"{profile_id}__var_{variant}"
+    else:
+        stem = f"{profile_id}__dedup_{dedup}"
+    dev, hold = REPO_ROOT / "data" / "development", REPO_ROOT / "data" / "holdout"
+    return {
+        "input":  dev / f"trace_clean_{stem}.parquet",
+        "output": dev / f"trace_daily_{stem}.parquet",
+        "holdout_input":  hold / f"trace_clean_{stem}.parquet",
+        "holdout_output": hold / f"trace_daily_{stem}.parquet",
+        "report": dev / f"daily_panel_{stem}_report.json",
+    }
+
 
 def load_config() -> dict:
     """Reuses monthly_panel filters (sub_prdct, min_vol_qt) at the daily stage
@@ -203,9 +228,16 @@ def write_report(family: str, dev_counts: dict, hold_counts: "dict | None",
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--family", choices=["raw", "corr"], required=True,
-        help="Column family to build daily layer for.",
+        "--family", choices=["raw", "corr"], default=None,
+        help="Column family to build daily layer for (raw/corr).",
     )
+    parser.add_argument(
+        "--profile", choices=PROFILE_IDS, default=None,
+        help="As-published baseline profile (bbw_2019/jostova_2013); requires "
+             "--dedup or --variant.",
+    )
+    parser.add_argument("--dedup", choices=["on", "off"], default=None)
+    parser.add_argument("--variant", default=None)
     parser.add_argument(
         "--holdout", action="store_true",
         help="Also process the holdout partition. NEVER pass during "
@@ -214,10 +246,25 @@ def main():
     )
     args = parser.parse_args()
 
-    paths = FAMILY_PATHS[args.family]
+    if args.profile is not None:
+        if (args.dedup is None) == (args.variant is None):
+            print("ERROR: --profile needs exactly one of --dedup / --variant",
+                  file=sys.stderr)
+            sys.exit(1)
+        family = (f"{args.profile}__var_{args.variant}" if args.variant
+                  else f"{args.profile}__dedup_{args.dedup}")
+        paths = profile_family_paths(args.profile, dedup=args.dedup, variant=args.variant)
+    elif args.family is not None:
+        family = args.family
+        paths = FAMILY_PATHS[args.family]
+    else:
+        print("ERROR: pass --family raw|corr OR --profile <id> --dedup/--variant",
+              file=sys.stderr)
+        sys.exit(1)
+
     if not paths["input"].exists():
         print(f"ERROR: Required input not found: {paths['input']}", file=sys.stderr)
-        if args.family == "raw":
+        if family == "raw" or args.profile is not None:
             print("Run scripts/preprocess_trace.py first.", file=sys.stderr)
         else:
             print("Run preprocess_trace.py → apply_decimal_shift.py → bounce_back_filter.py first.",
@@ -225,7 +272,7 @@ def main():
         sys.exit(1)
 
     cfg = load_config()
-    print(f"Family: {args.family}")
+    print(f"Family: {family}")
     print(f"  sub_prdct_keep={cfg['sub_prdct_keep']}, min_vol_qt={cfg['min_vol_qt']:,}")
 
     print("Processing development partition...")
@@ -239,7 +286,7 @@ def main():
         print("Holdout partition NOT processed (development mode; "
               "pass --holdout for the post-freeze run).")
 
-    write_report(args.family, dev_counts, hold_counts, cfg, paths)
+    write_report(family, dev_counts, hold_counts, cfg, paths)
 
     print("\nDone.")
     print(f"  Dev: {dev_counts['rows']:,} rows → {paths['output']}")
