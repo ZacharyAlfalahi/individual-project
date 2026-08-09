@@ -161,6 +161,11 @@ bias_toggles:
   # run_accrual_validation.py, which winsorise). The lattice estimand is
   # `expost_return_filter` — a registered operationalisation of LAB, NOT a pure
   # timing estimate (spec E2). loc=right is one-sided (Jostova).
+  # NAMING CLOSURE (2026-08-08): `lab_trim` is retained as the toggle's registered id AND display
+  # name; the `expost_return_filter` rename (D18) is CLOSED-REJECTED. D18's SUBSTANCE stands — the
+  # registered look-ahead operationalisation, the jostova_faithful / drr_triangulation modes, and the
+  # EP−EA paired reporting are unchanged; only the rename is withdrawn. (`lab_filter` here is the
+  # distinct config-block key for the trim's numeric params — a different name, not renamed.)
   lab_filter:
     level: 99.5
     loc: right

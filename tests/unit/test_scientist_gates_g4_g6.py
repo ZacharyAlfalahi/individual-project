@@ -128,3 +128,41 @@ def test_g6_prereg_tag_is_detected():
     # The scientist-prereg tag was applied earlier in the build; the checker finds it.
     assert H.prereg_tag_present("scientist-prereg") is True
     assert H.prereg_tag_present("no-such-tag-xyz") is False
+
+
+# ---- SC-SCI-12 evaluation-window assertion (two-source agreement) --------------------------
+
+def _write_protocol(tmp_path, start, end, n_months, *, with_block=True):
+    if with_block:
+        body = (f"windows:\n  evaluation_holdout:\n    start: {start}\n"
+                f"    end: {end}\n    n_months: {n_months}\n")
+    else:
+        body = "windows:\n  something_else: 1\n"
+    p = tmp_path / "scientist_protocol.yaml"
+    p.write_text(body)
+    return p
+
+
+def test_window_assertion_agrees_with_live_protocol():
+    # The committed protocol and the in-code SC-SCI-12 constant agree -> returns the window.
+    assert H.assert_evaluation_window() == ("2022-01", "2025-09", 45)
+
+
+def test_window_assertion_raises_on_doctored_protocol(tmp_path):
+    # Protocol drifted to the superseded SC-SCI-10 window; the code constant catches it.
+    p = _write_protocol(tmp_path, "2022-01", "2025-12", 48)
+    with pytest.raises(H.WindowAssertionError):
+        H.assert_evaluation_window(protocol_path=p)
+
+
+def test_window_assertion_raises_on_doctored_constant():
+    # In-code constant drifted (e.g. a stale 36-month tag window); the protocol catches it.
+    with pytest.raises(H.WindowAssertionError):
+        H.assert_evaluation_window(expected={"start": "2022-01", "end": "2024-12", "n_months": 36})
+
+
+def test_window_assertion_raises_on_missing_block(tmp_path):
+    # A malformed protocol (no evaluation_holdout block) fails loud, never defaults.
+    p = _write_protocol(tmp_path, None, None, None, with_block=False)
+    with pytest.raises(H.WindowAssertionError):
+        H.assert_evaluation_window(protocol_path=p)

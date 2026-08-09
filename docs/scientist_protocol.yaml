@@ -61,8 +61,9 @@ windows:
   evaluation_holdout:
     # History: {2024-12, 36} at tag scientist-prereg (with a note forbidding "2022-2025" for this
     # window); {2025-12, 48} by SC-SCI-10 (2026-08-05) — premise FALSE, the pull terminates
-    # 2025-09-30; {2025-09, 45} by SC-SCI-12 (2026-08-07), CONDITIONAL on the frontier-completeness
-    # citation, with the tagged 36-month sub-window always reported as sensitivity (spec SC-SCI-13).
+    # 2025-09-30; {2025-09, 45} by SC-SCI-12 (2026-08-07) — the frontier-completeness condition is now
+    # MET (WRDS saved-query date parameters PI-verified 2026-08-08), so the window is settled, with the
+    # tagged 36-month sub-window always reported as sensitivity (spec SC-SCI-13).
     # 45 is a third option adopted after the 2026-08-06 completeness gate resolved to "partial" —
     # see SC-SCI-12 for the disclosure. holdout_end_year=2025 (thresholds.yaml) = year-grain ingest
     # ceiling, unchanged and distinct from this month-grain window.
@@ -72,9 +73,10 @@ windows:
     note: >
       The locked out-of-sample split (the evaluation window) is 2022-01..2025-09 (45 months): the
       complete-months span of the ingest partition, whose pull frontier is 2025-09-30. Ruled by
-      SC-SCI-12, superseding SC-SCI-10's false 48 / end-2025-12. Adoption is CONDITIONAL per
-      SC-SCI-12 — the frontier-completeness evidence is cited before the holdout opens, else the
-      tagged 2022-2024 window stands — and the tagged 2022-2024 sub-window is always reported
+      SC-SCI-12, superseding SC-SCI-10's false 48 / end-2025-12. The frontier-completeness condition
+      SC-SCI-12 attached is MET — the WRDS saved-query date parameters for the 2026-06-09 pull (range
+      2002-07-01 – 2025-09-30) were PI-verified 2026-08-08 (docs/data/registers/citations_verified.md
+      §3) — so the 45-month window is settled; the tagged 2022-2024 sub-window is always reported
       alongside as sensitivity (SC-SCI-13). holdout_end_year=2025 in thresholds.yaml is the
       year-grain ingest raise-CEILING (an upper bound, not the data end), distinct from this
       month-grain window; the window ends 2025-09 and does NOT coincide with it. The frozen holdout
@@ -229,7 +231,12 @@ amendments:                      # logged amendments appended here post-tag (see
       AuditReport / corrected QuantConfig) cleared 2026-08-03 (the core-lattice runs executed).
   - id: SC-SCI-10
     date: 2026-08-05
+    status: SUPERSEDED             # by SC-SCI-12 (2026-08-07): the 48-month premise is FALSE (the pull
+                                   # ends 2025-09-30), so the window is 2022-01..2025-09 (45 months).
     summary: >
+      SUPERSEDED BY SC-SCI-12 (2026-08-07) — this entry's 48-month / 2022-2025 ruling rests on a false
+      premise (the pull terminates 2025-09-30, so calendar-2025 holds only 9 of 12 months); it is
+      retained as history. The governing window is 2022-01..2025-09 (45 months). Original text follows.
       POST-TAG AMENDMENT — holdout evaluation window ruled 2022-2025 (48 months), the full
       /data/holdout/ partition, superseding the 2022-2024 window stated at the tag (the holdout
       block comment in this file, the SC-SCI-3 caveat, ARCHITECTURE.md RQ4) and resolving FINAL decision
@@ -274,19 +281,20 @@ amendments:                      # logged amendments appended here post-tag (see
       is never narrated as encouraging.
   - id: SC-SCI-12
     date: 2026-08-07
-    status: APPROVED               # Ruling 2026-08-07 ("45-month holdout"). CONDITION MET: the
-                                   # frontier-completeness evidence is cited in citations_verified.md
-                                   # §3 (2026-08-07), residual = raw WRDS query log, PI-side. Ruled
-                                   # before any holdout read — no holdout artefact/listing/metadata
-                                   # query accessed.
+    status: APPROVED               # Ruling 2026-08-07 ("45-month holdout"). CONDITION MET + VERIFIED:
+                                   # the frontier-completeness evidence is cited in citations_verified.md
+                                   # §3, strengthened 2026-08-08 by PI verification of the WRDS saved-query
+                                   # date parameters (range 2002-07-01 – 2025-09-30) — the 2026-08-07
+                                   # residual (raw WRDS query log) is thereby resolved. Ruled before any
+                                   # holdout read — no holdout artefact/listing/metadata query accessed.
     summary: >
       POST-TAG SUPERSESSION — SC-SCI-10 is superseded; the holdout evaluation window is
       2022-01..2025-09 (45 months), the complete-months span of the ingest partition.
-      FACTS: the pinned 2026-06-09 WRDS re-pull terminates 2025-09-30 (PI-confirmed 2026-08-07;
-      documentary evidence — the pull-spec end parameter / WRDS enhanced-vintage documentation —
-      TO BE CITED in the errata before the holdout opens, never a partition read). This confirms
+      FACTS: the pinned 2026-06-09 WRDS re-pull terminates 2025-09-30 (PI-verified 2026-08-08 against
+      the WRDS saved-query date parameters — range 2002-07-01 – 2025-09-30 — cited in
+      citations_verified.md §3; a write-time documentary artefact, never a partition read). This confirms
       fl_d21_gate_results.md's "~2025-09" as precise; the trace_preprocessing.md §2 "~2025-06-29"
-      and sourcing-brief "~2025-06" records are erroneous, to be corrected by errata. SC-SCI-10's
+      and sourcing-brief "~2025-06" records are erroneous, corrected by errata. SC-SCI-10's
       "48 months / window coincides with the partition boundary" is therefore FALSE — calendar-2025
       holds 9 of 12 months and the partition at most 45; Oct-Dec 2025 do not exist in the pull.
       CHRONOLOGY (disclosed plainly, because the reader must judge it): the pre-stated completeness
@@ -294,10 +302,10 @@ amendments:                      # logged amendments appended here post-tag (see
       and resolved to PARTIAL. This 45-month value is a THIRD option, adopted 2026-08-07 AFTER that
       resolution, on the argument that the gate's calendar-year grain was arbitrary and every month
       through the pull frontier is complete. It is neither the gate's literal branch nor SC-SCI-10.
-      TWO SAFEGUARDS make the adoption honest rather than elastic: (1) CONDITION — the 45-month
-      window stands only if the frontier-completeness evidence (enhanced-vintage complete-through-
-      frontier, from the pull spec / WRDS vintage documentation, never a partition read) is cited
-      in the errata BEFORE the holdout opens; failing that, the tagged 2022-2024 window stands.
+      TWO SAFEGUARDS make the adoption honest rather than elastic: (1) CONDITION (now SATISFIED) — the
+      45-month window stood only if the frontier-completeness evidence (the WRDS saved-query date
+      parameters, a write-time artefact, never a partition read) was cited before the holdout opens;
+      that evidence is on record (citations_verified.md §3, PI-verified 2026-08-08), so the window holds.
       (2) SENSITIVITY — the tagged 2022-2024 sub-window is computed in the same single one-shot holdout execution
       and reported beside every registered 45-month figure (spec: SC-SCI-13), so the window move's
       effect is visible in the results, not asserted away.
@@ -314,22 +322,27 @@ amendments:                      # logged amendments appended here post-tag (see
       reporting preserves what that branch protected.
       PROPAGATION done by this entry: the evaluation_holdout block (this file) and the tracked
       mirror prereg/scientist_prereg.yaml, both to {end: 2025-09, n_months: 45}; the SC-SCI-3
-      forward-holdout cross-references (this file + scope_changes.md) repointed here. Still PENDING
-      re-propagation to the 45-month value (flagged, not edited here): ARCHITECTURE.md RQ4, the
-      trace_preprocessing.md errata (§2 end-date + the :19 partition-vs-window wording),
-      extension_1's classified months, and the SC-SCI-10 propagation set in the Gate-0 report.
+      forward-holdout cross-references (this file + scope_changes.md) repointed here. Re-propagation
+      to the 45-month value since completed: ARCHITECTURE.md RQ4, extension_1's classified months, and the
+      trace_preprocessing.md errata (§2 end-date + the :19 partition-vs-window wording); the SC-SCI-10
+      propagation set in the Gate-0 report is swept by the 2026-08-08 resolution commit.
   - id: SC-SCI-13
     date: 2026-08-07
-    status: DRAFT                  # E14: confirm + tag before the holdout opens. No code wired —
-                                   # a pre-registration of intent, not an implemented change.
+    status: APPROVED               # E14 confirmed 2026-08-08; family = synchronised fixed-block per the
+                                   # delegated technical call; tagged sc-sci-13-holdout-inference at the
+                                   # resolution commit. Pre-registration of intent: the primary HAC-t
+                                   # inference is a config not a build, but the both-window one-shot holdout computation
+                                   # (clause 3) is DEFERRED with the one-shot holdout builder — a flagged build item. The
+                                   # new assert_evaluation_window() helper pre-positions SC-SCI-12's
+                                   # "script asserts the window" requirement ahead of that build.
     summary: >
       PRE-REGISTERED HOLDOUT-INFERENCE SPECIFICATION (ships with RQ4's descriptive rewording;
       gives the SC-SCI-12 SENSITIVITY safeguard its concrete form). At T = 45:
       (1) PRIMARY inference is the paired HAC t (survivor minus parent, and each series' own alpha),
       lag pinned ex ante by the project rule floor(T^0.25) => lag 2 (holds for T = 36 and 45 alike);
       nothing chosen at run time.
-      (2) The block bootstrap enters as SENSITIVITY ONLY. This clause, once confirmed, supersedes
-      amendment A7's "no holdout bootstrap intervals" for LABELLED-DIAGNOSTIC use alone; A7's floor
+      (2) The block bootstrap enters as SENSITIVITY ONLY. This clause, now confirmed (2026-08-08),
+      supersedes amendment A7's "no holdout bootstrap intervals" for LABELLED-DIAGNOSTIC use alone; A7's floor
       scoping is otherwise unchanged, and no bootstrap interval on the holdout is ever confirmatory.
       Family pinned: the project's synchronised fixed-block bootstrap (B = 1000), block lengths
       {3, 6} months, effective-block counts disclosed in every table (45/6 = 7 — below the 10-block

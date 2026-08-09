@@ -3,8 +3,8 @@ test_shared_eval_window_scope.py — amendment A7: the 60-month floors are scope
 development-window diagnostics by claim type.
 
 HOLDOUT window: the spanning/crowding HAC regression is refused with a typed
-DEVELOPMENT_SCOPE_DIAGNOSTIC (never computed — its floor cannot be met on the 48-month
-holdout by construction of the walk-forward split, SC-SCI-10), while the regime mean
+DEVELOPMENT_SCOPE_DIAGNOSTIC (never computed — its floor cannot be met on the 45-month
+holdout by construction of the walk-forward split, SC-SCI-12), while the regime mean
 decomposition and sign contrast (deliberately mean/sign statistics, D-E16) remain
 computable and carry `short_sample` when a state is below the conditional floor.
 DEVELOPMENT window: byte-identical to pre-A7 behaviour, including the config_hash.
