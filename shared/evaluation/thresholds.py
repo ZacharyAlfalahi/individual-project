@@ -320,3 +320,57 @@ def load_regimes_config(
         macro_data_contract_id=macro_id.strip(),
         min_obs_conditional=int(moc),
     )
+
+
+# ---------------------------------------------------------------------------
+# SC-SCI-13 holdout block-bootstrap diagnostic constants (docs/thresholds.yaml
+# `auditor.bootstrap` block). B and B_min are REUSED from the Auditor's bootstrap
+# (single source of truth); only the labelled-diagnostic block-length pair is new.
+# Only the (unbuilt) one-shot holdout caller reads this; unit tests pass literals.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class HoldoutBootstrapDiagnosticConfig:
+    """Constants for the SC-SCI-13 labelled-diagnostic holdout bootstrap. Read fail-loud;
+    never defaulted (a silent default would let a pre-registered constant drift)."""
+
+    block_lengths: tuple[int, ...]   # auditor.bootstrap.holdout_diagnostic_block_lengths_months
+    n_replicates: int                # REUSED: auditor.bootstrap.n_replicates
+    min_effective_blocks: int        # REUSED: auditor.bootstrap.min_effective_blocks
+
+
+def load_holdout_bootstrap_diagnostic_config(
+    path: str | Path | None = None,
+) -> HoldoutBootstrapDiagnosticConfig:
+    """Read the SC-SCI-13 holdout-diagnostic constants from the `auditor.bootstrap` block
+    fail-loud. B (`n_replicates`) and B_min (`min_effective_blocks`) are reused from that
+    same block so there is one source of truth for the pre-registered bootstrap constants."""
+    p = Path(path) if path is not None else THRESHOLDS_FILE
+    with open(p) as f:
+        data = yaml.safe_load(f)
+    if not isinstance(data, dict):
+        raise SharedEvalThresholdError("(docs/thresholds.yaml is empty or malformed)")
+    boot = _resolve_dotted(data, "auditor.bootstrap", "auditor.bootstrap")
+    if not isinstance(boot, dict):
+        raise SharedEvalThresholdError("`auditor.bootstrap` (missing or not a mapping)")
+
+    lengths = boot.get("holdout_diagnostic_block_lengths_months")
+    if (
+        not isinstance(lengths, list)
+        or not lengths
+        or any(isinstance(x, bool) or not isinstance(x, int) or x < 1 for x in lengths)
+    ):
+        raise SharedEvalThresholdError(
+            "`auditor.bootstrap.holdout_diagnostic_block_lengths_months` (non-empty list of positive ints)"
+        )
+    for key in ("n_replicates", "min_effective_blocks"):
+        val = boot.get(key)
+        if isinstance(val, bool) or not isinstance(val, int) or val < 1:
+            raise SharedEvalThresholdError(f"`auditor.bootstrap.{key}` (positive int)")
+
+    return HoldoutBootstrapDiagnosticConfig(
+        block_lengths=tuple(int(x) for x in lengths),
+        n_replicates=int(boot["n_replicates"]),
+        min_effective_blocks=int(boot["min_effective_blocks"]),
+    )

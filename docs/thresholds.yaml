@@ -589,6 +589,13 @@ auditor:
     # l = max(H_max, 6). 6 aligns with the longest anchor holding horizon (mom6
     # H=6) and captures monthly-return serial dependence.
     block_length_months: 6
+    # SC-SCI-13 (2026-08-07): LABELLED-DIAGNOSTIC block lengths for the holdout
+    # inference sensitivity CI (shared/stats/holdout_bootstrap.py). Never confirmatory —
+    # supersedes A7's "no holdout bootstrap intervals" for this narrow use only (amendments
+    # index A8). Reuses n_replicates(1000) + min_effective_blocks(10) above; only the length
+    # pair is new. Effective blocks are DISCLOSED, not satisfied: 45/{3,6}=15/7, 36/{3,6}=12/6,
+    # labelled floor_met/below_floor vs the 10-block floor (a length is never picked to clear it).
+    holdout_diagnostic_block_lengths_months: [3, 6]
   shapley:
     # §5.3 percentage-denominator guard: shares (phi_i / Delta) are emitted only
     # when |Delta_correction| > 0.1%/month; below that the ratio is a division

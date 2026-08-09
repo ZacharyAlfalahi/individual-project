@@ -335,6 +335,10 @@ amendments:                      # logged amendments appended here post-tag (see
                                    # (clause 3) is DEFERRED with the one-shot holdout builder — a flagged build item. The
                                    # new assert_evaluation_window() helper pre-positions SC-SCI-12's
                                    # "script asserts the window" requirement ahead of that build.
+                                   # CLAUSE (2) REALISED IN CODE 2026-08-09: shared/stats/holdout_bootstrap.py
+                                   # (pure, no I/O — cannot read the holdout) + loader + 14 tests; writeup
+                                   # docs/scientist/holdout_inference_implementation.md; deviation A8 in the
+                                   # shared-eval amendments index. Clause (3) one-shot holdout caller still deferred (E14).
     summary: >
       PRE-REGISTERED HOLDOUT-INFERENCE SPECIFICATION (ships with RQ4's descriptive rewording;
       gives the SC-SCI-12 SENSITIVITY safeguard its concrete form). At T = 45:

@@ -46,6 +46,13 @@ from shared.stats.posterior import (
     alpha_se_from_t,
     posterior_summary,
 )
+from shared.stats.holdout_bootstrap import (
+    BlockBootstrapCI,
+    HoldoutInferenceWindow,
+    holdout_inference_window_sensitivity,
+    own_alpha_bootstrap,
+    paired_difference_bootstrap,
+)
 
 __all__ = [
     # FDR (fdr.py)
@@ -78,4 +85,10 @@ __all__ = [
     "PriorPosterior",
     "alpha_se_from_t",
     "posterior_summary",
+    # Holdout block-bootstrap diagnostic (net-new, holdout_bootstrap.py — SC-SCI-13)
+    "BlockBootstrapCI",
+    "HoldoutInferenceWindow",
+    "holdout_inference_window_sensitivity",
+    "own_alpha_bootstrap",
+    "paired_difference_bootstrap",
 ]
