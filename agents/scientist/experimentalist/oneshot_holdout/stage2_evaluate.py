@@ -88,6 +88,7 @@ def _window_record(window: HoldoutInferenceWindow, priors: Mapping[str, float]) 
 def evaluate_survivors(
     survivors: list[SurvivorInput],
     benchmarks: Mapping[str, pd.DataFrame],
+    window: Window,
     sub_window: Window,
     priors: Mapping[str, float],
     *,
@@ -95,20 +96,35 @@ def evaluate_survivors(
     config_path=None,
 ) -> list[SurvivorResult]:
     """Evaluate every survivor on both windows under every benchmark, in one pass, via the
-    canonical ``holdout_inference_window_sensitivity``. ``sub_window.end`` supplies the tagged
-    ≤ cutoff. The block lengths / replicate count / floor / lag come from the fail-loud config."""
+    canonical ``holdout_inference_window_sensitivity``. Every series is first CLIPPED to the
+    registered ``window`` so the "full" statistic is exactly ``window.n_months`` — seed / pre-window
+    months can never leak into the holdout statistic. ``sub_window.end`` supplies the tagged ≤ cutoff.
+    The block lengths / replicate count / floor / lag come from the fail-loud config."""
     if not benchmarks:
         raise ValueError("at least one benchmark factor set is required (BBW-4 primary)")
     cfg = load_holdout_bootstrap_diagnostic_config(config_path)
     cutoff = pd.Period(sub_window.end, "M").to_timestamp("M")
+    lo = pd.Period(window.start, "M").to_timestamp("M")
+    hi = pd.Period(window.end, "M").to_timestamp("M")
 
+    def _clip_series(s: pd.Series) -> pd.Series:
+        idx = pd.to_datetime(s.index)
+        return s[(idx >= lo) & (idx <= hi)]
+
+    def _clip_factors(f: pd.DataFrame) -> pd.DataFrame:
+        idx = pd.to_datetime(f["date"])
+        return f[(idx >= lo) & (idx <= hi)]
+
+    clipped_benchmarks = {b: _clip_factors(fr) for b, fr in benchmarks.items()}
     results: list[SurvivorResult] = []
     for si, survivor in enumerate(survivors):
+        surv = _clip_series(survivor.returns)
+        parent = _clip_series(survivor.parent_returns)
         per_benchmark: dict[str, BenchmarkResult] = {}
-        for bi, (bname, factors) in enumerate(benchmarks.items()):
+        for bi, (bname, factors) in enumerate(clipped_benchmarks.items()):
             full, sub = holdout_inference_window_sensitivity(
-                survivor.returns,
-                survivor.parent_returns,
+                surv,
+                parent,
                 factors,
                 subwindow_cutoff=cutoff,
                 block_lengths=tuple(cfg.block_lengths),

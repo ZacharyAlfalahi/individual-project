@@ -53,6 +53,19 @@ def test_scsci12_refused_when_not_approved(tmp_path):
         check_scsci12_approved(cfg)
 
 
+def test_scsci12_discharge_rejects_negations_even_when_approved(tmp_path):
+    # A fail-open substring match would pass "UNMET" (contains MET) or "not yet verified".
+    for bad_summary in ("the frontier-completeness condition is UNMET", "evidence not yet verified"):
+        proto = tmp_path / "protocol_neg.yaml"
+        proto.write_text(
+            "windows:\n  evaluation_holdout:\n    start: 2022-01\n    end: 2025-09\n    n_months: 45\n"
+            f"amendments:\n  - id: SC-SCI-12\n    status: APPROVED\n    summary: {bad_summary}\n"
+        )
+        cfg = dataclasses.replace(valid_checklist_cfg(tmp_path), protocol_path=proto)
+        with pytest.raises(OneshotHoldoutGateError):
+            check_scsci12_approved(cfg)
+
+
 def test_thresholds_fingerprint_refused_on_mismatch(tmp_path):
     cfg = dataclasses.replace(valid_checklist_cfg(tmp_path), thresholds_fingerprint="deadbeef" * 8)
     with pytest.raises(OneshotHoldoutGateError):

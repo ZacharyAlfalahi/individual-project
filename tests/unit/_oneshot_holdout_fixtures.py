@@ -33,11 +33,13 @@ def valid_checklist_cfg(tmp_path: Path, *, require_rehearsal: bool = False) -> C
     rehearsal_marker = tmp_path / "rehearsal_marker.jsonl"
     if require_rehearsal:
         rehearsal_marker.write_text('{"state": "REHEARSAL_GREEN", "ts": "t"}\n')
+    from agents.scientist.experimentalist.oneshot_holdout.run_oneshot_holdout import _dir_code_hash
     return ChecklistConfig(
         release_tag=RELEASE_TAG,
         protocol_path=REAL_PROTOCOL,
         thresholds_path=REAL_THRESHOLDS,
         thresholds_fingerprint=real_thresholds_fingerprint(),
+        frozen_script_hash=_dir_code_hash(),          # so the real-path test's gate can open (M1)
         p3_artefact_path=p3,
         e9_cost_model_id="dev_gross_returns_scoping_v1",
         manifest_writer_wired=True,

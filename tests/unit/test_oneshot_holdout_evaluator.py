@@ -32,8 +32,9 @@ def _synthetic():
 
 def test_evaluator_emits_both_windows_with_pinned_lag():
     surv, par, factors = _synthetic()
-    sub = derive_sensitivity_subwindow(registered_window(("2022-01", "2025-09", 45)))
-    results = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, sub, PRIORS)
+    reg = registered_window(("2022-01", "2025-09", 45))
+    sub = derive_sensitivity_subwindow(reg)
+    results = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, sub, PRIORS)
     rec = results[0].benchmarks["bbw4"]
     assert rec.full["window_label"] == "full_45m" and rec.full["n_obs"] == 45
     assert rec.sensitivity["window_label"] == "subwindow_le_2024_12" and rec.sensitivity["n_obs"] == 36
@@ -42,8 +43,9 @@ def test_evaluator_emits_both_windows_with_pinned_lag():
 
 def test_evaluator_record_has_no_pass_fail_field():
     surv, par, factors = _synthetic()
-    sub = derive_sensitivity_subwindow(registered_window(("2022-01", "2025-09", 45)))
-    rec = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, sub, PRIORS)[0]
+    reg = registered_window(("2022-01", "2025-09", 45))
+    sub = derive_sensitivity_subwindow(reg)
+    rec = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, sub, PRIORS)[0]
     full = rec.benchmarks["bbw4"].full
     for forbidden in ("pass", "passed", "verdict", "advanced", "survives", "is_significant"):
         assert forbidden not in full
@@ -51,8 +53,9 @@ def test_evaluator_record_has_no_pass_fail_field():
 
 def test_bootstrap_cis_are_labelled_diagnostic_never_confirmatory():
     surv, par, factors = _synthetic()
-    sub = derive_sensitivity_subwindow(registered_window(("2022-01", "2025-09", 45)))
-    full = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, sub, PRIORS)[0] \
+    reg = registered_window(("2022-01", "2025-09", 45))
+    sub = derive_sensitivity_subwindow(reg)
+    full = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, sub, PRIORS)[0] \
         .benchmarks["bbw4"].full
     cis = full["bootstrap_cis"]
     assert len(cis) == 6                                          # 3 statistics x {3, 6}
@@ -63,7 +66,8 @@ def test_bootstrap_cis_are_labelled_diagnostic_never_confirmatory():
 
 def test_posterior_has_three_priors():
     surv, par, factors = _synthetic()
-    sub = derive_sensitivity_subwindow(registered_window(("2022-01", "2025-09", 45)))
-    full = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, sub, PRIORS)[0] \
+    reg = registered_window(("2022-01", "2025-09", 45))
+    sub = derive_sensitivity_subwindow(reg)
+    full = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, sub, PRIORS)[0] \
         .benchmarks["bbw4"].full
     assert set(full["posterior"]["priors"]) == {"wide", "moderate", "sceptical"}

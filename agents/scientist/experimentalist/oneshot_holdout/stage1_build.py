@@ -51,20 +51,31 @@ class Stage1Result:
         return all(a.non_nan_at_first_month for a in self.artefacts)
 
 
+# Identifier / independently-populated meta columns. Excluded from the seeding check so a
+# populated cusip or rating can NEVER mask an all-NaN rolling construction at the first
+# evaluation month — the seeding guarantee is about the CONSTRUCTION being warm, not the ids.
+_IDENTIFIER_COLS = frozenset({
+    "date", "cusip", "cusip_id", "bond_id", "year_month", "_sel_rating_date", "rating_date",
+    "rating", "maturity", "time_to_maturity", "size", "universe_eligible", "exit_reason",
+    "n_trades", "total_vol",
+})
+
+
 def _first_month_non_nan(df: pd.DataFrame, first_month: str) -> bool:
-    """True iff the artefact has at least one non-NaN value dated in ``first_month`` (the
-    seeding validation: a rolling construction must be warm by the first evaluation month)."""
+    """True iff the artefact has a non-NaN VALUE (excluding identifier/meta columns) dated in
+    ``first_month`` — the seeding validation: a rolling construction must be warm by the first
+    evaluation month, and a populated identifier must not vacuously satisfy that."""
     if "date" in df.columns:
-        idx = pd.to_datetime(df["date"])
-        value_cols = [c for c in df.columns if c != "date"]
+        month = pd.to_datetime(df["date"]).dt.to_period("M").to_numpy()
     else:
-        idx = pd.to_datetime(df.index)
-        value_cols = list(df.columns)
-    target = pd.Period(first_month, "M")
-    rows = df.loc[idx.dt.to_period("M") == target]
+        month = pd.to_datetime(df.index).to_period("M").to_numpy()
+    value_cols = [c for c in df.columns if c not in _IDENTIFIER_COLS]
+    if not value_cols:
+        return False
+    rows = df.loc[month == pd.Period(first_month, "M")]
     if rows.empty:
         return False
-    return bool(rows[value_cols].notna().any().any()) if value_cols else True
+    return bool(rows[value_cols].notna().any().any())
 
 
 def build_holdout_panel(
@@ -85,10 +96,11 @@ def build_holdout_panel(
     the only thing that reads panel inputs — for the real run it reads ``data/holdout/`` behind
     the gate; here it is injected, keeping this module firewall-clean and testable.
     """
-    qdir = Path(quarantine_dir)
-    parts = qdir.resolve().parts
-    if "data" in parts or "docs" in parts:
-        raise ValueError(f"quarantine_dir must not be under data/ or docs/; got {qdir}")
+    qdir = Path(quarantine_dir).resolve()
+    repo_root = Path(__file__).resolve().parents[4]
+    for forbidden in (repo_root / "data", repo_root / "docs"):
+        if qdir == forbidden or forbidden in qdir.parents:
+            raise ValueError(f"quarantine_dir must not be under {forbidden}; got {qdir}")
 
     seed_start, _sources = derive_seed_start(
         window.start, thresholds_path=thresholds_path, margin_months=margin_months,

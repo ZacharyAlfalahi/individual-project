@@ -14,6 +14,7 @@ pre-registered here so no judgement call happens mid-incident:
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -96,6 +97,8 @@ class Marker:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.path, "a") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())          # durability: the no-rerun guarantee must survive a crash
 
 
 # --- Rehearsal marker (§1.3 precondition / §5) --------------------------------------------
@@ -117,7 +120,13 @@ class RehearsalMarker:
             return False
         for line in self.path.read_text().splitlines():
             line = line.strip()
-            if line and json.loads(line).get("state") == REHEARSAL_GREEN:
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise MarkerError(f"corrupt rehearsal marker line in {self.path}: {line!r}") from exc
+            if record.get("state") == REHEARSAL_GREEN:
                 return True
         return False
 
@@ -128,3 +137,5 @@ class RehearsalMarker:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.path, "a") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())

@@ -14,8 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -55,7 +54,6 @@ class OneshotHoldoutConfig:
     priors: Mapping[str, float]
     holdout_reader_open: Callable[[], None] | None = None      # real path: opens data/holdout access
     zero_leakage_check: Callable[[pd.DataFrame, Window], None] | None = None
-    env: Mapping[str, str] = field(default_factory=lambda: dict(os.environ))
 
 
 @dataclass(frozen=True)
@@ -111,9 +109,31 @@ def _dir_code_hash() -> str:
     return h.hexdigest()
 
 
-def _evaluate_and_manifest(cfg: OneshotHoldoutConfig, check, sub_window, stage1, *, holdout_processed: bool):
-    # The canonical evaluator derives both windows from the series + the sub-window cutoff.
-    results = evaluate_survivors(cfg.survivors, cfg.benchmarks, sub_window, cfg.priors)
+def _open_holdout_gate(cfg: OneshotHoldoutConfig) -> None:
+    """Open the artefact-gated single-access holdout gate (never a date). Requires ALL of: the prereg
+    tag present, the frozen one-shot holdout-package hash matching the committed pin (**fail-closed** if unpinned —
+    an unpinned/tampered script keeps the gate shut), and the env unlock set; then consumes the single
+    access and opens the real reader. Called before EVERY real holdout read — including RESUME_EVALUATE,
+    which re-reads the holdout in a fresh process and so must re-gate (defence-in-depth)."""
+    if not holdout.holdout_gate_open(
+        tag_present=holdout.prereg_tag_present("scientist-prereg", repo_root=cfg.checklist.repo_root),
+        frozen_script_hash_matches=(
+            cfg.checklist.frozen_script_hash is not None
+            and _dir_code_hash() == cfg.checklist.frozen_script_hash
+        ),
+        env_var_set=holdout.env_unlock_set(),
+    ):
+        raise holdout.HoldoutViolation("holdout gate is shut (artefact conditions unmet)")
+    holdout.assert_single_access()
+    if cfg.holdout_reader_open is not None:
+        cfg.holdout_reader_open()
+
+
+def _evaluate_and_manifest(cfg: OneshotHoldoutConfig, check, window, sub_window, stage1, *, holdout_processed: bool):
+    # Clip to the registered window (m3) so the "full" statistic is exactly window.n_months — seed
+    # months can never leak into the holdout statistic. The canonical evaluator derives the sub-window
+    # from the cutoff.
+    results = evaluate_survivors(cfg.survivors, cfg.benchmarks, window, sub_window, cfg.priors)
     manifest = _manifest(cfg, check, stage1, results, holdout_processed=holdout_processed)
     return results, manifest
 
@@ -130,7 +150,7 @@ def _run_rehearsal(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> One
         bad = [a.name for a in stage1.artefacts if not a.non_nan_at_first_month]
         raise RehearsalNotGreen(f"rolling constructions NaN at the first pseudo-window month: {bad}")
     results, manifest = _evaluate_and_manifest(
-        cfg, check, sub_window, stage1, holdout_processed=False,
+        cfg, check, window, sub_window, stage1, holdout_processed=False,
     )
     RehearsalMarker(cfg.rehearsal_marker_path).write_green(
         ts=cfg.ts, extra={"seed_start": stage1.seed_start, "data_hash": stage1.artefact_hashes(),
@@ -145,16 +165,7 @@ def _run_real(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> OneshotH
     action = marker.plan_next()                                 # raises RerunRefused per §4
 
     if action in (FRESH_BUILD, RESTART_BUILD):
-        # Open the artefact-gated single-access gate (never a date). Real reader only.
-        if not holdout.holdout_gate_open(
-            tag_present=holdout.prereg_tag_present("scientist-prereg", repo_root=cfg.checklist.repo_root),
-            frozen_script_hash_matches=True,
-            env_var_set=holdout.env_unlock_set(),
-        ):
-            raise holdout.HoldoutViolation("holdout gate is shut (artefact conditions unmet)")
-        holdout.assert_single_access()
-        if cfg.holdout_reader_open is not None:
-            cfg.holdout_reader_open()
+        _open_holdout_gate(cfg)                      # gate + single-access + real reader (never a date)
         marker.append("STAGE1_STARTED", ts=cfg.ts,
                       extra={"restart": action == RESTART_BUILD, "code_hash": _dir_code_hash()})
         stage1 = build_holdout_panel(
@@ -163,7 +174,8 @@ def _run_real(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> OneshotH
             zero_leakage_check=cfg.zero_leakage_check,
         )
         marker.append("STAGE1_COMPLETE", ts=cfg.ts, extra={"data_hash": stage1.artefact_hashes()})
-    else:  # RESUME_EVALUATE — build already complete, no result artefact yet
+    else:  # RESUME_EVALUATE — the builder re-reads data/holdout, so it MUST re-gate (M2).
+        _open_holdout_gate(cfg)
         stage1 = build_holdout_panel(
             window=window, sub_window=sub_window, quarantine_dir=cfg.quarantine_dir,
             panel_builder=cfg.panel_builder, thresholds_path=cfg.checklist.thresholds_path,
@@ -172,7 +184,7 @@ def _run_real(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> OneshotH
 
     marker.append("STAGE2_STARTED", ts=cfg.ts)
     results, manifest = _evaluate_and_manifest(
-        cfg, check, sub_window, stage1, holdout_processed=True,
+        cfg, check, window, sub_window, stage1, holdout_processed=True,
     )
     marker.append("COMPLETE", ts=cfg.ts, extra={"output_hash": manifest["output_hash"]})
     return OneshotHoldoutRunReport(False, stage1.seed_start, window, sub_window, stage1, results, manifest, green=False)

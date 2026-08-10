@@ -11,6 +11,7 @@ fingerprint for the orchestrator, or raises on the first failure.
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +38,7 @@ class ChecklistConfig:
     protocol_path: Path | None = None
     thresholds_path: Path | None = None
     thresholds_fingerprint: str | None = None       # committed frozen sha256 (hex)
+    frozen_script_hash: str | None = None            # committed one-shot holdout-package hash; gate stays shut if None
     p3_artefact_path: Path | None = None             # SC-SCI-11 moderate-prior artefact
     p3_fallback_reason: str | None = None            # permits σ=0.005 fallback IF logged
     e9_cost_model_id: str | None = None              # pinned cost model ...
@@ -108,9 +110,12 @@ def check_scsci12_approved(cfg: ChecklistConfig) -> None:
     if str(amendment.get("status", "")).strip().upper() != "APPROVED":
         raise OneshotHoldoutGateError(f"SC-SCI-12 status is not APPROVED (got {amendment.get('status')!r})")
     summary = str(amendment.get("summary", ""))
-    # discharge line: the frontier-completeness condition recorded as met/verified.
-    if "MET" not in summary.upper() and "verified" not in summary.lower():
-        raise OneshotHoldoutGateError("SC-SCI-12 discharge line (condition MET/verified) absent from its summary")
+    # Discharge line: the frontier-completeness condition recorded as met/satisfied/verified. Require a
+    # standalone positive token (or the specific "PI-verified" phrase) so a negation cannot fail-open
+    # the gate — a bare substring would match "UNMET" (contains MET) or "not yet verified".
+    upper = summary.upper()
+    if not (re.search(r"\b(MET|SATISFIED)\b", upper) or "PI-VERIFIED" in upper):
+        raise OneshotHoldoutGateError("SC-SCI-12 discharge line (condition met/satisfied/PI-verified) absent from its summary")
 
 
 def check_thresholds_fingerprint(cfg: ChecklistConfig) -> str:
