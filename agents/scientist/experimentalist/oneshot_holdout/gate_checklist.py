@@ -155,7 +155,14 @@ def check_e9_cost_decision(cfg: ChecklistConfig) -> None:
 
 def check_manifest_wired(cfg: ChecklistConfig) -> None:
     if not cfg.manifest_writer_wired:
-        raise OneshotHoldoutGateError("run-manifest (contract Extension 3) emitter is not wired")
+        raise OneshotHoldoutGateError("run-manifest (contract Extension 3) emitter is not declared wired")
+    # Verify a REAL writer exists (not merely the boolean) — the manifest must be persisted, not dropped.
+    try:
+        from .manifest_io import write_manifest
+    except Exception as exc:
+        raise OneshotHoldoutGateError("run-manifest writer oneshot_holdout.manifest_io.write_manifest is not importable") from exc
+    if not callable(write_manifest):
+        raise OneshotHoldoutGateError("run-manifest writer is not callable")
 
 
 def check_rehearsal_green(cfg: ChecklistConfig) -> None:

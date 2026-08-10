@@ -135,26 +135,28 @@ def dev_pseudo_builder(dev_root: Path | None = None):
 
 
 def _ipca_oos_from_feed(feed_path: Path, start: str, end: str) -> pd.DataFrame:
-    """Recursive-OOS IPCA factors over [start, end], from the stored feed. Wires the frozen chain
-    load_feed → build_sufficient_stats → fit_ipca_recursive(burn_in=36) (per run_ipca_shakedown.py).
-    VERIFY-ON-RUN: exact K and the f_oos→frame shaping are confirmed by the closeout rehearsal."""
+    """Recursive-OOS IPCA factors over [start, end] via the CANONICAL chain the shakedown itself
+    uses: ``load_feed`` (the adapter) → ``build_sufficient_stats`` → ``fit_ipca_recursive``. ``K``
+    and the OOS burn-in are read from the frozen IPCA config (``model.K`` / ``window.
+    oos_burn_in_months``), never hard-coded — one source of truth, no VERIFY-ON-RUN guess."""
     if not feed_path.exists():
         raise FileNotFoundError(f"IPCA feed not found: {feed_path}")
-    # Lazy imports: heavy, and keep this module import-cheap + firewall-clean.
+    # Lazy imports: heavy, and keep this module import-cheap + firewall-clean (no agents.auditor).
     import numpy as np
+    import yaml
 
     from agents.quant.library.ipca import build_sufficient_stats, fit_ipca_recursive
+    from scripts.run_ipca_shakedown import load_feed
 
-    # load_feed lives in the shakedown script; re-derive the (Z, R, months) matrices from the feed
-    # parquet the same way (feed_matrices mirrors load_feed). VERIFY-ON-RUN: confirm the loader path.
-    from agents.quant.library.ipca_feed import feed_matrices
+    ipca_cfg = yaml.safe_load((REPO_ROOT / "agents" / "quant" / "library" / "configs" / "kpp_ipca.yaml").read_text())
+    k = int(ipca_cfg["model"]["K"])
+    burn_in = int(ipca_cfg["window"]["oos_burn_in_months"])
 
-    feed_df = pd.read_parquet(feed_path)
-    fm = feed_matrices(feed_df)                              # IPCAFeed(Z, R, months, asof, vol, cusips)
-    stats = build_sufficient_stats(fm.Z, fm.R, fm.months)
-    rec = fit_ipca_recursive(stats, K=4, burn_in=36)        # K per the shakedown recursive default
+    z, r, months, _asof, _vol = load_feed(feed_path)        # the shakedown's own loader (single source)
+    stats = build_sufficient_stats(z, r, months)
+    rec = fit_ipca_recursive(stats, K=k, burn_in=burn_in)
     # RecursiveResult: rec.oos_months (J,) are the predicted-month ordinals (months[burn_in:]) and
-    # rec.f_oos is (K, J). Align f_oos.T to those months — NOT to the full feed months.
+    # rec.f_oos is (K, J). Align f_oos.T to those months — not to the full feed months.
     oos_months = pd.PeriodIndex(
         [pd.Period(ordinal=int(m), freq="M") for m in rec.oos_months], freq="M",
     )
@@ -165,21 +167,28 @@ def _ipca_oos_from_feed(feed_path: Path, start: str, end: str) -> pd.DataFrame:
 
 
 def _fisd_ratings_over_window(dev_root: Path, window: Window) -> pd.DataFrame:
-    """As-of monthly FISD ratings over the window grid via the frozen backward merge_asof worker.
-    VERIFY-ON-RUN: the events source + agencies/threshold config are confirmed by the rehearsal."""
-    # The dev-pseudo window's ratings already exist inside fisd_ratings_monthly.parquet (built over
-    # dev); slice them and retain the leakage marker if present. For the HOLDOUT window the ratings
-    # are built fresh by asof_monthly_rating over the holdout grid (see holdout_builder recipe).
-    stored = dev_root / "fisd" / "fisd_ratings_monthly.parquet"
-    if not stored.exists():
-        raise FileNotFoundError(f"FISD monthly ratings not found: {stored}")
-    df = _slice_months(pd.read_parquet(stored), window.start, window.end)
-    if "_sel_rating_date" not in df.columns:
-        # The stored artefact may not persist the selection marker; add a non-leaking placeholder so
-        # zero_leakage_check is well-defined. VERIFY-ON-RUN: persist _sel_rating_date in the builder.
-        df = df.copy()
-        df["_sel_rating_date"] = pd.NaT
-    return df
+    """As-of monthly FISD ratings over the window grid, BUILT FRESH via the frozen backward
+    merge_asof worker (``build_ratings_monthly``) so ``_sel_rating_date`` — the leakage marker — is
+    REAL. The stored ``fisd_ratings_monthly.parquet`` does not persist that marker, so slicing it and
+    injecting ``NaT`` would make ``zero_leakage_check`` vacuous (a guard that validates nothing is
+    worse than none). Fail-loud if the worker still does not emit the marker."""
+    from scripts.build_fisd_reference import build_ratings_monthly, build_static, load_config
+
+    cfg = load_config()
+    static = build_static(cfg)
+    issue_to_cusip = static.dropna(subset=["issue_id"]).set_index("issue_id")["cusip"]
+    issue_to_cusip = issue_to_cusip[~issue_to_cusip.index.duplicated(keep="first")]
+
+    grid = pd.read_parquet(dev_root / "monthly_panel_maximal.parquet", columns=["cusip", "date"])
+    grid["cusip"] = grid["cusip"].astype("string")
+    grid = _slice_months(grid, window.start, window.end)
+
+    ratings = build_ratings_monthly(cfg, grid, issue_to_cusip)     # carries a real _sel_rating_date
+    if "_sel_rating_date" not in ratings.columns:
+        raise ValueError(
+            "build_ratings_monthly did not emit '_sel_rating_date'; the FISD leakage guard cannot run"
+        )
+    return ratings
 
 
 # --- holdout builder (GATED — the real run only; never runs in development) ------------------

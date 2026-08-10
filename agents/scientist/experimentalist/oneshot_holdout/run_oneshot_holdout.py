@@ -22,6 +22,7 @@ import pandas as pd
 
 from .. import holdout
 from .gate_checklist import ChecklistConfig, GateChecklistResult, run_pre_run_checklist
+from .manifest_io import write_manifest
 from .marker import (
     FRESH_BUILD,
     RESTART_BUILD,
@@ -101,10 +102,13 @@ def _manifest(cfg: OneshotHoldoutConfig, check: GateChecklistResult, stage1: Sta
 
 
 def _dir_code_hash() -> str:
-    """Hash of the one-shot holdout package source — the frozen-script fingerprint (§1.1)."""
+    """Hash of the one-shot holdout package source — the frozen-script fingerprint (§1.1). Excludes ``frozen.py``
+    (which HOLDS the committed pin) so the pin is over the other modules and cannot depend on itself."""
     here = Path(__file__).resolve().parent
     h = hashlib.sha256()
     for py in sorted(here.glob("*.py")):
+        if py.name == "frozen.py":
+            continue
         h.update(py.read_bytes())
     return h.hexdigest()
 
@@ -152,6 +156,7 @@ def _run_rehearsal(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> One
     results, manifest = _evaluate_and_manifest(
         cfg, check, window, sub_window, stage1, holdout_processed=False,
     )
+    write_manifest(manifest, cfg.quarantine_dir)              # persist the provenance record (§3)
     RehearsalMarker(cfg.rehearsal_marker_path).write_green(
         ts=cfg.ts, extra={"seed_start": stage1.seed_start, "data_hash": stage1.artefact_hashes(),
                           "pseudo_window": vars(window)},
@@ -186,6 +191,7 @@ def _run_real(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> OneshotH
     results, manifest = _evaluate_and_manifest(
         cfg, check, window, sub_window, stage1, holdout_processed=True,
     )
+    write_manifest(manifest, cfg.quarantine_dir)             # persist the provenance record before COMPLETE
     marker.append("COMPLETE", ts=cfg.ts, extra={"output_hash": manifest["output_hash"]})
     return OneshotHoldoutRunReport(False, stage1.seed_start, window, sub_window, stage1, results, manifest, green=False)
 

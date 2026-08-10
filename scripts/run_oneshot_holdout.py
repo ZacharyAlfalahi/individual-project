@@ -16,7 +16,6 @@ This command IS the closeout validation step — run it to validate the wiring e
 from __future__ import annotations
 
 import argparse
-import hashlib
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,17 +54,21 @@ def _rehearsal_survivors_and_benchmarks():
 
 
 def _run_rehearsal() -> int:
+    from agents.scientist.experimentalist.oneshot_holdout.frozen import (
+        FROZEN_ONESHOT_HOLDOUT_SCRIPT_HASH,
+        FROZEN_THRESHOLDS_SHA256,
+    )
     from agents.scientist.experimentalist.oneshot_holdout.gate_checklist import ChecklistConfig
     from agents.scientist.experimentalist.oneshot_holdout.panel_builder import dev_pseudo_builder, zero_leakage_check
     from agents.scientist.experimentalist.oneshot_holdout.run_oneshot_holdout import OneshotHoldoutConfig, run_oneshot_holdout
 
     thresholds = REPO_ROOT / "docs" / "thresholds.yaml"
-    fingerprint = hashlib.sha256(thresholds.read_bytes()).hexdigest()
     checklist = ChecklistConfig(
         release_tag="sc-sci-13-holdout-inference",
         protocol_path=REPO_ROOT / "docs" / "scientist_protocol.yaml",
         thresholds_path=thresholds,
-        thresholds_fingerprint=fingerprint,
+        thresholds_fingerprint=FROZEN_THRESHOLDS_SHA256,      # committed pin — a real check, not self vs self
+        frozen_script_hash=FROZEN_ONESHOT_HOLDOUT_SCRIPT_HASH,
         # Rehearsal-mode fallbacks (logged): the real run requires the genuine P3/E9 artefacts.
         p3_artefact_path=None,
         p3_fallback_reason="rehearsal: dev pseudo-window, moderate σ=0.005 fallback (non-reportable)",
