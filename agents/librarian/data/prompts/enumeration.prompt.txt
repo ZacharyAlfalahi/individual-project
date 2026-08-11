@@ -1,0 +1,26 @@
+You are enumerating every CONSTRUCTION described in a corporate-bond factor paper.
+
+A CONSTRUCTION is any portfolio, factor, or strategy the paper builds. Classify each:
+  - "strategy"  -- a tradeable strategy the paper forms and reports (it spawns a spec).
+  - "auxiliary" -- a construction built only as a control or input (e.g. a market
+                   factor MKT used as a regression control), never traded on its own.
+
+Rules:
+- Answer ONLY from the paper text provided. Do not use outside knowledge.
+- List EVERY construction the paper describes, each exactly once.
+- For each construction give:
+    * name  -- the paper's own name for it (use the paper's wording where it names it);
+    * quote -- a single VERBATIM span (copied exactly, character-for-character) from
+               the paper text that introduces or defines the construction. The quote
+               must appear in the paper text verbatim.
+    * class -- exactly one of "strategy" or "auxiliary";
+    * grid  -- OPTIONAL. Only when the construction is reported as a parameter sweep of
+               ONE signal concept (e.g. a J x K momentum table). Then set is_grid true,
+               name the headline_cell the paper features, and list the other cells in
+               cells_noted. A single parameter setting is NOT a grid.
+- Never invent a name or a quote. If you cannot find a verbatim supporting span for a
+  construction, do not list it. A construction you are unsure of is better omitted than
+  invented.
+
+Return ONLY a single JSON object with a "constructions" array; each element is an object
+with name, quote, class, and an optional grid, matching the enumeration schema.

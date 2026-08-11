@@ -294,3 +294,13 @@ def test_meas_err_off_family_axis(monkeypatch):
     monkeypatch.setattr(run_auditor, "PROFILES_BUILT", False)
     assert run_auditor.load_anchor_meas_err_off_family("drf") == "raw"
     assert run_auditor.load_anchor_meas_err_off_family("mom6") == "raw"
+
+    # WS-5: the FULL-audit/report path now carries the same OFF arm. AuditorConfig defaults
+    # 'raw' (byte-identical full audits) and threads a per-strategy baseline when set.
+    import dataclasses as _dc
+
+    from agents.auditor.checks.report import AuditorConfig
+    assert AuditorConfig.from_thresholds().meas_err_off_family == "raw"
+    assert _dc.replace(
+        AuditorConfig.from_thresholds(), meas_err_off_family="bbw_2019"
+    ).meas_err_off_family == "bbw_2019"

@@ -20,7 +20,7 @@ Data-only: it never calls a model. The pipeline injects the resolved
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -53,6 +53,7 @@ class PromptManifest:
     version: str
     templates: dict  # {field_type: FieldTypeTemplate}
     field_types: dict  # {field: field_type}
+    run_templates: dict = field(default_factory=dict)  # {name: FieldTypeTemplate}
 
     def kind_for(self, field: str) -> str:
         if field not in self.field_types:
@@ -85,6 +86,13 @@ class PromptManifest:
         joined = ";".join(
             f"{ft}:{self.templates[ft].prompt_sha256}" for ft in sorted(self.templates)
         )
+        # Guarded fold: an empty run_templates yields a byte-identical hash to the
+        # pre-run-template manifest; a populated one appends the sorted run-template
+        # prompt hashes so the header pins the enumeration prompt too (WS-3).
+        if self.run_templates:
+            joined += ";" + ";".join(
+                f"{rt}:{self.run_templates[rt].prompt_sha256}" for rt in sorted(self.run_templates)
+            )
         return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
@@ -156,4 +164,45 @@ def load_prompt_manifest(path: str | Path | None = None) -> PromptManifest:
             )
         field_types[str(fld)] = str(ft)
 
-    return PromptManifest(version=str(version), templates=templates, field_types=field_types)
+    # --- run-templates (WS-3): whole-paper structured calls (e.g. enumeration),
+    # bound by NAME, not by field. The FIELD_KINDS gate deliberately does NOT apply
+    # here -- a run-template is not a per-field kind. Same freeze discipline: each
+    # records its prompt sha256 and the loader recomputes + asserts equality.
+    run_templates: dict[str, FieldTypeTemplate] = {}
+    raw_run = raw.get("run_templates")
+    if raw_run is not None:
+        if not isinstance(raw_run, dict):
+            raise LibrarianSchemaError("prompt manifest 'run_templates' must be a mapping")
+        for name, spec in raw_run.items():
+            if not isinstance(spec, dict):
+                raise LibrarianSchemaError(f"run-template {name!r} binding must be a mapping")
+            prompt_rel = spec.get("prompt")
+            schema_rel = spec.get("schema")
+            decoding_rel = spec.get("decoding")
+            recorded = spec.get("sha256")
+            if not all(isinstance(x, str) and x for x in (prompt_rel, schema_rel, decoding_rel)):
+                raise LibrarianSchemaError(
+                    f"run-template {name!r} must bind prompt/schema/decoding paths"
+                )
+            computed = _sha256_of(root / prompt_rel)
+            if recorded is not None and computed != recorded:
+                raise LibrarianSchemaError(
+                    f"run-template prompt {prompt_rel!r} sha256 mismatch: recorded {recorded!r}, "
+                    f"computed {computed!r} -- a frozen prompt was edited without re-stamping"
+                )
+            run_templates[str(name)] = FieldTypeTemplate(
+                field_type=str(name),
+                prompt=prompt_rel,
+                schema=schema_rel,
+                decoding=decoding_rel,
+                prompt_sha256=computed,
+                schema_sha256=_sha256_of(root / schema_rel),
+                decoding_sha256=_sha256_of(root / decoding_rel),
+            )
+
+    return PromptManifest(
+        version=str(version),
+        templates=templates,
+        field_types=field_types,
+        run_templates=run_templates,
+    )

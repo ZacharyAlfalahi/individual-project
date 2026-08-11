@@ -12,13 +12,16 @@ from pathlib import Path
 import pytest
 
 from agents.quant.config import Locator
+from agents.quant.config.provenance import ProvenanceError
 
 from agents.librarian.config import CanonicalText, load_canonical_text
+from agents.librarian.config.locate import locate_quote
+from agents.librarian.config.normalise import normalise
 from agents.librarian.errors import CanonicalTextNotFrozenError, LibrarianSchemaError
 
-_STUB_PATH = Path(__file__).resolve().parent.parent.parent / (
-    "agents/librarian/fixtures/canonical_text.stub.yaml"
-)
+_REPO = Path(__file__).resolve().parent.parent.parent
+_STUB_PATH = _REPO / "agents/librarian/fixtures/canonical_text.stub.yaml"
+_KPP_FROZEN = _REPO / "evaluation/canonical_texts/kpp_2023.frozen.yaml"
 
 
 @pytest.fixture(scope="module")
@@ -125,17 +128,31 @@ def test_locate_level_l2_dehyphenates_fold():
     assert ct.locate("quin- tiles", level="L2") is not None
 
 
-def test_locate_declines_cross_page_matches():
-    # A quote straddling a page boundary matches via the adjacent-pair fallback
-    # (locate_quote reports it), but CanonicalText.locate returns None rather than
-    # stamp a malformed single-page Locator (offsets index the joined pair). HIGH-1.
-    from agents.librarian.config.locate import locate_quote
-
+def test_locate_returns_faithful_cross_page_locator():
+    # A quote straddling a page seam matches via the adjacent-pair fallback. Before
+    # WS-1 locate() declined it (returned None -> routed to review/UNKNOWN); it now
+    # returns a faithful cross-page Locator (end_page == page + 1) whose span indexes
+    # the joined pair and round-trips byte-exactly via slice_text. WS-1 (fixes the 3
+    # page_break misses in parser_bakeoff_report.md).
     ct = _frozen(pages=("the measure begins on this", "next page and finishes here"))
     quote = "begins on this next page and finishes"
     res = locate_quote(ct.pages, quote, "L1")
     assert res.matched and res.used_cross_page          # the matcher primitive locates it
-    assert ct.locate(quote, level="L1") is None          # but locate() declines it
+    loc = ct.locate(quote, level="L1")
+    assert loc is not None
+    assert loc.end_page == loc.page + 1                 # a faithful cross-page span
+    assert ct.slice_text(loc, level="L1") == normalise(quote, "L1")  # round-trips
+
+
+def test_cross_page_locator_to_dict_and_guard():
+    # Additive end_page: single-page locators stay byte-identical (no end_page key);
+    # a cross-page locator surfaces end_page and must span exactly one seam. WS-1.
+    single = Locator(page=2, char_start=1, char_end=4)
+    assert single.to_dict() == {"page": 2, "char_start": 1, "char_end": 4}
+    cross = Locator(page=2, char_start=1, char_end=4, end_page=3)
+    assert cross.to_dict() == {"page": 2, "char_start": 1, "char_end": 4, "end_page": 3}
+    with pytest.raises(ProvenanceError):
+        Locator(page=2, char_start=1, char_end=4, end_page=5)  # not page + 1
 
 
 # --- construction guards ----------------------------------------------------
@@ -181,3 +198,26 @@ def test_empty_pages_is_build_error():
             pages=(),
             status="frozen",
         )
+
+
+# --- KPP (schema v1.2): the frozen fitted-model paper + dense Table A.I ------
+
+def test_kpp_frozen_text_loads_and_is_frozen():
+    ct = load_canonical_text(_KPP_FROZEN)
+    assert ct.is_frozen
+    ct.require_frozen()  # does not raise
+    assert ct.source_sha256 == (
+        "5e5399dfae90d0e637c38e577b15ec2ae0a242e15e8d3fc3301585803031da7f"
+    )
+    assert len(ct.pages) == 42
+
+
+def test_kpp_dense_table_ai_substring_locates_at_l1():
+    # The dense Appendix-A characteristic-definition region must be locatable at L1
+    # (this is what makes the 29-instrument gold authorable) -- exact substring,
+    # no cross-page fallback.
+    ct = load_canonical_text(_KPP_FROZEN)
+    quote = "Value-at-risk is the second lowest credit excess return over the past"
+    m = locate_quote(ct.pages, quote, "L1")
+    assert m.matched
+    assert not m.used_cross_page

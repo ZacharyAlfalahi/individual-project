@@ -6,6 +6,8 @@ Hand-authored answer keys for the three anchor strategies, per the authoring tem
 STATED value carries a verbatim quote located at L1 by the project's own `locate_quote`
 (59/59 — see `locator_backfill_report.md`).
 
+**Correcting a gold?** See the consolidated `docs/evaluation/gold_errata_protocol.md` (append-only + re-stamp, 57/57-locator re-validation, stop-and-report on any diff beyond the errata; extraction errors route to review, never to a gold edit — D27).
+
 | file | anchor | paper | status |
 |---|---|---|---|
 | `gold_drf_bbw_2019.md` | DRF | BBW (2019), JFE | **INSTANTIATED 2026-07-15 (schema v1.1)** — BBW text frozen; every STATED quote an exact L1 substring with a binding locator; G2 byte-equality green (par-proxy weighting carried as a standing register row) |

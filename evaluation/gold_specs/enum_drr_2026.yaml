@@ -1,0 +1,21 @@
+# Gold enumeration list -- DRR (2026), the short-term reversal anchor (WS-3).
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+authoring:
+  procedure: NO-MODEL-CONSULT
+  method: >
+    Hand-enumerated from the FROZEN canonical text only, with ZERO inference. The one
+    strategy row is DRR's short-term reversal decile-sort construction; its quote is
+    copied verbatim (character-for-character) from the frozen text and is L1-locatable.
+    No model was consulted in authoring this list -- it is a human reference standard.
+  authored: 2026-08-10
+  source_text: evaluation/canonical_texts/drr_2026.frozen.yaml
+
+gold: true
+paper_id: DRR_2026
+constructions:
+  - name: Short-Term Reversal (str)
+    quote: 'we sort bonds into deciles each month and form value-weighted portfolios (using bond market capitalization) that are long the top decile and short the bottom decile'
+    class: strategy

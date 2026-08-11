@@ -45,6 +45,7 @@ import json
 import math
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -62,10 +63,18 @@ from agents.librarian.registries.standing_substitutions import (  # noqa: E402
     load_standing_substitutions,
 )
 from agents.quant.config.coverage import layered_coverage  # noqa: E402
+from agents.quant.config.ledger_check import (  # noqa: E402
+    check_assumptions,
+    load_ledger_check_table,
+)
 from agents.quant.config.runner import StrategyResult, run_strategy  # noqa: E402
 from agents.quant.library.run_config import RunConfig, corrected  # noqa: E402
 from agents.quant.library.views import view  # noqa: E402
 from evaluation.gold_specs.gold_loader import load_gold_spec  # noqa: E402
+from shared.reporting.run_manifest import (  # noqa: E402
+    build_run_manifest,
+    write_run_manifest,
+)
 
 ANCHORS = ("str", "drf", "mom6")
 
@@ -167,6 +176,7 @@ def record_anchor(
     *,
     safe_rate: pd.DataFrame | None = None,
     benchmark: pd.DataFrame | None = None,
+    ledger_refusals: tuple = (),
 ) -> dict:
     """One anchor's serialisable outcome record. A refused compile is recorded as a TYPED
     refusal (the RQ2 coverage branch); a compiled strategy is run through `run_strategy` and
@@ -178,6 +188,19 @@ def record_anchor(
             "status": "refused",
             "variant": result.variant,
             "refusals": [r.to_dict() for r in result.refusals],
+        }
+
+    # D28/D29 ledger gate: a strategy that COMPILED but whose STATED Part-2 fields contradict
+    # a silently-fixed engine assumption REFUSES (ASSUMPTION_MISMATCH) rather than running a
+    # different assumption and calling it a replication. `ledger_refusals` is empty for the
+    # three anchors (they compile clean); it lands in the coverage denominator like any refusal.
+    # Threaded here so check_assumptions (ledger_check.py, D28/D29) is no longer exported-but-uncalled.
+    if ledger_refusals:
+        return {
+            "anchor": anchor_id,
+            "status": "refused",
+            "variant": result.variant,
+            "refusals": [r.to_dict() for r in ledger_refusals],
         }
 
     run_result = run_strategy(result, panel, safe_rate=safe_rate, benchmark=benchmark)
@@ -297,12 +320,30 @@ def run_all(anchors: Iterable[str], *, out_dir: Path | None = None) -> int:
     run_config = corrected()
     panel, subs = load_inputs(run_config)
 
-    records = [record_anchor(a, adapt_anchor(a, subs), panel) for a in anchors]
+    # D28/D29 ledger gate, wired for the corpus set: a compiled anchor whose STATED fields
+    # contradict a silently-fixed engine assumption refuses. Loaded once; the three supported
+    # anchors produce zero mismatches, so the anchor run is unchanged.
+    ledger_table = load_ledger_check_table()
+    records = []
+    for a in anchors:
+        result = adapt_anchor(a, subs)
+        ledger_refs = () if result.refused else check_assumptions(load_gold_spec(a), ledger_table)
+        records.append(record_anchor(a, result, panel, ledger_refusals=ledger_refs))
     coverage = build_coverage(records)
     run_log = build_run_log(subs, run_config, anchors, records)
 
     out_dir = out_dir or (REPO_ROOT / "results" / "quant" / f"run_{_git('rev-parse', '--short', 'HEAD')}")
     write_results(out_dir, records, coverage, run_log)
+    # WS-8 (O11): a unified per-run execution manifest sidecar — timestamp + code/data/config/
+    # output hashes + an operational profile. A SIDECAR: never hashed into a result artefact.
+    write_run_manifest(out_dir, build_run_manifest(
+        run_id=out_dir.name,
+        driver="run_quant",
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        inputs=[str(BASE_PANEL.relative_to(REPO_ROOT))],
+        configs=["docs/thresholds.yaml", "agents/quant/config/data/ledger_check_table.yaml"],
+        outputs=[str(out_dir / "run_log.json"), str(out_dir / "coverage.json")],
+    ))
 
     run_records = [r for r in records if r["status"] == "run"]
     all_finite = all(r["summary"]["mean_pct_per_month"] is not None for r in run_records)

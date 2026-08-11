@@ -1,0 +1,22 @@
+# Gold enumeration list -- JNPS (2013), the six-month momentum anchor (WS-3).
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+authoring:
+  procedure: NO-MODEL-CONSULT
+  method: >
+    Hand-enumerated from the FROZEN canonical text only, with ZERO inference. The one
+    strategy row is JNPS's six-month momentum decile-sort construction; its quote is
+    copied verbatim (character-for-character, including the U+2212 minus signs in the
+    formation window) from the frozen text and is L1-locatable. No model was consulted
+    in authoring this list -- it is a human reference standard.
+  authored: 2026-08-10
+  source_text: evaluation/canonical_texts/jnps_2013.frozen.yaml
+
+gold: true
+paper_id: JNPS_2013
+constructions:
+  - name: Six-Month Momentum (mom6)
+    quote: 'each month t, bonds are sorted into decile portfolios, P1 to P10, based on their cumulative returns over months t −6 to t −1 (formation period)'
+    class: strategy

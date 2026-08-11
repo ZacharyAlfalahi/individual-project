@@ -65,6 +65,11 @@ class AuditorConfig:
     holding_period: int = 1
     months_per_year: int = 12
     lib_gap_lags: tuple[int, int] = (0, 1)
+    # WS-5 (D12): the meas_err OFF arm for the FULL-audit/report path. Defaults "raw" so
+    # run_full_audit is byte-identical unless a per-strategy baseline is threaded in; the
+    # lattice/orchestrator already default OFF="raw". Activation is a logged, pre-registered
+    # re-run, never a bare default flip.
+    meas_err_off_family: str = "raw"
     alpha: float = 0.05
 
     @classmethod
@@ -109,6 +114,7 @@ def run_full_audit(
         percentage_denominator_min=config.percentage_denominator_min,
         support_gate=config.support_gate,
         lib_gap_lags=config.lib_gap_lags,
+        meas_err_off_family=config.meas_err_off_family,
         months_per_year=config.months_per_year,
         pre_registration_tag=pre_registration_tag,
     )

@@ -1,0 +1,14 @@
+# Decoding config for run-template: enumeration (build brief §5.2, D20).
+#
+# Temperature 0 + structured (JSON-schema-constrained) decoding, per D10/D33.
+# The enumeration stage returns the full construction list in ONE structured call
+# (a run-template, not a per-field kind): k=1 primary sampling, deterministic. The
+# output budget is larger than the per-field kinds because one reply carries every
+# construction (name + verbatim quote + class + optional grid) at once.
+field_type: enumeration
+temperature: 0
+top_p: 1
+structured: true
+schema: schemas/enumeration.schema.json
+k: 1
+max_output_tokens: 1024

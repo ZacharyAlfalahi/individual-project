@@ -52,6 +52,7 @@ from ..config.canonical_text import CanonicalText
 from ..errors import LibrarianSchemaError
 from ..registries import SignalConceptRegistry, load_field_definitions
 from ..schema import fields as F
+from .lister import CONSTRUCTION_CLASSES, Construction, GridInfo
 from .model_client import FieldQuery, ModelAnswer
 from .prompts import PromptManifest, load_prompt_manifest
 
@@ -127,6 +128,9 @@ class PromptBuilder:
     _domains2: dict   # part2 field -> domain dict
     _registry_menu: str
     _definitions: dict  # field -> frozen {definition} gloss (definitions.yaml)
+    _run_templates: dict  # run-template name -> template text (WS-3)
+    _run_schemas: dict    # run-template name -> schema dict
+    _run_decoding: dict   # run-template name -> decoding dict
 
     @classmethod
     def load(
@@ -142,6 +146,15 @@ class PromptBuilder:
             templates[kind] = (_DATA_ROOT / tpl.prompt).read_text(encoding="utf-8")
             schemas[kind] = json.loads((_DATA_ROOT / tpl.schema).read_text(encoding="utf-8"))
             decoding[kind] = yaml.safe_load((_DATA_ROOT / tpl.decoding).read_text(encoding="utf-8"))
+        # Run-templates (WS-3): whole-paper structured calls (e.g. enumeration),
+        # loaded the same way but keyed by name and NOT routed through render().
+        run_templates: dict[str, str] = {}
+        run_schemas: dict[str, dict] = {}
+        run_decoding: dict[str, dict] = {}
+        for name, tpl in manifest.run_templates.items():
+            run_templates[name] = (_DATA_ROOT / tpl.prompt).read_text(encoding="utf-8")
+            run_schemas[name] = json.loads((_DATA_ROOT / tpl.schema).read_text(encoding="utf-8"))
+            run_decoding[name] = yaml.safe_load((_DATA_ROOT / tpl.decoding).read_text(encoding="utf-8"))
         with _DOMAINS_PATH.open("r", encoding="utf-8") as fh:
             domains = yaml.safe_load(fh)
         field_defs = load_field_definitions()
@@ -154,6 +167,9 @@ class PromptBuilder:
             _domains2=dict(domains.get("part2", {})),
             _registry_menu=_render_registry_menu(registry),
             _definitions=dict(field_defs.definitions),
+            _run_templates=run_templates,
+            _run_schemas=run_schemas,
+            _run_decoding=run_decoding,
         )
 
     def _menu_for(self, field_name: str) -> str:
@@ -187,6 +203,18 @@ class PromptBuilder:
 
     def max_tokens_for(self, kind: str) -> int:
         return int(self._decoding.get(kind, {}).get("max_output_tokens", 512))
+
+    # -- run-template accessors (WS-3) --------------------------------------
+    # A run-template is a whole-paper structured call (e.g. enumeration); it is
+    # bound by name and NOT dispatched through render()/FIELD_KINDS.
+    def run_prompt(self, name: str) -> str:
+        return self._run_templates[name]
+
+    def run_schema(self, name: str) -> dict:
+        return self._run_schemas[name]
+
+    def run_max_tokens(self, name: str) -> int:
+        return int(self._run_decoding.get(name, {}).get("max_output_tokens", 1024))
 
     def render(self, query: FieldQuery, strategy_label: str) -> str:
         """The instruction block (template with slots filled). The paper text +
@@ -537,6 +565,51 @@ def _answer_from_parsed(field_name: str, kind: str, parsed: dict, model_id: str)
     return ModelAnswer(field=field_name, answered=True, raw=raw, quote=quote, model_id=model_id)
 
 
+def _constructions_from_parsed(parsed: dict) -> tuple[Construction, ...]:
+    """Map a parsed enumeration reply to a tuple of UNLOCATED Constructions (D20).
+
+    Defensive, like the per-field mappers: a malformed row (missing/blank name or
+    quote, or a class not in ``CONSTRUCTION_CLASSES``) is SKIPPED, and any row that
+    fails ``Construction``/``GridInfo`` validation (e.g. a grid with ``is_grid`` but
+    no ``headline_cell``) is dropped rather than raised. A non-list ``constructions``
+    payload (or a non-iterable ``cells_noted``) also degrades to empty rather than
+    raising, so a hostile/hallucinated reply can never crash the live run. Locators
+    are left ``None`` -- ``enumerate_constructions`` relocates each quote against the
+    canonical text, so this producer never locates."""
+    out: list[Construction] = []
+    rows = parsed.get("constructions")
+    if not isinstance(rows, list):
+        return ()  # a non-list (or absent) 'constructions' -> nothing to map; never raise
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        quote = row.get("quote")
+        cls = row.get("class")
+        if not (isinstance(name, str) and name.strip()):
+            continue
+        if not (isinstance(quote, str) and quote.strip()):
+            continue
+        if cls not in CONSTRUCTION_CLASSES:
+            continue
+        raw_grid = row.get("grid")
+        if not isinstance(raw_grid, dict):
+            raw_grid = {}
+        cells = raw_grid.get("cells_noted", [])
+        if not isinstance(cells, (list, tuple)):
+            cells = []  # a non-iterable cells_noted degrades to empty, never raises TypeError
+        try:
+            grid = GridInfo(
+                is_grid=bool(raw_grid.get("is_grid", False)),
+                headline_cell=raw_grid.get("headline_cell"),
+                cells_noted=tuple(str(c) for c in cells),
+            )
+            out.append(Construction(name=name, quote=quote, cls=cls, grid=grid, locator=None))
+        except LibrarianSchemaError:
+            continue
+    return tuple(out)
+
+
 # ---------------------------------------------------------------------------
 # The client.
 # ---------------------------------------------------------------------------
@@ -598,7 +671,7 @@ class RealModelClient:
         )
         max_tokens = self._builder.max_tokens_for(query.kind)
 
-        raw_text, version = self._generate_with_retry(prompt, max_tokens, query)
+        raw_text, version = self._generate_with_retry(prompt, max_tokens, query.field)
         parsed = _parse_json(raw_text)
         model_id_stamp = version or self.model_id
         if parsed is None:
@@ -611,6 +684,35 @@ class RealModelClient:
         self._cache[key] = answer
         return answer
 
+    # -- enumeration producer (WS-3) ----------------------------------------
+    def extract_enumeration(self, canonical_text: CanonicalText) -> tuple[Construction, ...]:
+        """Live enumeration (D20): ONE structured whole-paper call returning every
+        construction the paper describes, as UNLOCATED ``Construction``s
+        (``locator=None``). ``enumerate_constructions`` relocates each quote against
+        the canonical text downstream, so this producer never calls ``.locate``.
+
+        A parse failure returns ``()`` and bumps ``format_failures`` -- the same
+        run-to-completion degradation the per-field path uses (an empty list routes
+        to review via the dual-model agreement gate, never a silent partial spec)."""
+        if not isinstance(canonical_text, CanonicalText):
+            raise LibrarianSchemaError("RealModelClient.extract_enumeration expects a CanonicalText")
+        paper_text = "\n\n".join(canonical_text.pages)
+        schema = self._builder.run_schema("enumeration")
+        prompt = (
+            f"{self._builder.run_prompt('enumeration')}\n\n"
+            "PAPER TEXT (your ONLY source -- quote verbatim, character-for-character):\n"
+            f"<<<\n{paper_text}\n>>>\n\n"
+            "Return ONLY a single JSON object (no prose, no code fence) matching "
+            f"this JSON Schema:\n{json.dumps(schema)}"
+        )
+        max_tokens = self._builder.run_max_tokens("enumeration")
+        raw_text, _version = self._generate_with_retry(prompt, max_tokens, "enumeration")
+        parsed = _parse_json(raw_text)
+        if parsed is None:
+            self.format_failures += 1
+            return ()
+        return _constructions_from_parsed(parsed)
+
     # -- proactive rate-limit pacing ----------------------------------------
     def _pace(self) -> None:
         if self._min_interval_s <= 0:
@@ -621,7 +723,7 @@ class RealModelClient:
 
     # -- vendor call with retry ---------------------------------------------
     def _generate_with_retry(
-        self, prompt: str, max_tokens: int, query: FieldQuery
+        self, prompt: str, max_tokens: int, field_label: str
     ) -> tuple[str, str | None]:
         last_exc: Exception | None = None
         attempts = 0
@@ -649,7 +751,7 @@ class RealModelClient:
                 time.sleep(wait)
         plural = "attempt" if attempts == 1 else "attempts"
         raise RealClientError(
-            f"{self.vendor}:{self.model_id} failed on field {query.field!r} after "
+            f"{self.vendor}:{self.model_id} failed on field {field_label!r} after "
             f"{attempts} {plural}: {type(last_exc).__name__}: {str(last_exc)[:200]}"
         ) from last_exc
 

@@ -16,11 +16,13 @@ Phases (docs/thresholds.yaml -> librarian.model_stack, D33 two-phase policy):
                 verbatim-locating BBW answers. No network, no keys. Proves the
                 assemble -> run_paper -> emit -> validate path end-to-end.
 
-Enumeration is PROVIDED here (a single hand-listed construction), not extracted
-live: the ModelClient Protocol is field-oriented and there is no frozen
-enumeration prompt/schema in the manifest yet -- live enumeration extraction is a
-separate follow-up needing its own frozen contract. The per-field extraction (the
-crux of L1) is fully live.
+Enumeration is now LIVE (WS-3): each model's ``extract_enumeration(ct)`` returns a
+construction list via the frozen ``enumeration`` run-template (manifest
+``run_templates``), and ``enumerate_constructions`` runs the D20 dual-model
+agreement gate (a name-set / class disagreement routes the paper to review).
+PAPERS[*]["constructions"] is now the FAKE seed only -- it scripts the offline
+FakeModelClients so ``--phase fake`` still proves the assemble -> validate path;
+the dev/report pairs enumerate against the real paper text.
 
 Pre-Phase-F follow-ups (the dev smoke runs fine without them; reportable baselines
 need them):
@@ -33,7 +35,7 @@ need them):
     decision, 2026-07-16). Nudge the extraction prompts toward short, verbatim,
     locate-friendly spans.
   * An authoritative per-field ``definition`` resource (frozen, hash-stamped);
-    live enumeration extraction; the ``control_n_groups`` manifest binding.
+    the ``control_n_groups`` manifest binding.
 """
 
 from __future__ import annotations
@@ -54,12 +56,12 @@ sys.path.insert(0, str(_REPO_ROOT))
 from agents.librarian.config import load_canonical_text  # noqa: E402
 from agents.librarian.pipeline import (  # noqa: E402
     Construction,
-    EnumerationResult,
     ExtractionTrace,
     FakeModelClient,
     ModelAnswer,
     RunProvenance,
     TraceRunHeader,
+    enumerate_constructions,
     fill_field,
     fill_method_summary,
     fill_signal_ref,
@@ -90,9 +92,10 @@ PAPERS: dict[str, dict] = {
     "bbw": {
         "paper_id": "BBW_2019",
         "canonical_text": "evaluation/canonical_texts/bbw_2019.frozen.yaml",
-        # Provided enumeration: BBW's headline sorted-portfolio construction. The
-        # quote is verbatim from the frozen text (locates on page 2) so the
-        # strategy label ships STATED.
+        # Fake seed (WS-3): BBW's headline sorted-portfolio construction, scripted
+        # into the offline FakeModelClients. The quote is verbatim from the frozen
+        # text (locates on page 2) so the strategy label ships STATED. The dev/report
+        # pairs enumerate live and ignore this.
         "constructions": [
             {"name": "Downside Risk Factor (DRF)", "quote": "downside risk factor (DRF)", "cls": "strategy"},
         ],
@@ -337,11 +340,12 @@ def _load_dotenv(path: Path) -> None:
         os.environ.setdefault(k.strip(), v.strip())
 
 
-def build_clients(phase: str, builder: PromptBuilder, out_dir: Path):
+def build_clients(phase: str, builder: PromptBuilder, out_dir: Path, paper: dict):
     """Return (model_a, model_b). ``fake`` = offline scripted; ``dev``/``report`` =
-    live vendor clients read from thresholds.yaml + env keys."""
+    live vendor clients read from thresholds.yaml + env keys. ``paper`` supplies the
+    fake pair's scripted enumeration seed (WS-3); the live pairs enumerate live."""
     if phase == "fake":
-        return _fake_pair()
+        return _fake_pair(paper)
 
     _load_dotenv(_REPO_ROOT / ".env")
     thresholds = yaml.safe_load((_REPO_ROOT / "docs" / "thresholds.yaml").read_text(encoding="utf-8"))
@@ -353,9 +357,11 @@ def build_clients(phase: str, builder: PromptBuilder, out_dir: Path):
     return build_client_pair(block, builder, api_keys, archive_dir=out_dir / "raw")
 
 
-def _fake_pair():
+def _fake_pair(paper: dict):
     """Two FakeModelClients scripted with a few verbatim-locating BBW answers --
-    an offline proof of the assemble -> validate path (no network/keys)."""
+    an offline proof of the assemble -> validate path (no network/keys). Both are
+    seeded with the paper's hand-listed constructions as the enumeration output
+    (WS-3): identical seeds -> the D20 agreement gate passes and the run proceeds."""
     scripted = {
         F.SORT_SIGNAL: ("var_5pct", "the 5% VaR"),            # locates p5
         F.FORMATION_STRUCTURE: ("sorted_portfolios", "downside risk factor (DRF)"),  # p2
@@ -363,6 +369,10 @@ def _fake_pair():
         F.N_GROUPS: (5, "lowest-VaR quintile"),               # "quintile" -> 5, p8
         F.WEIGHTING_SCHEME: ("value", "value-weighted average"),  # p5
     }
+    seed = tuple(
+        Construction(name=c["name"], quote=c["quote"], cls=c["cls"])
+        for c in paper["constructions"]
+    )
 
     def _client(cid):
         answers = {}
@@ -370,7 +380,7 @@ def _fake_pair():
             # For a signal_ref field the concept_id rides in raw, exactly as the
             # ordinary D9 merge token; FakeModelClient ignores the query kind.
             answers[fld] = ModelAnswer(field=fld, answered=True, raw=raw, quote=quote)
-        return FakeModelClient(cid, answers)
+        return FakeModelClient(cid, answers, enumeration=seed)
 
     return _client("fake-a"), _client("fake-b")
 
@@ -407,7 +417,7 @@ def main(argv=None) -> int:
     silence_table = load_silence_policy_table()
     builder = PromptBuilder.load(registry, manifest)
 
-    model_a, model_b = build_clients(args.phase, builder, out_dir)
+    model_a, model_b = build_clients(args.phase, builder, out_dir, paper)
 
     now = datetime.now(timezone.utc).isoformat()
     prov = RunProvenance(
@@ -423,12 +433,20 @@ def main(argv=None) -> int:
         timestamp=now,
     )
 
-    enum = EnumerationResult(
-        paper_id=paper["paper_id"],
-        constructions=tuple(
-            Construction(name=c["name"], quote=c["quote"], cls=c["cls"]) for c in paper["constructions"]
-        ),
-    )
+    # Live enumeration (WS-3): each model returns its construction list; the D20
+    # dual-model agreement gate ships the agreed set (relocated against ct) or
+    # routes the paper to review on any name-set / class disagreement.
+    list_a = model_a.extract_enumeration(ct)
+    list_b = model_b.extract_enumeration(ct)
+    enum = enumerate_constructions(ct, list_a, list_b, paper["paper_id"])
+    if not enum.agreed:
+        print(f"[run_librarian] REVIEW: enumeration disagreement: {enum.disagreement.detail}")
+        return 2
+    if not enum.constructions:
+        print("[run_librarian] REVIEW: enumeration produced zero constructions "
+              "(both models empty or unparseable) -- routing to review rather than "
+              "proceeding with an empty spec set")
+        return 2
 
     assembler = make_assembler(model_a, model_b, registry, manifest, field_limit=args.limit)
 

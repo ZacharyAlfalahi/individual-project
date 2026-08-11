@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "librarian/run-template/enumeration",
+  "title": "Construction enumeration answer",
+  "description": "Structured-decoding contract for the enumeration stage (D20). The model returns every construction the paper describes as a 'constructions' array; each element carries a name, a verbatim supporting quote, a class (strategy|auxiliary), and optional grid metadata. Class membership + verbatim locatability are enforced downstream by the lister; this schema pins the shape.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["constructions"],
+  "properties": {
+    "constructions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "quote", "class"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The paper's own name for the construction."
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Verbatim span introducing/defining the construction."
+          },
+          "class": {
+            "type": "string",
+            "enum": ["strategy", "auxiliary"],
+            "description": "'strategy' spawns a spec; 'auxiliary' is a recorded control/input."
+          },
+          "grid": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["is_grid"],
+            "properties": {
+              "is_grid": {
+                "type": "boolean",
+                "description": "True iff a parameter sweep of one signal concept (D20 grid rule)."
+              },
+              "headline_cell": {
+                "type": ["string", "null"],
+                "description": "The featured cell the spec is built at (required when is_grid)."
+              },
+              "cells_noted": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "The other sweep cells, recorded as metadata (never separate strategies)."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

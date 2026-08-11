@@ -40,6 +40,7 @@ from agents.quant.config import Locator
 
 from ..errors import CanonicalTextNotFrozenError, LibrarianSchemaError
 from .locate import locate_quote
+from .normalise import normalise
 
 # The two legal statuses. "stub" = scaffolding text (offline tests); "frozen" =
 # a real, bake-off-parsed canonical text cleared to reach extraction.
@@ -129,11 +130,13 @@ class CanonicalText:
         was a latent footgun: real, L1-normalised quotes fail an exact L0 substring, so
         the D9 quote gate returned spurious ``quote_match_failure`` on every live extraction.)
 
-        A quote that only matches via the adjacent page-pair fallback (straddling a
-        page boundary) returns ``None`` here: its offsets index the joined page-pair,
-        not a single page, so a faithful single-page ``Locator`` cannot be formed yet
-        (deferred to the cross-page-seam matcher). The bake-off calls ``locate_quote``
-        directly and still scores such matches.
+        A quote that matches only via the adjacent page-pair fallback (straddling a
+        page seam) returns a faithful CROSS-PAGE ``Locator`` with ``end_page == page + 1``;
+        its ``char_start``/``char_end`` index the joined pair
+        ``normalise(pages[page] + "\n" + pages[end_page], level)`` -- use ``slice_text`` to
+        read it back. Before WS-1 (2026-08-10) such a quote returned ``None`` and routed to
+        review (UNKNOWN); it now locates. The bake-off calls ``locate_quote`` directly and
+        is unaffected.
         """
         if not isinstance(quote, str) or quote == "":
             raise LibrarianSchemaError("locate(quote) requires a non-empty string")
@@ -142,20 +145,34 @@ class CanonicalText:
         result = locate_quote(self.pages, quote, level)
         if not result.matched:
             return None
-        if result.used_cross_page:
-            # A cross-page match's offsets index the JOINED page-pair string, not a
-            # single page, so they cannot form a faithful single-page Locator
-            # (char_end could exceed len(pages[page])). Rather than stamp a malformed
-            # locator into the STATED audit trail, decline -- the quote then routes to
-            # review (UNKNOWN) instead. Faithful cross-page locators are deferred to the
-            # cross-page-seam matcher work (see docs/librarian/validation/parser_bakeoff_report.md). The
-            # bake-off uses locate_quote directly, so its cross-page scoring is unaffected.
-            return None
+        # A cross-page match's offsets index the JOINED page-pair string; record that
+        # faithfully with end_page == page + 1 (WS-1) rather than declining -- the span
+        # is read back through the same join by slice_text. Single-page matches keep
+        # end_page None, byte-identical to the pre-WS-1 Locator.
         return Locator(
             page=result.page,
             char_start=result.char_start,
             char_end=result.char_end,
+            end_page=(result.page + 1) if result.used_cross_page else None,
         )
+
+    def slice_text(self, locator: Locator, level: str | None = None) -> str:
+        """Return the canonical substring a ``locator`` spans, seam-aware.
+
+        Single-page (``end_page is None``): ``normalise(pages[page], level)[start:end]``.
+        Cross-page: indexes the SAME joined pair the matcher searched --
+        ``normalise(pages[page] + "\n" + pages[end_page], level)[start:end]`` -- so a
+        located quote round-trips byte-exactly across a seam. ``level`` defaults to the
+        text's own ``ladder_level`` (matching ``locate``)."""
+        if level is None:
+            level = self.normalisation.get("ladder_level", "L0")
+        if locator.end_page is None:
+            haystack = normalise(self.pages[locator.page], level)
+        else:
+            haystack = normalise(
+                self.pages[locator.page] + "\n" + self.pages[locator.end_page], level
+            )
+        return haystack[locator.char_start:locator.char_end]
 
     def to_dict(self) -> dict:
         return {

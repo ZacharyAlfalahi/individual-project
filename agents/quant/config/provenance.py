@@ -61,11 +61,21 @@ class Locator:
     requirement is enforced in ``Inherited.__post_init__``, not here. Added additively
     to the frozen provenance layer per the D6 amendment (2026-07-09): additive fields
     + one strengthened guard, no change to existing values, tags, or ``to_rulebook``.
+
+    ``end_page`` is additive (WS-1, 2026-08-10) and defaults to ``None`` -- a single-page
+    locator, the only shape existing STATED evidence and the frozen gold set carry, so
+    their bytes and ``to_dict`` output are unchanged. When ``end_page`` is set (a quote
+    that straddles a page seam) it must equal ``page + 1`` and the span indexes the
+    JOINED pair ``normalise(pages[page] + "\n" + pages[end_page], level)`` -- the same
+    string the cross-page matcher (``locate.locate_quote``) searches -- not a single
+    page. Any code that slices a locator span MUST branch on ``end_page`` (see
+    ``CanonicalText.slice_text``).
     """
 
     page: int
     char_start: int
     char_end: int
+    end_page: int | None = None
 
     def __post_init__(self) -> None:
         for name, v in (
@@ -83,9 +93,25 @@ class Locator:
                 "Locator span invalid: 0 <= char_start <= char_end required; "
                 f"got char_start={self.char_start}, char_end={self.char_end}"
             )
+        if self.end_page is not None:
+            if not isinstance(self.end_page, int) or isinstance(self.end_page, bool):
+                raise ProvenanceError(
+                    f"Locator.end_page must be an int or None; got {self.end_page!r}"
+                )
+            # The cross-page matcher only ever joins ADJACENT pages, and faithful
+            # reconstruction of the span depends on that adjacency, so a cross-page
+            # locator spans exactly (page, page + 1).
+            if self.end_page != self.page + 1:
+                raise ProvenanceError(
+                    "Locator.end_page must equal page + 1 (a cross-page locator spans one "
+                    f"seam); got page={self.page}, end_page={self.end_page}"
+                )
 
     def to_dict(self) -> dict:
-        return {"page": self.page, "char_start": self.char_start, "char_end": self.char_end}
+        out = {"page": self.page, "char_start": self.char_start, "char_end": self.char_end}
+        if self.end_page is not None:
+            out["end_page"] = self.end_page
+        return out
 
 
 @dataclass(frozen=True)

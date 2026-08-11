@@ -1,0 +1,21 @@
+# Gold enumeration list -- BBW (2019), the DRF anchor (WS-3).
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+authoring:
+  procedure: NO-MODEL-CONSULT
+  method: >
+    Hand-enumerated from the FROZEN canonical text only, with ZERO inference. The one
+    strategy row is BBW's headline sorted-portfolio construction; its quote is copied
+    verbatim (character-for-character) from the frozen text and is L1-locatable. No
+    model was consulted in authoring this list -- it is a human reference standard.
+  authored: 2026-08-10
+  source_text: evaluation/canonical_texts/bbw_2019.frozen.yaml
+
+gold: true
+paper_id: BBW_2019
+constructions:
+  - name: Downside Risk Factor (DRF)
+    quote: 'downside risk factor (DRF)'
+    class: strategy

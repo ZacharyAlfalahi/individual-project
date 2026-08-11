@@ -121,3 +121,16 @@ fields:
   sample_start: date
   sample_end: date
   claimed_headline_metric: paper_metric
+
+# --- run-template bindings (WS-3) --------------------------------------------
+# Whole-paper structured calls, bound by NAME (not by field). The enumeration
+# stage (D20) returns the full construction list in one structured call; it is a
+# run_template, so the FIELD_KINDS gate does NOT apply. Same freeze discipline as
+# the field-type templates: the loader recomputes the prompt byte-hash and asserts
+# it equals the recorded sha256.
+run_templates:
+  enumeration:
+    prompt: prompts/enumeration.prompt.txt
+    schema: schemas/enumeration.schema.json
+    decoding: decoding/enumeration.decoding.yaml
+    sha256: 5ab4913cfd8ff81215e35490249b499aa25cd3b5a066cd9ee998a63907e238c2

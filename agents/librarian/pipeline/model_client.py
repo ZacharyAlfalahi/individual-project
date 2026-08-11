@@ -162,6 +162,15 @@ class FakeModelClient:
 
     model_id: str = "fake-model"
     answers: dict[str, Any] = field(default_factory=dict)
+    # Scripted enumeration output (WS-3): the construction tuple this fake "model"
+    # returns from extract_enumeration. Empty by default (a paper with no scripted
+    # constructions). Not part of the answer() per-field path.
+    enumeration: tuple = ()
+
+    def extract_enumeration(self, canonical_text: CanonicalText) -> tuple:
+        """Return the scripted construction list (WS-3). Deterministic + offline:
+        no locate, no network -- ``enumerate_constructions`` relocates downstream."""
+        return tuple(self.enumeration)
 
     def answer(self, query: FieldQuery, canonical_text: CanonicalText) -> ModelAnswer:
         if not isinstance(query, FieldQuery):

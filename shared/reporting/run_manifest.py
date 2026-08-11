@@ -1,0 +1,118 @@
+"""
+Shared per-run execution manifest (WS-8 / data-layer O11).
+
+A unified sidecar every ``scripts/run_*.py`` driver can emit: execution timestamp +
+code hash + input-data hashes + config hashes + output hashes + a per-run
+*operational profile* (cost / capability). This is the per-run EXECUTION record the
+corpus / Phase-F runs need so the cost / capability-table data actually exists — the
+gap the data-layer register flags as O11 ("no unified per-run manifest, no shared
+run_id").
+
+It is deliberately distinct from ``agents/reporter/manifest.py`` (the hand-maintained
+cross-agent *pointer* file that joins one strategy's artefacts by human assertion).
+This one is machine-emitted per driver run.
+
+**Sidecar discipline.** The manifest carries a wall-clock timestamp, so it is NOT
+byte-reproducible and MUST NEVER be hashed into a result artefact or a pinned digest
+— it records run identity *beside* the results, never inside them. The builder itself
+is pure: the timestamp is passed in (never read from a clock here), so it is fully
+deterministic and unit-testable; the driver stamps the real time at the call site.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+MANIFEST_SCHEMA = 1
+
+
+def _sha256_file(abs_path: Path) -> str | None:
+    """sha256 of a file's bytes, or ``None`` if it does not exist. A missing path is a
+    fact the manifest records (an un-emitted output, an absent optional input), never a
+    raise — the manifest describes what a run touched."""
+    p = Path(abs_path)
+    return hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
+
+
+def git_code_hash(repo_root: Path = REPO_ROOT) -> dict:
+    """The code identity: commit sha, short sha, and whether the tree is dirty. Falls
+    back to ``"unknown"`` rather than raising, so a manifest can be written outside a
+    git checkout."""
+    def _git(*args: str) -> str:
+        try:
+            return subprocess.check_output(["git", *args], cwd=repo_root).decode().strip()
+        except Exception:
+            return "unknown"
+
+    return {
+        "commit": _git("rev-parse", "HEAD"),
+        "short": _git("rev-parse", "--short", "HEAD"),
+        "dirty": _git("status", "--porcelain") not in ("", "unknown"),
+    }
+
+
+def _hash_map(paths: list[str] | None, repo_root: Path) -> dict[str, str | None]:
+    """Map each repo-relative (or absolute) path to its sha256 (or None if absent),
+    keyed by the path string as given, sorted for a stable, diff-friendly record."""
+    out: dict[str, str | None] = {}
+    for p in sorted(paths or []):
+        ap = Path(p) if Path(p).is_absolute() else (repo_root / p)
+        out[str(p)] = _sha256_file(ap)
+    return out
+
+
+def default_operational_profile() -> dict:
+    """The zero-cost profile for a deterministic (no-LLM) run. The SCHEMA exists even
+    when cost is 0, so a Phase-F run populates the same shape and the cost / capability
+    table has data to read (WS-8 rationale)."""
+    return {
+        "phase": None,          # "D" | "F" | None(deterministic)
+        "model_calls": 0,
+        "tokens": None,         # {prompt, completion} once a model is called
+        "cost_usd": None,
+        "capability": "deterministic",
+    }
+
+
+def build_run_manifest(
+    *,
+    run_id: str,
+    driver: str,
+    timestamp: str,
+    inputs: list[str] | None = None,
+    configs: list[str] | None = None,
+    outputs: list[str] | None = None,
+    operational_profile: dict | None = None,
+    repo_root: Path = REPO_ROOT,
+) -> dict:
+    """Assemble a unified per-run manifest dict.
+
+    ``timestamp`` is supplied by the caller (an ISO-8601 string) — never read from a
+    clock here — so this function is pure and deterministic. ``inputs`` / ``configs`` /
+    ``outputs`` are lists of repo-relative paths hashed into the record; a missing path
+    hashes to ``None`` (recorded, not raised)."""
+    return {
+        "manifest_schema": MANIFEST_SCHEMA,
+        "run_id": run_id,
+        "driver": driver,
+        "timestamp": timestamp,
+        "code": git_code_hash(repo_root),
+        "inputs": _hash_map(inputs, repo_root),
+        "configs": _hash_map(configs, repo_root),
+        "outputs": _hash_map(outputs, repo_root),
+        "operational_profile": operational_profile or default_operational_profile(),
+    }
+
+
+def write_run_manifest(out_dir: str | Path, manifest: dict, *, filename: str = "run_manifest.json") -> Path:
+    """Write the manifest as a JSON sidecar into ``out_dir`` and return its path. A
+    sidecar only — never fed back into a hashed artefact."""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / filename
+    path.write_text(json.dumps(manifest, indent=2, default=str))
+    return path
