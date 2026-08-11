@@ -1,0 +1,63 @@
+# Factor-level hypothesis registry (spec v4 Part F) — APPEND-ONLY.
+#
+# "No number is computed on a factor until a dated, committed hypothesis exists
+# for it." One row per factor. The runtime gate
+# (agents/auditor/validation/hypothesis_registry.py::require_factor_registered)
+# refuses to compute a CONFIRMATORY OUTCOME for a factor whose row is absent or
+# malformed — mirroring run_full_audit's DsrPreRegistrationAbsent. The gate covers
+# confirmatory outcome metrics ONLY (factor means, DOE effects, Shapley/Harsanyi,
+# t-stats, anchor verdicts); it does NOT block row counts, invariants, synthetic
+# fixtures, execution diagnostics, or PILOT/exploratory outputs.
+#
+# SEEDED from the 22-July registration (auditor_design.md §13.2, commit b855632,
+# git-tag auditor-prereg-2026-07-22) — the IMMUTABLE authority (D9/D16), NOT the
+# August proposal. Directions/bands carry the §13.2 basis; str is pilot (D-A33).
+#
+# APPEND-ONLY: an edit to an existing row requires a NEW dated entry with
+# justification, never in-place mutation. Bands are UNSIGNED, ascending, DECIMAL
+# monthly units on |effect|; direction is in expected_sign. `magnitude: sign_only`
+# marks a factor with no defensible external magnitude band (direction tested,
+# magnitude not) — its gate is sign-only.
+
+version: v1
+seeded_from: "auditor_design.md §13.2 (commit b855632, tag auditor-prereg-2026-07-22)"
+
+factors:
+  str:
+    dominant_bias: lib_gap
+    expected_sign: -1
+    magnitude: sign_only          # PILOT — descriptive; the −0.60 Δ is observed pilot evidence
+    is_locked: false              # D-A33: str is pilot, EXCLUDED from the confirmatory FDR family
+    status: pilot
+    source: "§13.2: DRR correlated errors-in-variables (Appendix B); pilot −0.80→−0.21, t=−3.34"
+    registered_commit: b855632
+
+  mom6:
+    dominant_bias: lab_trim
+    expected_sign: -1
+    expected_magnitude_range: [0.0000, 0.0030]   # DRR ex-post ≈+0.30%/mo vs ≈0 (PUBLISHED figure, never our realised gap)
+    is_locked: true
+    status: locked
+    source: "§13.2: DRR Table 3 mom6_1 (Jostova et al., RFS), significance depends on ex-post filtering at the 99.50th pct"
+    registered_commit: b855632
+
+  drf:
+    dominant_bias: meas_err
+    expected_sign: -1
+    magnitude: sign_only          # CITATION-CORRECTED (drf_citation_resolution_2026-08-11.md, commit ed32122):
+                                  # the 22-July "15–90 bp/mo" basis is a mis-cited LIB range, not a DRR meas_err
+                                  # magnitude for drf; DRR's DRF-specific critique (DMR 2023 p4-5) is a look-ahead
+                                  # lead error (a non-lattice lead_lag defect). No external meas_err band → sign-only.
+    is_locked: true
+    status: locked
+    source: "§13.2 (meas_err, sign −1); magnitude removed per DMR 2023 citation resolution (commit ed32122)"
+    registered_commit: b855632
+
+  traded_liquidity:
+    dominant_bias: none           # negative control (§10.3)
+    expected_sign: 0              # ≈0 — small gaps throughout (specificity test)
+    magnitude: near_zero
+    is_locked: true
+    status: negative_control
+    source: "§13.2: traded-liquidity negative control, small gaps throughout (§10.3)"
+    registered_commit: b855632
