@@ -81,6 +81,41 @@ def test_audit_anchor_full_builds_a_complete_report():
     assert d["audit_scope"] == "COMPLETE"
 
 
+def test_full_audit_path_threads_expost_trim_off_to_the_lattice():
+    """LINCHPIN (Part E via the FULL-audit path): expost_trim_off must reach the
+    lattice through report.run_full_audit, not just sit on the signature. On a panel
+    with planted extreme losses + a no-base-trim strategy (the delegated mom6), the
+    lab_trim first-order effect is INERT without re-injection and NON-ZERO with it —
+    proving the confirmatory driver exercises Part E, not the raw arm."""
+    import numpy as np
+
+    from agents.auditor.data.synthetic_panel import (
+        inject_lab_trim,
+        make_clean_maximal_panel,
+        score_strategy,
+        SyntheticSpec,
+    )
+    from agents.quant.config import TrimRule
+
+    panel, signals = make_clean_maximal_panel(SyntheticSpec(seed=0))
+    panel, signals = inject_lab_trim(panel, signals, 0.8, np.random.default_rng(1000))
+    strat = score_strategy()  # no base trim = the delegated mom6
+    lab = frozenset({"lab_trim"})
+    tol = 1e-9
+
+    inert = audit_anchor_full(
+        strat, panel, all_runnable_facts(), CONFIG,
+        signals=signals, n_trials=20, sr_std=0.1, seed=1,
+    )
+    fixed = audit_anchor_full(
+        strat, panel, all_runnable_facts(), CONFIG,
+        signals=signals, n_trials=20, sr_std=0.1, seed=1,
+        expost_trim_off=TrimRule(method="truncate", lo=-0.5, hi=0.5),
+    )
+    assert abs(inert.core.saturated.doe[lab]) <= tol, "lab_trim inert without re-injection"
+    assert abs(fixed.core.saturated.doe[lab]) > tol, "expost_trim_off must reach the lattice"
+
+
 def test_deterministic_render_passes_the_numeric_verifier():
     report = _report("stale_price", seed=1)
     prose = render_report(report)

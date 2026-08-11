@@ -102,11 +102,19 @@ def run_full_audit(
     sr_std: float,
     seed: int = 0,
     pre_registration_tag: str | None = None,
+    meas_err_off_family: str | None = None,
+    expost_trim_off=None,
 ) -> AuditReport:
     """Full per-strategy audit: spine + bootstrap + inference/FDR/Bayes/compression
     /economic. `n_trials` and `sr_std` are the strategy-level deflated-Sharpe inputs
     (O-A4: the discovery count is a strategy property, identical across cells).
-    `sr_std` must be the PER-PERIOD cross-trial Sharpe SD (see run_economic)."""
+    `sr_std` must be the PER-PERIOD cross-trial Sharpe SD (see run_economic).
+
+    `meas_err_off_family` (per-paper baseline profile, spec v4 D1) and `expost_trim_off`
+    (mom6's re-injected published lab_trim, spec E) are the PER-ANCHOR Part-D/E inputs.
+    Both default to the config-scalar / None (the default raw-arm behaviour), so a run that
+    passes neither is byte-identical; the confirmatory driver threads them per anchor."""
+    off_family = meas_err_off_family if meas_err_off_family is not None else config.meas_err_off_family
     pf, lattice, core = audit_spine(
         strategy, maximal_panel, facts,
         signals=signals,
@@ -114,7 +122,8 @@ def run_full_audit(
         percentage_denominator_min=config.percentage_denominator_min,
         support_gate=config.support_gate,
         lib_gap_lags=config.lib_gap_lags,
-        meas_err_off_family=config.meas_err_off_family,
+        meas_err_off_family=off_family,
+        expost_trim_off=expost_trim_off,
         months_per_year=config.months_per_year,
         pre_registration_tag=pre_registration_tag,
     )

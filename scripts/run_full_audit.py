@@ -75,6 +75,8 @@ from scripts.run_auditor import (  # noqa: E402
     _auditor_config_hash,
     _git_short,
     default_anchor_facts,
+    load_anchor_expost_trim_off,
+    load_anchor_meas_err_off_family,
     load_anchor_strategy,
 )
 
@@ -172,11 +174,14 @@ def audit_anchor_full(
     sr_std: float,
     seed: int = 0,
     pre_registration_tag: str | None = AUDITOR_PREREG_TAG,
+    meas_err_off_family: str | None = None,
+    expost_trim_off=None,
 ) -> AuditReport:
     """Run the full per-strategy audit -> AuditReport. Thin wrapper over
     `run_full_audit` so the synthetic tests can inject a strategy/panel/facts and the
     DSR inputs (`n_trials`/`sr_std`) without the real loaders, mirroring
-    `test_auditor_report.py`."""
+    `test_auditor_report.py`. `meas_err_off_family` / `expost_trim_off` are the
+    per-anchor Part-D/E inputs (None = the default raw-arm behaviour)."""
     return run_full_audit(
         strategy, maximal_panel, facts, config,
         signals=signals,
@@ -184,6 +189,8 @@ def audit_anchor_full(
         sr_std=sr_std,
         seed=seed,
         pre_registration_tag=pre_registration_tag,
+        meas_err_off_family=meas_err_off_family,
+        expost_trim_off=expost_trim_off,
     )
 
 
@@ -227,11 +234,19 @@ def run_anchor_full(
     verified prose, and return a serialisable record (the AuditReport dict, the prose,
     and the numeric-verification result)."""
     strategy = load_anchor_strategy(anchor_id)
-    facts = default_anchor_facts()
+    # Part-D/E per-anchor wiring (mirror run_auditor.run_anchor): the anchor-scoped
+    # facts (str's meas_err not_applicable exclusion), the meas_err OFF baseline
+    # profile (drf/crf->bbw_2019, mom6->jostova_2013), and mom6's re-injected
+    # published lab_trim. Without these the confirmatory run would measure the raw
+    # OFF arm and drop str's exclusion / mom6's trim — bypassing Part D/E entirely.
+    facts = default_anchor_facts(anchor_id)
+    meas_err_off_family = load_anchor_meas_err_off_family(anchor_id)
+    expost_trim_off = load_anchor_expost_trim_off(anchor_id)
     report = audit_anchor_full(
         strategy, maximal_panel, facts, config,
         signals=signals, n_trials=dsr.n_trials, sr_std=dsr.sr_std,
         seed=seed, pre_registration_tag=pre_registration_tag,
+        meas_err_off_family=meas_err_off_family, expost_trim_off=expost_trim_off,
     )
     prose, verification = render_verified_prose(report)
     rd = report.to_dict()
@@ -239,6 +254,11 @@ def run_anchor_full(
         "anchor": anchor_id,
         "audit_scope": rd["audit_scope"],
         "dsr_inputs": {"n_trials": dsr.n_trials, "sr_std": dsr.sr_std},
+        "baseline_signature": {
+            "meas_err_off_family": meas_err_off_family,
+            "expost_trim_off": (expost_trim_off.to_engine_dict()
+                                if expost_trim_off is not None else None),
+        },
         "report": rd,
         "prose": prose,
         "numeric_verification": {
