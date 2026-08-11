@@ -566,6 +566,22 @@ librarian:
 # `average` are decimal monthly long-short return (0.001 = 0.1%/month = 10 bp/mo).
 # ---------------------------------------------------------------------------
 auditor:
+  # Deflated-Sharpe pre-registration (O-A4, §9.1) — frozen 2026-08-11, the
+  # values proposed in docs/auditor/confirmatory_prereg_proposal.md §1. Committing
+  # this block clears run_full_audit's DsrPreRegistrationAbsent gate. n_trials is the
+  # strategy-level discovery count (identical across the 2^k cells; NOT 2^k); sr_std
+  # is the per-period (MONTHLY) cross-trial Sharpe SD.
+  #   n_trials = 6 — the anchor screening family (BBW-4 [MKTB/DRF/CRF/LRF] + str + mom6);
+  #     a conservative deflation reflecting the project's factor-selection breadth.
+  #   sr_std = 0.08 — an EMPIRICAL development-sample calibration (literature monthly
+  #     ~0.05-0.10), NOT an independently pre-registered constant.
+  # DSR is REPORTED AS SENSITIVITY across n_trials {1, 6, 108}, and is NEVER a
+  # pass/fail anchor-validation gate (spec v4 Part F). The run also records the
+  # realised cross-anchor monthly-Sharpe SD as a cross-check.
+  dsr:
+    str:  {n_trials: 6, sr_std: 0.08}
+    drf:  {n_trials: 6, sr_std: 0.08}
+    mom6: {n_trials: 6, sr_std: 0.08}
   # The primary metric drives the confirmatory family, the DOE decomposition, the
   # Bayesian/hierarchical estimands and the inference routing (§9.1). `average`
   # (mean monthly long-short return) is a mean of observables, so the exact HAC
