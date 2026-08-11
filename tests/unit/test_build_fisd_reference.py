@@ -27,6 +27,12 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import build_fisd_reference as bfr  # noqa: E402
 
+# The input-file / thresholds constants and the workers now live in the library
+# (agents/quant/library/fisd_reference.py); the script re-exports them. Tests
+# that monkeypatch those module-level constants must patch them where the moved
+# functions READ them — the library module — not the thin script wrapper.
+import agents.quant.library.fisd_reference as fref  # noqa: E402
+
 
 @pytest.fixture(scope="module")
 def cfg():
@@ -265,7 +271,7 @@ def test_loader_preserves_leading_zero_cusip(tmp_path, monkeypatch):
     })
     p = tmp_path / "reference_fisd_mergedissue.parquet"
     pd.DataFrame([row]).to_parquet(p)
-    monkeypatch.setattr(bfr, "ISSUE_FILE", p)
+    monkeypatch.setattr(fref, "ISSUE_FILE", p)
 
     loaded = bfr._load_issue()
     assert loaded["complete_cusip"].iloc[0] == "000361AB1"
@@ -286,7 +292,7 @@ def test_default_date_is_earliest_default_event(tmp_path, monkeypatch, cfg):
     ])
     p = tmp_path / "reference_fisd_ratings.parquet"
     r.to_parquet(p)
-    monkeypatch.setattr(bfr, "RATINGS_FILE", p)
+    monkeypatch.setattr(fref, "RATINGS_FILE", p)
     dd = bfr._default_dates_by_issue(cfg)
     assert dd.loc[1] == pd.Timestamp("2011-03-01")    # earliest of D / SD
     assert 2 not in dd.index                           # never defaulted → absent
@@ -301,7 +307,7 @@ def test_default_date_excludes_pre_date_min_events(tmp_path, monkeypatch, cfg):
     ])
     p = tmp_path / "reference_fisd_ratings.parquet"
     r.to_parquet(p)
-    monkeypatch.setattr(bfr, "RATINGS_FILE", p)
+    monkeypatch.setattr(fref, "RATINGS_FILE", p)
     dd = bfr._default_dates_by_issue(cfg)
     assert dd.loc[1] == pd.Timestamp("2010-06-01")    # 1975 garbage excluded
 
@@ -313,7 +319,7 @@ def test_default_date_excludes_pre_date_min_events(tmp_path, monkeypatch, cfg):
 def test_load_config_missing_block_raises(tmp_path, monkeypatch):
     bad = tmp_path / "no_fisd.yaml"
     bad.write_text("monthly_panel:\n  min_vol_qt: 100000\n")
-    monkeypatch.setattr(bfr, "THRESHOLDS_FILE", bad)
+    monkeypatch.setattr(fref, "THRESHOLDS_FILE", bad)
     with pytest.raises(KeyError, match="fisd"):
         bfr.load_config()
 
@@ -330,7 +336,7 @@ def test_load_config_missing_rating_key_raises(tmp_path, monkeypatch):
         "  rating_numeric_map: {sp: {AAA: 1}, moody: {Aaa: 1}}\n"
         "  amount_outstanding: {size_proxy: offering_amt}\n"
     )
-    monkeypatch.setattr(bfr, "THRESHOLDS_FILE", bad)
+    monkeypatch.setattr(fref, "THRESHOLDS_FILE", bad)
     with pytest.raises(KeyError, match="not_rated_tokens"):
         bfr.load_config()
 

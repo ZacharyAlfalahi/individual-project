@@ -146,7 +146,7 @@ def _ipca_oos_from_feed(feed_path: Path, start: str, end: str) -> pd.DataFrame:
     import yaml
 
     from agents.quant.library.ipca import build_sufficient_stats, fit_ipca_recursive
-    from scripts.run_ipca_shakedown import load_feed
+    from agents.quant.library.ipca_feed import load_feed
 
     ipca_cfg = yaml.safe_load((REPO_ROOT / "agents" / "quant" / "library" / "configs" / "kpp_ipca.yaml").read_text())
     k = int(ipca_cfg["model"]["K"])
@@ -172,7 +172,7 @@ def _fisd_ratings_over_window(dev_root: Path, window: Window) -> pd.DataFrame:
     REAL. The stored ``fisd_ratings_monthly.parquet`` does not persist that marker, so slicing it and
     injecting ``NaT`` would make ``zero_leakage_check`` vacuous (a guard that validates nothing is
     worse than none). Fail-loud if the worker still does not emit the marker."""
-    from scripts.build_fisd_reference import build_ratings_monthly, build_static, load_config
+    from agents.quant.library.fisd_reference import build_ratings_monthly, build_static, load_config
 
     cfg = load_config()
     static = build_static(cfg)

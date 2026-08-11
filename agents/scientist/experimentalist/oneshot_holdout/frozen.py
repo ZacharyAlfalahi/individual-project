@@ -16,7 +16,8 @@ from __future__ import annotations
 # sha256 of docs/thresholds.yaml at freeze time (2026-08-10).
 FROZEN_THRESHOLDS_SHA256 = "f64a82f12804236b34da1b4995ce39c67710a0597638606a720a112cf157a9ad"
 
-# _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py) at freeze time (2026-08-10), pinned as the last
-# build step once every other oneshot_holdout module was final. Any later edit to an oneshot_holdout module invalidates this and
-# must re-pin it; an empty/stale value fails the real gate closed.
-FROZEN_ONESHOT_HOLDOUT_SCRIPT_HASH = "8632a5eb9cef317d8848b830c018a0896140e2e191c8b90947ef71d50d00069a"
+# _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
+# panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library
+# lift of load_feed + the FISD builders). Any later edit to an oneshot_holdout module invalidates this and must re-pin
+# it to the new _dir_code_hash(); an empty/stale value fails the real gate closed.
+FROZEN_ONESHOT_HOLDOUT_SCRIPT_HASH = "6ef1fe79c8b42ffbaea128f2bfa182a02f007f99ae94ff233dd93e68a7ee7f01"

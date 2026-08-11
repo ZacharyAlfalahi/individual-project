@@ -46,12 +46,12 @@ from agents.quant.library.ipca import (  # noqa: E402
     total_r2,
     validate_panel,
 )
+from agents.quant.library.ipca_feed import INSTRUMENTS, L, load_feed  # noqa: E402
 
 DEV = REPO_ROOT / "data" / "development"
 HEADLINES = DEV / "headlines"
 GOLD = REPO_ROOT / "agents" / "quant" / "library" / "configs" / "kpp_ipca.yaml"
-INSTR = ["str_reversal", "mom6", "var_5pct", "gamma_illiq", "rating", "time_to_maturity", "bond_vol"]
-L = len(INSTR) + 1
+INSTR = INSTRUMENTS  # the 7 bond instruments; definition + load_feed lifted to agents/quant/library/ipca_feed.py
 TRAIN_END = pd.Period("2021-12", "M").ordinal   # inclusive: last in-window return month
 COMPARABILITY = (
     "NON_COMPARABLE_TO_KPP — interface-validation only "
@@ -59,18 +59,7 @@ COMPARABILITY = (
 )
 
 
-def load_feed(path: Path):
-    d = pd.read_parquet(path)
-    z_cols = [f"z_{c}" for c in INSTR]
-    Z, R, months, asof, vol = [], [], [], [], []
-    for month, grp in d.groupby("month", sort=True):
-        zmat = np.column_stack([grp[z_cols].to_numpy(dtype=float), np.ones(len(grp))])
-        Z.append(zmat)
-        R.append(grp["R"].to_numpy(dtype=float))
-        months.append(int(month))
-        asof.append(int(grp["asof"].iloc[0]))
-        vol.append(grp["vol_scaler"].to_numpy(dtype=float))
-    return Z, R, np.asarray(months), np.asarray(asof), np.concatenate(vol)
+# load_feed lifted to agents/quant/library/ipca_feed.py (imported above).
 
 
 def shakedown_config(k_recursive: int) -> IPCAConfig:

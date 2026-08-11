@@ -205,3 +205,22 @@ def feed_matrices(out: pd.DataFrame, *, n_instruments_plus_const: int = L) -> IP
         Z=Z, R=R, months=np.asarray(months), asof=np.asarray(asof),
         vol_scaler=vol, cusips=cusips,
     )
+
+
+def load_feed(path):
+    """Read a materialised IPCA feed parquet from disk and stack it into per-month
+    (Z, R, months, asof, vol) matrices — the thin on-disk loader the shakedown and the one-shot holdout
+    dev-pseudo builder share (lifted verbatim from scripts/run_ipca_shakedown.py). The pure
+    in-memory equivalent is ``feed_matrices``; this is the ONLY I/O in this module. The constant
+    column (≡ 1) is appended LAST in each Z[m], byte-identical to ``feed_matrices``."""
+    d = pd.read_parquet(path)
+    z_cols = [f"z_{c}" for c in INSTRUMENTS]
+    Z, R, months, asof, vol = [], [], [], [], []
+    for month, grp in d.groupby("month", sort=True):
+        zmat = np.column_stack([grp[z_cols].to_numpy(dtype=float), np.ones(len(grp))])
+        Z.append(zmat)
+        R.append(grp["R"].to_numpy(dtype=float))
+        months.append(int(month))
+        asof.append(int(grp["asof"].iloc[0]))
+        vol.append(grp["vol_scaler"].to_numpy(dtype=float))
+    return Z, R, np.asarray(months), np.asarray(asof), np.concatenate(vol)
