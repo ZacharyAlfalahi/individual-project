@@ -378,6 +378,45 @@ def test_single_sort_on_same_panel_equals_global_top_minus_bottom() -> None:
     assert mr["strategy_ret"].iloc[0] == pytest.approx(0.035, abs=1e-12)
 
 
+def _asymmetric_double_sort_panel() -> pd.DataFrame:
+    """2 score-groups x 3 control-stripes with UNEVEN cells (Workstream K). Global
+    score groups (median split at score 4/5) intersect 3 control stripes:
+      stripe 0 (control 1,2,3): hi={s5:0.06,s6:0.04}, lo={s1:0.01} -> 0.05-0.01 = 0.04
+      stripe 1 (control 4,5,6): hi={s7:0.03},         lo={s2:0.01,s3:0.03} -> 0.03-0.02 = 0.01
+      stripe 2 (control 7,8):   hi={s8:0.10},         lo={s4:0.04} -> 0.10-0.04 = 0.06
+      double (mean of stripe spreads) = (0.04+0.01+0.06)/3 = 0.11/3 ~= 0.03667
+      single (global hi-mean - lo-mean) = 0.0575 - 0.0225 = 0.035 (deliberately different)
+    """
+    spec = [  # (score, control, next_ret)
+        (5, 1, 0.06), (6, 2, 0.04), (1, 3, 0.01),   # stripe 0
+        (7, 4, 0.03), (2, 5, 0.01), (3, 6, 0.03),   # stripe 1
+        (8, 7, 0.10), (4, 8, 0.04),                 # stripe 2
+    ]
+    rows: list[dict] = []
+    for i, (score, control, nret) in enumerate(spec):
+        for date, ret in (("2010-01", 0.0), ("2010-02", nret)):
+            rows.append({"cusip": f"B{i}", "date": date, "ret": ret, "size": 100.0,
+                         "score": float(score), "control_value": float(control)})
+    return _panel(rows)
+
+
+def test_asymmetric_double_sort_control_groups_ne_groups() -> None:
+    """Workstream K: control_groups != groups (2x3) had no KAT — the engine's
+    asymmetric stripe handling was unverified. It must form 3 control stripes (not
+    2), average the per-stripe score spreads, and land on 0.11/3 — NOT the
+    single-sort 0.035 that a control-ignoring bug returns."""
+    panel = _asymmetric_double_sort_panel()
+    result = run_characteristic_sort(
+        panel,
+        {"score": "score", "control": "control_value",
+         "groups": 2, "control_groups": 3, "weighting": "equal", "min_bonds": 8},
+    )
+    mr = result["monthly_returns"]
+    assert len(mr) == 1
+    assert mr["strategy_ret"].iloc[0] == pytest.approx((0.04 + 0.01 + 0.06) / 3, abs=1e-12)
+    assert mr["strategy_ret"].iloc[0] != pytest.approx(0.035, abs=1e-6)
+
+
 # ===========================================================================
 # Spec section 7.6 -- "The statistics"
 # ===========================================================================
@@ -481,6 +520,32 @@ def test_signal_lag_at_panel_start_drops_month() -> None:
     # Jan formation: signal_lag=1 -> ranking_score from Dec 2009 -> NaN ->
     # 0 eligible -> month skipped.
     assert _me("2010-01") in set(bk["months_skipped"])
+
+
+def test_signal_lag_ranks_on_prior_month_score() -> None:
+    """Workstream K — signal_lag=1 POSITIVE semantic: formation ranks on the PRIOR
+    month's score (the existing test only checks the first-month DROP edge). Scores
+    swap A<->B between Jan and Feb, so the lagged (Jan) and contemporaneous (Feb)
+    rankings give opposite-signed spreads. Under lag=1 only the Feb formation is
+    valid (Jan has no Dec score; Mar has no next return), and it must reflect Jan's
+    ranking -> long A (Jan score 2), short B (Jan score 1) -> A's Mar 0.03 minus
+    B's 0.01 = +0.02. A contemporaneous or wrong-direction lag would give -0.02."""
+    rows = []
+    for date, a_score, b_score, a_ret, b_ret in [
+        ("2010-01", 2.0, 1.0, 0.0, 0.0),
+        ("2010-02", 1.0, 2.0, 0.0, 0.0),
+        ("2010-03", 1.0, 1.0, 0.03, 0.01),
+    ]:
+        rows.append({"cusip": "A", "date": date, "ret": a_ret, "size": 100.0, "score": a_score})
+        rows.append({"cusip": "B", "date": date, "ret": b_ret, "size": 100.0, "score": b_score})
+    panel = _panel(rows)
+    cfg = {"score": "score", "groups": 2, "weighting": "equal", "min_bonds": 2}
+    lagged = run_characteristic_sort(panel, {**cfg, "signal_lag": 1})["monthly_returns"]
+    assert lagged["strategy_ret"].tolist() == pytest.approx([0.02], abs=1e-12)
+    contemp = run_characteristic_sort(panel, {**cfg, "signal_lag": 0})["monthly_returns"]
+    vals = contemp["strategy_ret"].tolist()
+    assert any(v == pytest.approx(-0.02, abs=1e-12) for v in vals)   # contemporaneous flips sign
+    assert not any(v == pytest.approx(0.02, abs=1e-12) for v in vals)
 
 
 def test_nan_score_drops_bond_from_eligibility() -> None:

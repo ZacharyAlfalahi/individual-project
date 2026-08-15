@@ -264,6 +264,10 @@ def test_deflate_module_synthetic():
             params = {"formation_months": f, "total_signal_gap_months": g, "min_obs": f}
             if params == dominant:
                 cells.append(_synth_cell(params, 0.020, 0.020, seed))
+            elif params == published:
+                # the parent (published) cell must carry a clearly-signed premium so
+                # the DERIVED gating direction is unambiguous (mom6 realises +momentum).
+                cells.append(_synth_cell(params, 0.010, 0.030, seed))
             else:
                 cells.append(_synth_cell(params, 0.000, 0.030, seed))
             seed += 1
@@ -272,7 +276,9 @@ def test_deflate_module_synthetic():
 
     assert out["n_trials"] == len(cells) == 8
     assert out["pbo"]["n_candidates"] == 8
-    assert out["direction"] == 1
+    assert out["direction"] == 1                       # DERIVED from the +premium parent
+    assert out["claimed_direction"] == 1               # matches the JNPS/DRR claim -> no divergence
+    assert out["direction_divergence"] is False
     assert out["grid_best"]["params"] == dominant
     assert out["published"]["params"] == published
 
@@ -284,7 +290,7 @@ def test_deflate_module_synthetic():
     # uplift = grid-best - published, computed on the recorded summaries.
     assert out["uplift"]["sharpe"] == pytest.approx(best_sr - pub_sr)
     assert out["uplift"]["mean"] == pytest.approx(best_mean - pub_mean)
-    assert out["uplift"]["sharpe_in_claimed_direction"] == pytest.approx(best_sr - pub_sr)
+    assert out["uplift"]["sharpe_in_derived_direction"] == pytest.approx(best_sr - pub_sr)
 
     assert isinstance(out["dsr_grid_best"], float) and math.isfinite(out["dsr_grid_best"])
     assert isinstance(out["dsr_grid_best_oriented"], float)
@@ -305,21 +311,26 @@ def test_deflate_module_synthetic():
             {"formation_months": 7, "total_signal_gap_months": 1, "min_obs": 7},
         )
 
-    # str-like case, direction -1: the grid-best is the most NEGATIVE Sharpe.
+    # str case (SC-SCI-8 / D-Q17): DRR *claims* -1 (reversal), but the corrected dev
+    # parent realises POSITIVE momentum (state-iii), so the DERIVED direction is +1 and
+    # DIVERGES from the claim (surfaced, not silenced); grid-best = most POSITIVE Sharpe.
     str_cells = [
-        _synth_cell({"reversal_window_months": 1}, 0.000, 0.030, 100),
-        _synth_cell({"reversal_window_months": 2}, -0.020, 0.020, 101),  # dominant negative
-        _synth_cell({"reversal_window_months": 3}, 0.000, 0.030, 102),
+        _synth_cell({"reversal_window_months": 1}, 0.010, 0.030, 100),   # published parent, +momentum
+        _synth_cell({"reversal_window_months": 2}, 0.030, 0.020, 101),   # dominant positive
+        _synth_cell({"reversal_window_months": 3}, 0.005, 0.030, 102),
     ]
     out_str = p4.deflate_module("str", str_cells, {"reversal_window_months": 1})
-    assert out_str["direction"] == -1
+    assert out_str["direction"] == 1                 # DERIVED from the +momentum parent
+    assert out_str["claimed_direction"] == -1        # DRR's published reversal claim
+    assert out_str["direction_divergence"] is True   # the state-iii finding, logged not silenced
+    assert out_str["direction_note"] is not None
     assert out_str["n_trials"] == 3
     assert out_str["grid_best"]["params"] == {"reversal_window_months": 2}
     assert out_str["grid_best"]["sharpe"] == pytest.approx(
-        min(c["summary"]["sharpe"] for c in str_cells)
+        max(c["summary"]["sharpe"] for c in str_cells)
     )
     # Oriented uplift is non-negative by construction of the argmax.
-    assert out_str["uplift"]["sharpe_in_claimed_direction"] >= 0.0
+    assert out_str["uplift"]["sharpe_in_derived_direction"] >= 0.0
     assert isinstance(out_str["dsr_grid_best_oriented"], float)
     assert math.isfinite(out_str["dsr_grid_best_oriented"])
     assert 0.0 <= out_str["pbo"]["pbo"] <= 1.0

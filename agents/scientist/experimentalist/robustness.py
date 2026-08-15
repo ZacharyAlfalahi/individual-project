@@ -58,9 +58,12 @@ def robustness_g4(
     else:
         cpcv = cpcv_evaluate(candidate_returns, n_groups=n_groups, test_groups=test_groups,
                              purge=information_span, embargo=embargo, months_per_year=months_per_year)
-        # SC-SCI-8 — DIRECTIONAL: a positive median OOS-fold Sharpe IN THE STRATEGY'S CLAIMED
-        # DIRECTION. A negative-premium strategy (str, winners-losers) has negative Sharpes, so a
-        # sign-agnostic `median > 0` would silently fail every str extension (the latent bug).
+        # SC-SCI-8 / D-Q17 — DIRECTIONAL: a positive median OOS-fold Sharpe IN THE STRATEGY'S
+        # GATING DIRECTION. `direction` is DERIVED from the realised parent premium sign (not the
+        # paper's claim): a genuinely negative-premium parent has negative Sharpes, so a
+        # sign-agnostic `median > 0` would silently fail its extensions (the latent bug). NB str is
+        # NOT such a case — on the corrected dev panel it realises POSITIVE momentum (+0.95%/mo);
+        # -0.99 is DRR's published reversal CLAIM, not the dev build, so str's derived direction is +1.
         cpcv_qualified = (math.isfinite(cpcv.median_sharpe)
                           and direction * cpcv.median_sharpe > 0.0)
         cpcv_summary = cpcv.to_dict()

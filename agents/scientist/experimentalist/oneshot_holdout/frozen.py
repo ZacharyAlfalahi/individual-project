@@ -13,8 +13,11 @@ gate fails CLOSED (an empty/mismatched pin keeps the holdout door shut) — the 
 
 from __future__ import annotations
 
-# sha256 of docs/thresholds.yaml at freeze time (2026-08-10).
-FROZEN_THRESHOLDS_SHA256 = "f64a82f12804236b34da1b4995ce39c67710a0597638606a720a112cf157a9ad"
+# sha256 of docs/thresholds.yaml. Pinned at freeze time (2026-08-10); RE-PINNED 2026-08-14 after the
+# RQ2 v1.6 re-scope flipped validation.anchor_criterion "bias_attribution" -> "construction_rulebook"
+# (contract §7 gates 1-2; D-Q17). one-shot holdout's real run has not run, so re-pinning is maintenance, not a
+# provenance break. Any later thresholds change (e.g. the p2_codegen block in Workstream C) must re-pin.
+FROZEN_THRESHOLDS_SHA256 = "d2f2e57a36e11deac26d28adb37f84756fd39c74d421f2358dc29ba7266718a8"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library

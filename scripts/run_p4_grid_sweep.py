@@ -74,18 +74,23 @@ D1_DISCLOSURE = (
 )
 
 # Per-module constants.
-#   anchor    : gold-spec id (evaluation/gold_specs/gold_loader.py).
-#   direction : the strategy's CLAIMED direction, SC-SCI-8 convention
-#               (agents/scientist/experimentalist/robustness.py) — str is the
-#               published short-term REVERSAL (winners − losers premium claimed
-#               negative), so its grid-best is the most NEGATIVE Sharpe.
+#   anchor            : gold-spec id (evaluation/gold_specs/gold_loader.py).
+#   claimed_direction : the SOURCE PAPER's claimed premium sign. str is DRR-2026's
+#               published short-term REVERSAL, claimed -1. The gating direction used
+#               for orientation is NOT taken from this — it is DERIVED from the
+#               realised parent (published-cell) premium sign at run time and
+#               ASSERTED against this claim (SC-SCI-8 / D-Q17). On the corrected dev
+#               panel str realises POSITIVE momentum (+0.95%/mo, Sharpe ~+1.06 —
+#               state-iii), so its derived direction is +1 and DIVERGES from the -1
+#               claim (a logged finding, not an error). -0.99 is DRR's published
+#               figure, never our dev build.
 #   holding   : holding period in months (mom6 gold holding_period=6 STATED —
 #               cross-checked against the gold in resolve_grids; str/drf hold
 #               monthly). Drives the CPCV embargo = max(1, holding).
 MODULE_META: dict[str, dict] = {
-    "mom6": {"anchor": "mom6", "direction": +1, "holding": 6},
-    "str": {"anchor": "str", "direction": -1, "holding": 1},
-    "drf": {"anchor": "drf", "direction": +1, "holding": 1},
+    "mom6": {"anchor": "mom6", "claimed_direction": +1, "holding": 6},
+    "str": {"anchor": "str", "claimed_direction": -1, "holding": 1},
+    "drf": {"anchor": "drf", "claimed_direction": +1, "holding": 1},
 }
 
 # str's published (centre) reversal window: the signal is STRUCTURALLY the
@@ -662,24 +667,26 @@ def deflate_module(
     *,
     months_per_year: int = 12,
 ) -> dict:
-    """Deflate one module's grid: published cell vs grid-best-in-claimed-direction,
+    """Deflate one module's grid: published cell vs grid-best-in-the-derived-direction,
     raw uplift, DSR of the grid-best (n_trials = grid size), PSR-equivalent of the
     published cell (n_trials = 1), and CSCV PBO over the per-month cell returns.
 
-    Pure given cell dicts ({params, summary, monthly}) — unit-testable with
-    synthetic cells. Direction per SC-SCI-8 (MODULE_META): str is -1, so its
-    grid-best is the most NEGATIVE Sharpe. The DSR/PSR call convention mirrors
+    Pure given cell dicts ({params, summary, monthly}) — unit-testable with synthetic
+    cells. The gating direction is DERIVED from the realised parent (published-cell)
+    premium sign and ASSERTED against MODULE_META's claimed_direction (SC-SCI-8 /
+    D-Q17): a divergence (str realises +1 momentum vs DRR's -1 reversal claim) is a
+    logged finding, and grid-best is oriented on the DERIVED sign, never on the paper's
+    claim — so a negative claim can no longer invert the orientation of a
+    positive-premium parent. The DSR/PSR call convention mirrors
     agents/scientist/experimentalist/robustness.py exactly —
-    deflated_sharpe_ratio(sr / sqrt(months_per_year), n_obs, n_trials,
-    sr_std=std of per-cell periodic Sharpes); the *_oriented variants apply the
-    claimed direction first (direction * sr) so a negative-premium module's
-    deflation is read in its own direction, reported beside the raw mirror.
+    deflated_sharpe_ratio(sr / sqrt(months_per_year), n_obs, n_trials, sr_std=std of
+    per-cell periodic Sharpes); the *_oriented variants apply the derived direction
+    first (direction * sr) so the deflation is read in the parent's realised direction.
     """
     if module not in MODULE_META:
         raise ValueError(f"unknown module {module!r}; expected one of {sorted(MODULE_META)}")
     if not cells:
         raise ValueError(f"{module}: no cells to deflate")
-    direction = MODULE_META[module]["direction"]
 
     for c in cells:
         s = c["summary"]
@@ -694,14 +701,21 @@ def deflate_module(
         raise ValueError(
             f"{module}: published cell {published_params} not found in the grid"
         )
-
-    # Grid-best IN THE CLAIMED DIRECTION (SC-SCI-8): argmax of direction * Sharpe,
-    # so direction=-1 (str) selects the most NEGATIVE Sharpe.
-    best = max(cells, key=lambda c: direction * float(c["summary"]["sharpe"]))
-
     pub_sr = float(published["summary"]["sharpe"])
-    best_sr = float(best["summary"]["sharpe"])
     pub_mean = float(published["summary"]["average"])
+
+    # DERIVE the gating direction from the realised parent (published-cell) premium
+    # sign, then ASSERT it against the source paper's claim (SC-SCI-8 / D-Q17). The
+    # str inversion (DRR claims -1 reversal; the corrected dev parent realises +1
+    # momentum) surfaces here as a logged divergence, NOT an error — and grid-best is
+    # oriented on the DERIVED sign so a wrong claim can never invert a positive parent.
+    claimed_direction = MODULE_META[module]["claimed_direction"]
+    direction = 1 if pub_mean >= 0.0 else -1
+    direction_divergence = direction != claimed_direction
+
+    # Grid-best IN THE DERIVED DIRECTION: argmax of direction * Sharpe.
+    best = max(cells, key=lambda c: direction * float(c["summary"]["sharpe"]))
+    best_sr = float(best["summary"]["sharpe"])
     best_mean = float(best["summary"]["average"])
     sqrt_mpy = math.sqrt(months_per_year)
 
@@ -739,6 +753,17 @@ def deflate_module(
     return {
         "module": module,
         "direction": direction,
+        "claimed_direction": claimed_direction,
+        "direction_divergence": direction_divergence,
+        "direction_note": (
+            None if not direction_divergence else
+            f"derived direction {direction:+d} (realised parent premium "
+            f"{'positive' if direction > 0 else 'negative'}) diverges from the "
+            f"source-paper claim {claimed_direction:+d}; grid-best oriented on the "
+            f"derived sign (SC-SCI-8 / D-Q17 inversion fix). For str this is the "
+            f"state-iii finding: DRR's -0.99 reversal is not realised on the corrected "
+            f"dev panel, which shows positive momentum."
+        ),
         "n_trials": n_trials,
         "months_per_year": months_per_year,
         "published": {
@@ -758,7 +783,7 @@ def deflate_module(
         "uplift": {
             "sharpe": _finite_or_none(best_sr - pub_sr),
             "mean": _finite_or_none(best_mean - pub_mean),
-            "sharpe_in_claimed_direction": _finite_or_none(direction * (best_sr - pub_sr)),
+            "sharpe_in_derived_direction": _finite_or_none(direction * (best_sr - pub_sr)),
         },
         "sr_std_periodic": _finite_or_none(sr_std),
         "dsr_grid_best": _finite_or_none(dsr_best),
@@ -788,13 +813,15 @@ def _md_module_section(module: str, res: dict, cells: list[dict]) -> list[str]:
             "design has no window parameter — the reversal signal is structurally the "
             "prior-1-month excess return. This sweep is a **family-robustness "
             "measurement**, distinct from the mom6/drf published-vs-optimised premium, "
-            "and is reported separately for that reason. Claimed direction is -1 "
-            "(SC-SCI-8): grid-best = most negative Sharpe."
+            "and is reported separately for that reason. DRR's *claimed* direction is "
+            "-1 (reversal), but the gating direction is DERIVED from the realised "
+            "parent and here is +1: the corrected dev panel shows positive momentum "
+            "(state-iii), so grid-best = most positive Sharpe (SC-SCI-8 / D-Q17)."
         )
         lines.append("")
     pub, best = res["published"], res["grid_best"]
     lines.append(
-        f"Table (EXPLORATORY): {module} published vs grid-best-in-claimed-direction."
+        f"Table (EXPLORATORY): {module} published vs grid-best-in-derived-direction."
     )
     lines.append("")
     lines.append("| cell | params | sharpe | mean/mo | n_months |")
@@ -812,13 +839,16 @@ def _md_module_section(module: str, res: dict, cells: list[dict]) -> list[str]:
     lines.append("")
     lines.append("| statistic | value |")
     lines.append("|---|---|")
-    lines.append(f"| direction (claimed, SC-SCI-8) | {res['direction']} |")
+    lines.append(f"| direction (DERIVED from realised parent, SC-SCI-8/D-Q17) | {res['direction']} |")
+    lines.append(f"| claimed_direction (source paper) | {res['claimed_direction']} |")
+    if res.get("direction_divergence"):
+        lines.append(f"| **direction divergence** | {res['direction_note']} |")
     lines.append(f"| n_trials (grid size) | {res['n_trials']} |")
     lines.append(f"| uplift sharpe (grid-best - published) | {res['uplift']['sharpe']} |")
     lines.append(f"| uplift mean (grid-best - published) | {res['uplift']['mean']} |")
     lines.append(
-        f"| uplift sharpe in claimed direction | "
-        f"{res['uplift']['sharpe_in_claimed_direction']} |"
+        f"| uplift sharpe in derived direction | "
+        f"{res['uplift']['sharpe_in_derived_direction']} |"
     )
     lines.append(f"| DSR grid-best (n_trials={res['n_trials']}) | {res['dsr_grid_best']} |")
     lines.append(f"| DSR grid-best, oriented | {res['dsr_grid_best_oriented']} |")

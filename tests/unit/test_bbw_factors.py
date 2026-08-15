@@ -37,6 +37,15 @@ def test_rulebook_leg_directions():
     crf = factor_rulebook("crf_var")
     assert crf["score"] == "rating" and crf["control"] == "var_5pct"
     assert crf["long_group"] == 4 and crf["short_group"] == 0   # low-rating − high-rating
+    # Workstream K: lrf/crf_illiq run on the gamma axis; the all-configs loop below
+    # only checks groups/control_groups/weighting, so assert their score/control
+    # explicitly (a gamma->var_5pct corruption would otherwise be caught nowhere).
+    lrf = factor_rulebook("lrf")
+    assert lrf["score"] == "gamma" and lrf["control"] == "rating"
+    assert lrf["long_group"] == 4 and lrf["short_group"] == 0   # high-gamma − low-gamma
+    crf_illiq = factor_rulebook("crf_illiq")
+    assert crf_illiq["score"] == "rating" and crf_illiq["control"] == "gamma"
+    assert crf_illiq["long_group"] == 4 and crf_illiq["short_group"] == 0
     for name in BBW_FACTOR_CONFIGS:
         rb = factor_rulebook(name)
         assert rb["groups"] == 5 and rb["control_groups"] == 5 and rb["weighting"] == "by_size"
@@ -65,6 +74,20 @@ def test_drf_and_crf_var_exact_spreads():
     crf_var = run_bbw_factor(panel, "crf_var")["monthly_returns"].set_index("date")
     assert drf.loc[M1, "strategy_ret"] == pytest.approx(0.04, abs=1e-12)
     assert crf_var.loc[M1, "strategy_ret"] == pytest.approx(0.08, abs=1e-12)
+
+
+def test_lrf_and_crf_illiq_exact_spreads():
+    # Workstream K — the gamma-axis gap (HIGH): the engine was never run on a gamma
+    # grid, so a gamma->var_5pct corruption of lrf["score"] / crf_illiq["control"]
+    # (making them duplicates of drf / crf_var) passed every test. next return =
+    # 0.01*gammagroup + 0.02*ratinggroup → LRF (long high-gamma) = 4*0.01 = 0.04
+    # per rating stripe; CRF_ILLIQ (long low-rating=group4, control gamma) =
+    # 4*0.02 = 0.08 per gamma stripe.
+    panel = _grid_panel("gamma", lambda v, r: 0.01 * v + 0.02 * r)
+    lrf = run_bbw_factor(panel, "lrf")["monthly_returns"].set_index("date")
+    crf_illiq = run_bbw_factor(panel, "crf_illiq")["monthly_returns"].set_index("date")
+    assert lrf.loc[M1, "strategy_ret"] == pytest.approx(0.04, abs=1e-12)
+    assert crf_illiq.loc[M1, "strategy_ret"] == pytest.approx(0.08, abs=1e-12)
 
 
 def test_rev_is_losers_minus_winners():

@@ -74,7 +74,8 @@ def run_experimentalist(
     sr_std: float = 0.5,
     q: float = 0.10,
     cap: int = 3,
-    direction: int = 1,               # strategy's CLAIMED premium sign (+1; -1 for str reversal)
+    direction: int = 1,               # gating sign, DERIVED from the realised parent premium sign,
+                                      # NOT the paper's claim (str realises +1 momentum, not DRR's -1)
     crowding_config=None,
     crowding_factors=None,
     reporting_delays=None,

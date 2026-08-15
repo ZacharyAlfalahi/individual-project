@@ -140,6 +140,24 @@ class TestTrimRulePercentile:
         }))
         pd.testing.assert_frame_equal(pct["monthly_returns"], absolute["monthly_returns"])
 
+    def test_winsorise_percentile_clips_at_resolved_threshold(self):
+        # Workstream K: the LIVE lab_filter path is winsorise+percentile (adj=wins,
+        # bounds=percentile), but only truncate+percentile and winsorise+ABSOLUTE
+        # were tested. hi=0.75 on the eligible series [0.50,0.02,-0.01,-0.01] resolves
+        # to 0.14; winsorise clips L1 0.50->0.14, L2 0.02 stays; long=(0.14+0.02)/2
+        # =0.08; short=-0.01; spread=0.09.
+        import numpy as np
+        panel = _build_outlier_panel()
+        result = run_characteristic_sort(panel, self._rulebook({
+            "target": "return", "method": "winsorise",
+            "bounds": {"type": "percentile", "hi": 0.75, "percentile_method": "linear"},
+            "sample": "full_sample",
+        }, min_bonds=4))
+        realised = result["bookkeeping"]["realised_trim_threshold"]
+        expected_hi = float(np.quantile([0.50, 0.02, -0.01, -0.01], 0.75, method="linear"))
+        assert realised["hi"]["threshold"] == pytest.approx(expected_hi)   # 0.14
+        assert result["monthly_returns"]["strategy_ret"].iloc[0] == pytest.approx(0.09, abs=1e-12)
+
     def test_absolute_trim_untouched_by_resolver(self):
         # Condition 6: absolute trims pass through the resolver with no realised
         # threshold and the original spread.

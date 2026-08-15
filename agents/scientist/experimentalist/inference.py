@@ -43,12 +43,14 @@ def inference_g3(
     """Return (GateOutcome, GrossMeasurements). `family_pvalues` are the OTHER valid proposals'
     raw p-values (this proposal is added to the family for the joint BH-FDR).
 
-    SC-SCI-8 — `bh_survived` is SIGN-AWARE: the two-sided BH rejection (`bh_rejected`) AND the alpha
-    in the strategy's CLAIMED DIRECTION (`direction` = +1, or -1 for a negative-premium strategy
-    like str's winners-losers reversal). The two-sided test and BH family are unchanged; the
-    survivor LABEL is narrowed to correctly-signed rejections (strictly conservative), consistent
-    with G4's directional CPCV gate. A rejected-but-wrong-signed extension (it reliably WORSENED
-    the strategy) is bh_rejected=True, bh_survived=False."""
+    SC-SCI-8 / D-Q17 — `bh_survived` is SIGN-AWARE: the two-sided BH rejection (`bh_rejected`) AND
+    the alpha in the strategy's GATING DIRECTION (`direction`, DERIVED from the realised parent
+    premium sign, not the paper's claim; +1, or -1 for a genuinely negative-premium parent). The
+    two-sided test and BH family are unchanged; the survivor LABEL is narrowed to correctly-signed
+    rejections (strictly conservative), consistent with G4's directional CPCV gate. A
+    rejected-but-wrong-signed extension (it reliably WORSENED the strategy) is bh_rejected=True,
+    bh_survived=False. (str is NOT a negative-premium case: it realises +momentum on the corrected
+    dev panel; DRR's -0.99 reversal is a published claim, so str's derived direction is +1.)"""
     reg = regress_on_benchmark(candidate_returns, bbw4_factors, nw_lags)
     alpha, alpha_t = reg["alpha"], reg["alpha_t"]
     p_raw = two_sided_p(alpha_t)

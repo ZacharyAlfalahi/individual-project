@@ -203,13 +203,17 @@ bias_toggles:
 # approximate magnitude of each toggle's effect — within the pipeline, NOT by
 # matching published factor levels.
 validation:
-  anchor_criterion: "bias_attribution"   # The RQ2 anchor fidelity gate is the
-                                          # bias-attribution differential (O5 / D-Q1;
-                                          # contract §7 gate 5). External level
-                                          # comparisons are DESCRIPTIVE only, with no
-                                          # pass/fail weight. The ±15% absolute-level
-                                          # criterion is RETIRED for the anchors AND
-                                          # for the data-matched replication (D16).
+  anchor_criterion: "construction_rulebook"  # v1.6 (2026-08-14): the RQ2 anchor
+                                          # fidelity PASS CONDITION is contract §7
+                                          # gates 1-2 — construction invariants +
+                                          # rulebook byte-equality (G2). The §7
+                                          # gate-5 bias-mechanism differential is
+                                          # retained as a reported RQ3-facing
+                                          # diagnostic (supersedes O5 / D-Q1, which
+                                          # had made gate 5 the pass condition).
+                                          # External level comparisons stay
+                                          # DESCRIPTIVE; the ±15% absolute-level
+                                          # criterion remains RETIRED (D16).
                                           # See docs/quant/open_item_O5_fidelity_gate.md
   gates:
     str_lib_decomposition: "month-end vs month-begin; direction + LIB proportion (§8 gate 1)"

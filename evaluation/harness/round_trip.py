@@ -170,6 +170,91 @@ def assert_composite_rulebook_byte_equal(produced: dict, expected: dict) -> None
         )
 
 
+# --- gate 1-2 verdict: RQ2 anchor fidelity (contract §7 gates 1-2) -----------
+#
+# Under the v1.6 re-scope (2026-08-14) the RQ2 anchor fidelity PASS CONDITION is
+# gates 1-2 -- construction invariants + rulebook byte-equality -- NOT the §7
+# gate-5 bias-mechanism differential (retained as a reported RQ3-facing
+# diagnostic). Gate 2 is the byte-equal rulebook (produced == A(R_paper, H)); the
+# gate-1 holding_period invariant is checked EXPLICITLY here because to_rulebook
+# omits holding_period (an overlap argument, not a rulebook key), so byte-equality
+# alone would not cover it.
+
+# Independently hand-authored expected holding period per anchor (from the papers,
+# not the gold): str/drf/crf hold one month (monthly re-formation; the golds state
+# holding UNKNOWN -> engine default 1, which the papers entail); mom6 holds 6
+# (JNPS "held over months t+1 to t+6", gold_mom6_jnps_2013.md STATED).
+_EXPECTED_HOLDING_PERIOD = {"str": 1, "drf": 1, "mom6": 6, "crf": 1}
+
+
+def _assert_byte_equal(anchor_id: str, adapt_result) -> None:
+    """Raise on rulebook mismatch (single-leg or the crf composite)."""
+    if anchor_id == "crf":
+        assert_composite_rulebook_byte_equal(
+            produced_rulebook_composite(adapt_result),
+            expected_composite_rulebook(anchor_id))
+    else:
+        assert_rulebook_byte_equal(
+            produced_rulebook(adapt_result), expected_rulebook(anchor_id))
+
+
+def _produced_holding_periods(adapt_result) -> list[int]:
+    """The compiled holding_period on every leg (anchors: 1 leg; crf: 3)."""
+    out: list[int] = []
+    for i, lc in enumerate(adapt_result.leg_calls):
+        if not isinstance(lc.result, QuantConfig):
+            raise HarnessError(
+                f"leg {i} did not compile to a QuantConfig; no holding_period")
+        out.append(lc.result.holding_period.value)
+    return out
+
+
+def gate12_verdict(anchor_id: str, standing_subs: StandingSubstitutionTable) -> dict:
+    """The RQ2 anchor fidelity verdict (contract §7 gates 1-2), as a report dict.
+
+    Adapts the gold ONCE and reports both components:
+      * ``rulebook_byte_equal`` (gate 2) -- the produced rulebook byte-equals the
+        independently hand-authored golden rulebook;
+      * ``holding_period_match`` (the gate-1 invariant to_rulebook omits) -- the
+        compiled holding_period equals the hand-authored expected on every leg.
+    ``pass`` is their conjunction. Never raises: a refusal / compile failure /
+    mismatch sets the relevant flag False and records ``error``.
+    """
+    expected_holding = _EXPECTED_HOLDING_PERIOD.get(anchor_id)
+    if expected_holding is None:
+        raise HarnessError(f"no expected holding_period for anchor_id {anchor_id!r}")
+    out: dict = {
+        "rulebook_byte_equal": False,
+        "holding_period_match": False,
+        "expected_holding_period": expected_holding,
+        "produced_holding_period": None,
+        "pass": False,
+        "error": None,
+    }
+    try:
+        r = adapt_gold(anchor_id, standing_subs)
+        if r.refused:
+            out["error"] = "adapter refused to compile the gold"
+            return out
+        try:
+            _assert_byte_equal(anchor_id, r)
+            out["rulebook_byte_equal"] = True
+        except AssertionError as exc:
+            out["error"] = f"rulebook mismatch: {exc}"
+        holds = _produced_holding_periods(r)
+        out["produced_holding_period"] = holds
+        out["holding_period_match"] = all(h == expected_holding for h in holds)
+        out["pass"] = out["rulebook_byte_equal"] and out["holding_period_match"]
+    except HarnessError as exc:
+        out["error"] = str(exc)
+    return out
+
+
+def g2_pass(anchor_id: str, standing_subs: StandingSubstitutionTable) -> bool:
+    """Gate-2 rulebook byte-equality as a boolean (contract §7 gate 2)."""
+    return gate12_verdict(anchor_id, standing_subs)["rulebook_byte_equal"]
+
+
 # --- the authorised-diff register (contract §7.2 register rows) --------------
 
 @dataclass(frozen=True)
