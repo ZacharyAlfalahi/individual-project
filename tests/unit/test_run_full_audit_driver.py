@@ -10,9 +10,10 @@ is parked on the DSR pre-registration approval, O-A4). Two independent checks:
       LLM, NO real data.
 
   (b) the DSR gate — `load_anchor_dsr` / `load_dsr_for_anchors` REFUSE fail-loud when
-      `auditor.dsr` is absent (a thresholds file without the block), which is exactly
-      the state of the committed `docs/thresholds.yaml` today. A partial block (anchor
-      or field missing) is likewise refused; a fully-ratified block loads.
+      `auditor.dsr` is absent (a thresholds file without the block). A partial block
+      (anchor or field missing) is likewise refused. The committed `docs/thresholds.yaml`
+      now carries the RATIFIED block (648f406), so the default-path load succeeds — the
+      refusals are pinned on synthetic thresholds files.
 """
 
 from __future__ import annotations
@@ -165,12 +166,16 @@ def test_dsr_gate_refuses_via_load_dsr_for_anchors(tmp_path):
         load_dsr_for_anchors(("str", "drf", "mom6"), path)
 
 
-def test_dsr_gate_refuses_on_the_real_committed_thresholds():
-    # The load-bearing proof: against the ACTUAL committed docs/thresholds.yaml
-    # (default path), the gate refuses — running the confirmatory audit today is
-    # EXPECTED to refuse, because auditor.dsr is not yet ratified/committed.
-    with pytest.raises(DsrPreRegistrationAbsent):
-        load_dsr_for_anchors(("str", "drf", "mom6"))
+def test_dsr_gate_loads_the_real_committed_thresholds_now_ratified():
+    # The load-bearing proof: `auditor.dsr` was RATIFIED + committed (648f406,
+    # tag confirmatory-rerun-2026-08-11), so against the ACTUAL committed
+    # docs/thresholds.yaml (default path) the gate now LOADS rather than refuses.
+    # The three synthetic-path refusal tests above still pin the fail-loud behaviour
+    # when the block / an anchor / a field is absent.
+    dsr = load_dsr_for_anchors(("str", "drf", "mom6"))
+    assert set(dsr) == {"str", "drf", "mom6"}
+    for anchor in ("str", "drf", "mom6"):
+        assert dsr[anchor] == AnchorDsr(n_trials=6, sr_std=0.08)
 
 
 def test_partial_dsr_block_is_refused_not_defaulted(tmp_path):

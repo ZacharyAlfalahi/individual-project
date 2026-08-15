@@ -6,8 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from agents.auditor.thresholds import AuditorThresholdError
 from agents.auditor.validation.anchor_triangulation import (
     AnchorExpectation,
+    load_anchor_gate,
     run_triangulation,
     triangulate_anchor,
 )
@@ -144,3 +146,96 @@ def test_triangulated_only_if_no_locked_contradiction():
         +0.01, 0.5)
     assert run_triangulation([good]).externally_triangulated
     assert not run_triangulation([good, bad]).externally_triangulated
+
+
+# --------------------------------------------------------------------------
+# D-4 — expected_sharpe is Optional (None drops the Sharpe check; 0 is stricter, not absent)
+# --------------------------------------------------------------------------
+
+def test_expected_sharpe_none_drops_sharpe_check():
+    exp = AnchorExpectation("drf", "meas_err", expected_sign=-1,
+                            expected_magnitude_range=(0.001, 0.02), expected_sharpe=None)
+    v = triangulate_anchor(exp, observed_effect=-0.005, observed_sharpe=999.0)
+    assert v.sharpe_ok and not v.contradiction and "n/a" in v.detail
+
+
+def test_expected_sharpe_zero_is_stricter_not_dropped():
+    # Regression guarding D-4 semantics: a committed 0 asserts Sharpe ~ 0 (|SR| <= band),
+    # it does NOT disable the check — that is exactly why dropping it needs None, not 0.
+    exp = AnchorExpectation("drf", "meas_err", expected_sign=-1,
+                            expected_magnitude_range=(0.001, 0.02), expected_sharpe=0.0)
+    v = triangulate_anchor(exp, observed_effect=-0.005, observed_sharpe=0.9)
+    assert not v.sharpe_ok and v.contradiction
+
+
+# --------------------------------------------------------------------------
+# load_anchor_gate — fail-loud loader with the D-1/D-2/D-3 guards enforced at load
+# --------------------------------------------------------------------------
+
+def _write_thresholds(tmp_path, anchor_gate):
+    import yaml
+    p = tmp_path / "thresholds.yaml"
+    p.write_text(yaml.safe_dump({"auditor": {"anchor_gate": anchor_gate}}))
+    return p
+
+
+_GATE = {
+    "sharpe_band": 0.25,
+    "anchors": {
+        "drf":  {"dominant_bias": "meas_err", "expected_sign": -1,
+                 "expected_magnitude_range": [0.0015, 0.0090], "is_locked": True},
+        "mom6": {"dominant_bias": "lab_trim", "expected_sign": -1,
+                 "expected_magnitude_range": [0.0002, 0.0030], "is_locked": True},
+        "str":  {"dominant_bias": "lib_gap", "expected_sign": -1,
+                 "expected_magnitude_range": [0.0030, 0.0090], "is_locked": False},
+    },
+}
+
+
+def test_load_anchor_gate_happy_path(tmp_path):
+    gate = load_anchor_gate(_write_thresholds(tmp_path, _GATE))
+    assert set(gate) == {"drf", "mom6", "str"}
+    # str is the PILOT — explicitly unlocked, no Sharpe expectation (D-3/D-4)
+    assert gate["str"].is_locked is False and gate["str"].expected_sharpe is None
+    assert gate["drf"].is_locked is True and gate["drf"].expected_sign == -1
+    assert gate["drf"].expected_magnitude_range == (0.0015, 0.0090)
+    # a locked anchor with no Sharpe expectation never fails on Sharpe (D-4 end-to-end)
+    v = triangulate_anchor(gate["drf"], observed_effect=-0.005, observed_sharpe=999.0)
+    assert v.sharpe_ok and not v.contradiction
+
+
+def test_load_anchor_gate_requires_is_locked(tmp_path):
+    # D-3: omitting is_locked would silently lock a pilot anchor — the loader refuses.
+    bad = {"anchors": {"drf": {"dominant_bias": "meas_err", "expected_sign": -1,
+                               "expected_magnitude_range": [0.0015, 0.009]}}}
+    with pytest.raises(AuditorThresholdError):
+        load_anchor_gate(_write_thresholds(tmp_path, bad))
+
+
+def test_load_anchor_gate_rejects_signed_or_descending_band(tmp_path):
+    # D-1/D-2: a signed band (the proposal's [-0.90, -0.30]) is rejected — the band is on
+    # |effect| in decimal units; direction lives in expected_sign.
+    signed = {"anchors": {"str": {"dominant_bias": "lib_gap", "expected_sign": -1,
+                                  "expected_magnitude_range": [-0.90, -0.30], "is_locked": False}}}
+    with pytest.raises(AuditorThresholdError):
+        load_anchor_gate(_write_thresholds(tmp_path, signed))
+
+
+def test_load_anchor_gate_rejects_bad_sign(tmp_path):
+    bad = {"anchors": {"drf": {"dominant_bias": "meas_err", "expected_sign": 0,
+                               "expected_magnitude_range": [0.0015, 0.009], "is_locked": True}}}
+    with pytest.raises(AuditorThresholdError):
+        load_anchor_gate(_write_thresholds(tmp_path, bad))
+
+
+def test_load_anchor_gate_locked_requires_positive_lo(tmp_path):
+    # Q-2: a LOCKED gate with lo=0 is nearly unfalsifiable -> rejected...
+    locked0 = {"anchors": {"mom6": {"dominant_bias": "lab_trim", "expected_sign": -1,
+                                    "expected_magnitude_range": [0.0, 0.0030], "is_locked": True}}}
+    with pytest.raises(AuditorThresholdError):
+        load_anchor_gate(_write_thresholds(tmp_path, locked0))
+    # ...but the same band is fine for a PILOT (descriptive only).
+    pilot0 = {"anchors": {"str": {"dominant_bias": "lib_gap", "expected_sign": -1,
+                                  "expected_magnitude_range": [0.0, 0.0030], "is_locked": False}}}
+    g = load_anchor_gate(_write_thresholds(tmp_path, pilot0))
+    assert g["str"].is_locked is False and g["str"].expected_magnitude_range == (0.0, 0.0030)

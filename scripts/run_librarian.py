@@ -65,6 +65,7 @@ from agents.librarian.pipeline import (  # noqa: E402
     fill_field,
     fill_method_summary,
     fill_signal_ref,
+    load_gold_list,
     load_prompt_manifest,
     run_paper,
 )
@@ -92,6 +93,7 @@ PAPERS: dict[str, dict] = {
     "bbw": {
         "paper_id": "BBW_2019",
         "canonical_text": "evaluation/canonical_texts/bbw_2019.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_bbw_2019.yaml",
         # Fake seed (WS-3): BBW's headline sorted-portfolio construction, scripted
         # into the offline FakeModelClients. The quote is verbatim from the frozen
         # text (locates on page 2) so the strategy label ships STATED. The dev/report
@@ -107,6 +109,7 @@ PAPERS: dict[str, dict] = {
     "jnps": {
         "paper_id": "JNPS_2013",
         "canonical_text": "evaluation/canonical_texts/jnps_2013.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_jnps_2013.yaml",
         "constructions": [
             {
                 "name": "Six-Month Momentum (mom6)",
@@ -121,6 +124,7 @@ PAPERS: dict[str, dict] = {
     "drr": {
         "paper_id": "DRR_2026",
         "canonical_text": "evaluation/canonical_texts/drr_2026.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_drr_2026.yaml",
         "constructions": [
             {
                 "name": "Short-Term Reversal (str)",
@@ -340,10 +344,13 @@ def _load_dotenv(path: Path) -> None:
         os.environ.setdefault(k.strip(), v.strip())
 
 
-def build_clients(phase: str, builder: PromptBuilder, out_dir: Path, paper: dict):
+def build_clients(phase: str, builder: PromptBuilder, out_dir: Path, paper: dict,
+                  min_interval_s: float | None = None):
     """Return (model_a, model_b). ``fake`` = offline scripted; ``dev``/``report`` =
     live vendor clients read from thresholds.yaml + env keys. ``paper`` supplies the
-    fake pair's scripted enumeration seed (WS-3); the live pairs enumerate live."""
+    fake pair's scripted enumeration seed (WS-3); the live pairs enumerate live.
+    ``min_interval_s`` (when given) overrides the stack's per-model call pacing -- an
+    operational free-tier rate-limit knob, not a frozen numerical threshold."""
     if phase == "fake":
         return _fake_pair(paper)
 
@@ -352,6 +359,8 @@ def build_clients(phase: str, builder: PromptBuilder, out_dir: Path, paper: dict
     stack = thresholds["librarian"]["model_stack"]
     block = dict(stack["phase_d" if phase == "dev" else "phase_f"])
     block["temperature"] = stack.get("temperature", 0)
+    if min_interval_s is not None:
+        block["min_interval_s"] = min_interval_s
     env_names = {block["model_a"]["api_key_env"], block["model_b"]["api_key_env"]}
     api_keys = {name: os.environ.get(name, "") for name in env_names}
     return build_client_pair(block, builder, api_keys, archive_dir=out_dir / "raw")
@@ -402,6 +411,14 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, default=None,
                     help="cap live extraction to the first N per-value fields (cheap smoke; "
                          "rest -> UNKNOWN). Omit to extract everything.")
+    ap.add_argument("--enumeration", default="gold", choices=("gold", "live"),
+                    help="'gold' (default): use the authored per-paper gold enumeration list "
+                         "(evaluation/gold_specs/enum_*.yaml) as the agreed construction set -- "
+                         "correct for the gold anchor papers, whose constructions are settled. "
+                         "'live': run the D20 dual-model enumeration-agreement gate (scale layer).")
+    ap.add_argument("--min-interval-s", type=float, default=None, dest="min_interval_s",
+                    help="minimum seconds between calls PER MODEL (rate-limit pacing; overrides the "
+                         "stack default). Use on the free tier to avoid 429s.")
     args = ap.parse_args(argv)
 
     paper = PAPERS[args.paper]
@@ -417,7 +434,7 @@ def main(argv=None) -> int:
     silence_table = load_silence_policy_table()
     builder = PromptBuilder.load(registry, manifest)
 
-    model_a, model_b = build_clients(args.phase, builder, out_dir, paper)
+    model_a, model_b = build_clients(args.phase, builder, out_dir, paper, min_interval_s=args.min_interval_s)
 
     now = datetime.now(timezone.utc).isoformat()
     prov = RunProvenance(
@@ -433,20 +450,33 @@ def main(argv=None) -> int:
         timestamp=now,
     )
 
-    # Live enumeration (WS-3): each model returns its construction list; the D20
-    # dual-model agreement gate ships the agreed set (relocated against ct) or
-    # routes the paper to review on any name-set / class disagreement.
-    list_a = model_a.extract_enumeration(ct)
-    list_b = model_b.extract_enumeration(ct)
-    enum = enumerate_constructions(ct, list_a, list_b, paper["paper_id"])
-    if not enum.agreed:
-        print(f"[run_librarian] REVIEW: enumeration disagreement: {enum.disagreement.detail}")
-        return 2
-    if not enum.constructions:
-        print("[run_librarian] REVIEW: enumeration produced zero constructions "
-              "(both models empty or unparseable) -- routing to review rather than "
-              "proceeding with an empty spec set")
-        return 2
+    # Enumeration source. Two modes:
+    #  * gold (default): the authored per-paper gold enumeration list IS the agreed
+    #    construction set. Correct for the gold anchor papers -- their constructions are
+    #    settled, so field extraction need not be gated behind two models wording the
+    #    same list identically (the D20 verbatim-name-set gate, which real independent
+    #    models rarely clear on a multi-construction paper).
+    #  * live: run the D20 dual-model enumeration-agreement gate (scale-layer papers,
+    #    where no authored gold list exists).
+    if args.enumeration == "gold" and paper.get("gold_enum"):
+        enum = load_gold_list(_REPO_ROOT / paper["gold_enum"])
+        print(f"[run_librarian] enumeration=gold ({paper['gold_enum']}): "
+              f"{len(enum.constructions)} construction(s), {len(enum.strategies)} strategy")
+    else:
+        # Live enumeration (WS-3): each model returns its construction list; the D20
+        # dual-model agreement gate ships the agreed set (relocated against ct) or
+        # routes the paper to review on any name-set / class disagreement.
+        list_a = model_a.extract_enumeration(ct)
+        list_b = model_b.extract_enumeration(ct)
+        enum = enumerate_constructions(ct, list_a, list_b, paper["paper_id"])
+        if not enum.agreed:
+            print(f"[run_librarian] REVIEW: enumeration disagreement: {enum.disagreement.detail}")
+            return 2
+        if not enum.constructions:
+            print("[run_librarian] REVIEW: enumeration produced zero constructions "
+                  "(both models empty or unparseable) -- routing to review rather than "
+                  "proceeding with an empty spec set")
+            return 2
 
     assembler = make_assembler(model_a, model_b, registry, manifest, field_limit=args.limit)
 

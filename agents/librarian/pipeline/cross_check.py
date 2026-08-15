@@ -38,6 +38,13 @@ from ..schema.strategy_spec import Part1, Part2
 # The Part-1 enum value that declares a sort-family paper.
 SORTED_PORTFOLIOS: str = "sorted_portfolios"
 
+# (v1.2) Fitted-model families that construct in the estimation block, NOT the
+# sort block. A paper declaring one of these expects an EMPTY (stub) sort block,
+# so it must never trip the non-declared-block rule. The KPP gold's stub Part2 is
+# all-UNKNOWN and would not trip it anyway, but suppressing explicitly is robust
+# against a fitted-model spec that happens to fill a sort field.
+FITTED_FAMILIES: frozenset[str] = frozenset({"estimated_factor_model", "trained_predictor"})
+
 # Review-flag kinds (typed, deterministic; never a tag -- D24).
 MARKERS_ALL_UNKNOWN: str = "markers_all_unknown"
 NON_DECLARED_BLOCK_FILLED: str = "non_declared_block_filled"
@@ -132,9 +139,12 @@ def cross_check(part1: Part1, part2: Part2) -> list[ReviewFlag]:
 
     # Non-declared-block rule (D14): declared NOT a sort, yet the sort block is
     # substantially filled. Only fires when Part 1 makes a positive non-sort
-    # declaration (a STATED enum other than sorted_portfolios).
+    # declaration (a STATED enum other than sorted_portfolios) that is NOT a
+    # fitted-model family (which constructs in the estimation block, v1.2).
     declares_non_sort = (
-        part1.formation_structure.tag == "STATED" and declared != SORTED_PORTFOLIOS
+        part1.formation_structure.tag == "STATED"
+        and declared != SORTED_PORTFOLIOS
+        and declared not in FITTED_FAMILIES
     )
     if declares_non_sort and _sort_block_substantially_filled(part2):
         flags.append(

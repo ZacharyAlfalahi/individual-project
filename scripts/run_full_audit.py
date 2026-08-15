@@ -229,6 +229,7 @@ def run_anchor_full(
     *,
     seed: int = 0,
     pre_registration_tag: str | None = AUDITOR_PREREG_TAG,
+    thresholds_path: str | Path | None = None,
 ) -> dict:
     """Assemble the anchor, run the full audit with its ratified DSR inputs, render the
     verified prose, and return a serialisable record (the AuditReport dict, the prose,
@@ -241,7 +242,7 @@ def run_anchor_full(
     # OFF arm and drop str's exclusion / mom6's trim — bypassing Part D/E entirely.
     facts = default_anchor_facts(anchor_id)
     meas_err_off_family = load_anchor_meas_err_off_family(anchor_id)
-    expost_trim_off = load_anchor_expost_trim_off(anchor_id)
+    expost_trim_off = load_anchor_expost_trim_off(anchor_id, thresholds_path)
     report = audit_anchor_full(
         strategy, maximal_panel, facts, config,
         signals=signals, n_trials=dsr.n_trials, sr_std=dsr.sr_std,
@@ -309,7 +310,9 @@ def run_all(
 
     maximal, signals, _registry = load_dev_inputs()  # holdout never read
     records = [
-        run_anchor_full(a, maximal, signals, config, dsr_map[a]) for a in anchors
+        run_anchor_full(a, maximal, signals, config, dsr_map[a],
+                        thresholds_path=thresholds_path)
+        for a in anchors
     ]
 
     run_log = {
@@ -321,6 +324,11 @@ def run_all(
         "run": "full-audit (spine + bootstrap + inference/FDR/Bayes/compression/economic)",
         "explainer": "deterministic render_report (NO LLM); verify_numbers asserted",
         "dsr_inputs": {a: dsr_map[a].__dict__ for a in anchors},
+        # Part-D/E provenance: which meas_err OFF baseline family (drf->bbw_2019,
+        # mom6->jostova_2013, str->raw+excluded) and re-injected published trim each
+        # anchor actually ran — so the confirmatory inputs are auditable from the
+        # recorded output (mirrors dsr_inputs; verifiability discipline).
+        "baseline_signatures": {r["anchor"]: r["baseline_signature"] for r in records},
         "anchors": [r["anchor"] for r in records],
     }
     out_dir = out_dir or (REPO_ROOT / "results" / "auditor" / f"full_run_{_git_short()}")

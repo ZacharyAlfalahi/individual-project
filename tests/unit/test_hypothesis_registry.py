@@ -1,7 +1,6 @@
 """Unit tests for the factor-level hypothesis registry + runtime gate (Part F)."""
 
 import textwrap
-from pathlib import Path
 
 import pytest
 
@@ -46,6 +45,16 @@ def test_runtime_gate_refuses_unregistered_factor():
         require_factor_registered("nonexistent_factor")
     assert "no row" in str(exc.value)
     assert exc.value.factor_id == "nonexistent_factor"
+
+
+def test_runtime_gate_refuses_pilot_factor_fail_closed():
+    # str is a PILOT (is_locked=false) — it can never yield a confirmatory outcome,
+    # so the gate must REFUSE rather than return its row (the fail-open the docstrings
+    # forbid). Pilot reporting reads load_hypothesis_registry() directly instead.
+    with pytest.raises(FactorHypothesisAbsent) as exc:
+        require_factor_registered("str")
+    assert "not confirmatory" in str(exc.value)
+    assert exc.value.factor_id == "str"
 
 
 def _write(tmp_path, body):
@@ -101,6 +110,19 @@ def test_missing_is_locked_rejected(tmp_path):
               status: locked, source: s, registered_commit: abc}
     """)
     with pytest.raises(HypothesisRegistryError, match="is_locked"):
+        load_hypothesis_registry(p)
+
+
+def test_unknown_status_rejected(tmp_path):
+    # A mislabelled status (e.g. capitalised "Pilot") would slip past is_confirmatory's
+    # exact-string check and corrupt the gate — the loader must refuse it fail-loud.
+    p = _write(tmp_path, """
+        version: v1
+        factors:
+          x: {dominant_bias: lab_trim, expected_sign: -1, magnitude: sign_only,
+              is_locked: true, status: Pilot, source: s, registered_commit: abc}
+    """)
+    with pytest.raises(HypothesisRegistryError, match="status must be one of"):
         load_hypothesis_registry(p)
 
 

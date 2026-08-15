@@ -71,11 +71,26 @@ def test_one_marker_unknown_is_not_all_unknown():
 # --- non-declared-block rule (D14) ------------------------------------------
 
 def test_non_declared_block_filled_flags_review():
-    # declares a non-sort family, but the sort block is substantially filled.
-    part1 = build_part1(formation_structure=stated("estimated_factor_model"))
+    # declares a non-sort, non-fitted family ("other"), but the sort block is
+    # substantially filled -> the passes diverge (D14).
+    part1 = build_part1(formation_structure=stated("other"))
     part2 = build_part2()  # default legs have both markers STATED
     flags = cross_check(part1, part2)
     assert any(f.kind == NON_DECLARED_BLOCK_FILLED for f in flags)
+
+
+def test_fitted_family_declaration_suppresses_non_declared_block_flag():
+    # (v1.2) estimated_factor_model constructs in the estimation block, not the
+    # sort block, so a filled sort block must NOT trip the non-declared-block rule.
+    part1 = build_part1(formation_structure=stated("estimated_factor_model"))
+    part2 = build_part2()  # default legs have both markers STATED
+    assert cross_check(part1, part2) == []
+
+
+def test_trained_predictor_is_also_a_fitted_family():
+    part1 = build_part1(formation_structure=stated("trained_predictor"))
+    part2 = build_part2()
+    assert cross_check(part1, part2) == []
 
 
 def test_declared_sort_with_filled_block_is_clean():

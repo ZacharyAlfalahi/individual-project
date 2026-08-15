@@ -35,6 +35,11 @@ _SECTION = "spec v4 Part F (factor-level hypothesis registry)"
 _SIGN_ONLY = "sign_only"
 _NEAR_ZERO = "near_zero"
 
+# The status vocabulary. `is_confirmatory` keys on the exact string "pilot", and the
+# runtime gate refuses non-confirmatory rows — so a mislabelled status (e.g. "Pilot")
+# would silently flip a pilot into the confirmatory family. Validate fail-loud at load.
+_VALID_STATUS = ("pilot", "locked", "negative_control")
+
 
 class HypothesisRegistryError(RuntimeError):
     """A malformed / missing field in config/hypothesis_registry.yaml."""
@@ -104,6 +109,13 @@ def load_hypothesis_registry(path: str | Path | None = None) -> dict[str, Factor
         if not isinstance(is_locked, bool):
             raise HypothesisRegistryError(f"{stem}.is_locked must be bool (D-3, required)")
 
+        status = req("status")
+        if status not in _VALID_STATUS:
+            raise HypothesisRegistryError(
+                f"{stem}.status must be one of {_VALID_STATUS}; got {status!r} "
+                f"(a mislabelled status would corrupt the confirmatory gate)"
+            )
+
         # Magnitude: either a band [lo,hi] (unsigned ascending decimal) or a mode token.
         band = row.get("expected_magnitude_range")
         mode_token = row.get("magnitude")
@@ -148,7 +160,7 @@ def load_hypothesis_registry(path: str | Path | None = None) -> dict[str, Factor
             magnitude_mode=magnitude_mode,
             expected_magnitude_range=mag_range,
             is_locked=bool(is_locked),
-            status=str(req("status")),
+            status=str(status),
             source=str(req("source")),
             registered_commit=str(req("registered_commit")),
         )
@@ -159,9 +171,12 @@ def require_factor_registered(
     factor_id: str, *, path: str | Path | None = None
 ) -> FactorHypothesis:
     """RUNTIME GATE (Part F): return the factor's committed hypothesis, or REFUSE
-    (`FactorHypothesisAbsent`) if its row is absent. Call this ONLY before computing
-    a CONFIRMATORY OUTCOME for the factor — never for row counts / invariants /
-    synthetic fixtures / execution diagnostics / PILOT outputs."""
+    (`FactorHypothesisAbsent`) if its row is absent OR not confirmatory (unlocked /
+    pilot). Call this ONLY before computing a CONFIRMATORY OUTCOME for the factor —
+    never for row counts / invariants / synthetic fixtures / execution diagnostics /
+    PILOT outputs. Fail-closed: a pilot factor (e.g. str, D-A33) cannot yield a
+    confirmatory outcome, so requesting one is refused rather than silently returning
+    the pilot row — that is exactly the sin the gate exists to prevent."""
     try:
         registry = load_hypothesis_registry(path)
     except HypothesisRegistryError as exc:
@@ -169,4 +184,10 @@ def require_factor_registered(
     hyp = registry.get(factor_id)
     if hyp is None:
         raise FactorHypothesisAbsent(factor_id, "no row in config/hypothesis_registry.yaml")
+    if not hyp.is_confirmatory:
+        raise FactorHypothesisAbsent(
+            factor_id,
+            f"row present but not confirmatory (is_locked={hyp.is_locked}, "
+            f"status={hyp.status!r}) — pilots/unlocked factors have no confirmatory outcome",
+        )
     return hyp
