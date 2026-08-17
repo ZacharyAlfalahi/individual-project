@@ -104,89 +104,105 @@ def _stale_or_gate(g: dict, source: str):
     return None
 
 
+def _parse_str_gate(strd: dict) -> dict:
+    stale = _stale_or_gate(strd["gate"], "build_str_decomposition.py")
+    if stale:
+        return stale
+    g = strd["gate"]
+    lib_share_pct = (strd["lib_share_of_month_end"] or 0) * 100
+    direction = bool(g["direction_pass"])
+    return {
+        "direction_pass": direction,
+        "direction_reproduced": g.get("direction_reproduced"),
+        "lib_share_pct": lib_share_pct,
+        "month_end_pct": strd["month_end"]["mean_pct"],
+        "month_begin_pct": strd["month_begin"]["mean_pct"],
+        "verdict": (
+            f"direction {'reproduced' if direction else 'NOT reproduced'} "
+            f"(sign-aware); LIB share {lib_share_pct:.1f}% of month-end"
+        ),
+    }
+
+
+def _parse_mom6_gate(mom6: dict) -> dict:
+    stale = _stale_or_gate(mom6["gate"], "run_mom6_lab_gate.py")
+    if stale:
+        return stale
+    g = mom6["gate"]
+    ep = mom6["ex_post_biased"]["mean_pct"]
+    ea = mom6["ex_ante_corrected"]["mean_pct"]
+    gap = mom6["ep_minus_ea_gap"]["mean_pct"]
+    direction = bool(g["direction_pass"])
+    return {
+        "direction_pass": direction,
+        "direction_reproduced": g.get("direction_reproduced"),
+        "ex_post_pct": ep,
+        "ex_ante_pct": ea,
+        "ep_minus_ea_pct": gap,
+        "verdict": (
+            f"ex-post {ep:+.2f}%/mo vs ex-ante {ea:+.2f}%/mo, EP−EA gap "
+            f"{gap:+.2f} — look-ahead direction "
+            f"{'confirmed' if direction else 'NOT confirmed'}"
+        ),
+    }
+
+
+def _parse_leadlag_gate(leadlag: dict) -> dict:
+    stale = _stale_or_gate(leadlag["gate"], "run_leadlag_gate.py")
+    if stale:
+        return stale
+    g = leadlag["gate"]
+    direction = bool(g["direction_pass"])
+    drf_c = leadlag["arms"]["drf"]["corr_correct_vs_defective"]
+    crf_c = leadlag["arms"]["crf"]["corr_correct_vs_defective"]
+    lrf_c = leadlag["arms"]["lrf"]["corr_correct_vs_defective"]
+    return {
+        "direction_pass": direction,
+        "drf_corr_defective": drf_c,
+        "crf_corr_defective": crf_c,
+        "lrf_corr_defective": lrf_c,
+        "verdict": (
+            f"lead/lag error collapses correlation (drf {drf_c:.2f}, crf "
+            f"{crf_c:.2f}, lrf {lrf_c:.2f}); round-trip re-alignment "
+            f"{'restores' if direction else 'does NOT restore'} it"
+        ),
+    }
+
+
+def _safe_gate(json_obj, parser, source: str, missing_msg: str) -> dict:
+    """Parse one differential gate — NON-GATING and CRASH-PROOF: a missing JSON
+    -> the 'NOT RUN' marker; a stale/partial/malformed JSON -> a status marker,
+    never an exception. The report must be written regardless of the
+    differential's health (it feeds no pass), so a KeyError/TypeError from a
+    partially-written producer JSON must degrade to a status, not crash main()."""
+    if not json_obj:
+        return {"status": missing_msg}
+    try:
+        return parser(json_obj)
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        return {"status": f"MALFORMED — re-run {source} (differential JSON missing/"
+                          f"malformed expected keys: {exc!r}); NON-GATING, diagnostic only"}
+
+
 def read_differential_diagnostic() -> dict:
     """The §7 gate-5 bias differential, reported as an RQ3-facing diagnostic.
 
     Reads the three per-gate JSONs; a missing JSON -> 'NOT RUN', a stale-schema
-    JSON -> 'STALE_SCHEMA'. This function is purely descriptive: nothing it
-    returns feeds the RQ2 pass.
+    JSON -> 'STALE_SCHEMA', a partial/malformed JSON -> 'MALFORMED'. Purely
+    descriptive and crash-proof: nothing it returns feeds the RQ2 pass, and a
+    degraded differential can never prevent the summary from being written.
     """
-    strd = _read("str_decomposition.json")
-    mom6 = _read("mom6_lab_gate.json")
-    leadlag = _read("leadlag_gate.json")
-    gates: dict = {}
-
-    if strd:
-        stale = _stale_or_gate(strd["gate"], "build_str_decomposition.py")
-        if stale:
-            gates["str_lib_decomposition"] = stale
-        else:
-            g = strd["gate"]
-            lib_share_pct = (strd["lib_share_of_month_end"] or 0) * 100
-            direction = bool(g["direction_pass"])
-            gates["str_lib_decomposition"] = {
-                "direction_pass": direction,
-                "direction_reproduced": g.get("direction_reproduced"),
-                "lib_share_pct": lib_share_pct,
-                "month_end_pct": strd["month_end"]["mean_pct"],
-                "month_begin_pct": strd["month_begin"]["mean_pct"],
-                "verdict": (
-                    f"direction {'reproduced' if direction else 'NOT reproduced'} "
-                    f"(sign-aware); LIB share {lib_share_pct:.1f}% of month-end"
-                ),
-            }
-    else:
-        gates["str_lib_decomposition"] = {"status": "NOT RUN — run build_str_decomposition.py"}
-
-    if mom6:
-        stale = _stale_or_gate(mom6["gate"], "run_mom6_lab_gate.py")
-        if stale:
-            gates["mom6_lab"] = stale
-        else:
-            g = mom6["gate"]
-            ep = mom6["ex_post_biased"]["mean_pct"]
-            ea = mom6["ex_ante_corrected"]["mean_pct"]
-            gap = mom6["ep_minus_ea_gap"]["mean_pct"]
-            direction = bool(g["direction_pass"])
-            gates["mom6_lab"] = {
-                "direction_pass": direction,
-                "direction_reproduced": g.get("direction_reproduced"),
-                "ex_post_pct": ep,
-                "ex_ante_pct": ea,
-                "ep_minus_ea_pct": gap,
-                "verdict": (
-                    f"ex-post {ep:+.2f}%/mo vs ex-ante {ea:+.2f}%/mo, EP−EA gap "
-                    f"{gap:+.2f} — look-ahead direction "
-                    f"{'confirmed' if direction else 'NOT confirmed'}"
-                ),
-            }
-    else:
-        gates["mom6_lab"] = {"status": "NOT RUN — run run_mom6_lab_gate.py"}
-
-    if leadlag:
-        stale = _stale_or_gate(leadlag["gate"], "run_leadlag_gate.py")
-        if stale:
-            gates["bbw_lead_lag"] = stale
-        else:
-            g = leadlag["gate"]
-            direction = bool(g["direction_pass"])
-            drf_c = leadlag["arms"]["drf"]["corr_correct_vs_defective"]
-            crf_c = leadlag["arms"]["crf"]["corr_correct_vs_defective"]
-            lrf_c = leadlag["arms"]["lrf"]["corr_correct_vs_defective"]
-            gates["bbw_lead_lag"] = {
-                "direction_pass": direction,
-                "drf_corr_defective": drf_c,
-                "crf_corr_defective": crf_c,
-                "lrf_corr_defective": lrf_c,
-                "verdict": (
-                    f"lead/lag error collapses correlation (drf {drf_c:.2f}, crf "
-                    f"{crf_c:.2f}, lrf {lrf_c:.2f}); round-trip re-alignment "
-                    f"{'restores' if direction else 'does NOT restore'} it"
-                ),
-            }
-    else:
-        gates["bbw_lead_lag"] = {"status": "NOT RUN — run run_leadlag_gate.py"}
-
+    gates = {
+        "str_lib_decomposition": _safe_gate(
+            _read("str_decomposition.json"), _parse_str_gate,
+            "build_str_decomposition.py", "NOT RUN — run build_str_decomposition.py"),
+        "mom6_lab": _safe_gate(
+            _read("mom6_lab_gate.json"), _parse_mom6_gate,
+            "run_mom6_lab_gate.py", "NOT RUN — run run_mom6_lab_gate.py"),
+        "bbw_lead_lag": _safe_gate(
+            _read("leadlag_gate.json"), _parse_leadlag_gate,
+            "run_leadlag_gate.py", "NOT RUN — run run_leadlag_gate.py"),
+    }
     return {
         "status": "NON-GATING RQ3-facing diagnostic (v1.6): the bias-mechanism "
                   "differential no longer gates RQ2 anchor fidelity.",

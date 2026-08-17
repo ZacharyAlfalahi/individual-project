@@ -91,3 +91,24 @@ def test_gate_path_does_not_import_differential():
     src = Path(round_trip.__file__).read_text()
     for mod in ("build_str_decomposition", "run_mom6_lab_gate", "run_leadlag_gate"):
         assert mod not in src, f"round_trip references the differential computation ({mod})"
+
+
+def test_malformed_differential_degrades_not_crashes(subs, monkeypatch):
+    # MAJOR-fix regression (2026-08-17 code review): a differential JSON that is
+    # PRESENT but partially malformed (has `gate.direction_pass` but is missing the
+    # sibling keys the reader dereferences) must degrade to a MALFORMED status, NOT
+    # raise -- the differential is non-gating, so it can never prevent the summary
+    # from being written or corrupt the exit code.
+    def fake_read(name):
+        if name == "str_decomposition.json":
+            return {"gate": {"direction_pass": True}}   # partial: no lib_share/month_end
+        return None                                      # mom6/leadlag absent -> NOT RUN
+    monkeypatch.setattr(rvg, "_read", fake_read)
+    diag = rvg.read_differential_diagnostic()            # must NOT raise
+    assert "MALFORMED" in diag["gates"]["str_lib_decomposition"]["status"]
+    assert "NOT RUN" in diag["gates"]["mom6_lab"]["status"]
+    # the gate verdict + report still assemble, unaffected by the degraded differential.
+    v = rvg.compute_construction_rulebook_verdict(subs)
+    report = rvg.assemble_report(v, diag, "construction_rulebook")
+    assert report["construction_rulebook_pass"] is True
+    assert report["differential_diagnostic"]["gates"]["str_lib_decomposition"]["status"].startswith("MALFORMED")
