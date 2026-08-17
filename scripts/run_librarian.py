@@ -422,6 +422,20 @@ def _canonical_text_hash(ct) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _paper_failed(exc: RealClientError) -> int:
+    """Typed exit for a model/transport failure DURING extraction (enumeration or
+    per-field) -- e.g. retries exhausted on a 429. It is an infra failure, NOT paper
+    silence: degrading the un-asked constructions/fields to UNKNOWN would fabricate
+    "the paper was silent" from "we could not ask" (the not_extracted != UNKNOWN
+    distinction), inflating the RQ1 UNKNOWN count; and v1 emits no partial spec set
+    (D31). Stop and route to a typed paper_failed -- re-run later (paced / paid model)
+    as a NEW counted run, never a silent resume (I3). The build-time missing-key
+    RealClientError is raised in build_clients, BEFORE any extraction call, and stays
+    fatal by design."""
+    print(f"[run_librarian] paper_failed: extraction client failure: {exc}")
+    return 4
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Live dual-model Librarian extraction on one paper.")
     ap.add_argument("--paper", default="bbw", choices=sorted(PAPERS), help="which frozen paper")
@@ -485,8 +499,13 @@ def main(argv=None) -> int:
         # Live enumeration (WS-3): each model returns its construction list; the D20
         # dual-model agreement gate ships the agreed set (relocated against ct) or
         # routes the paper to review on any name-set / class disagreement.
-        list_a = model_a.extract_enumeration(ct)
-        list_b = model_b.extract_enumeration(ct)
+        try:
+            list_a = model_a.extract_enumeration(ct)
+            list_b = model_b.extract_enumeration(ct)
+        except RealClientError as exc:
+            # 429s were observed at THIS enumeration gate on the first live run (WS-3),
+            # not only per-field -- same infra-failure semantics as the run_paper catch.
+            return _paper_failed(exc)
         enum = enumerate_constructions(ct, list_a, list_b, paper["paper_id"])
         if not enum.agreed:
             print(f"[run_librarian] REVIEW: enumeration disagreement: {enum.disagreement.detail}")
@@ -515,16 +534,7 @@ def main(argv=None) -> int:
         print(f"[run_librarian] REVIEW: {exc}")
         return 2
     except RealClientError as exc:
-        # A model/transport failure during extraction (e.g. retries exhausted on a
-        # 429) is an infra failure, NOT paper silence. Degrading the un-asked fields
-        # to UNKNOWN would fabricate "the paper was silent" from "we could not ask"
-        # (the not_extracted != UNKNOWN distinction), inflating the RQ1 UNKNOWN count;
-        # and v1 emits no partial spec set (D31). So route to a typed paper_failed
-        # outcome and stop -- re-run the paper later (paced / paid model) as a NEW
-        # counted run, never a silent resume (I3). (The build-time missing-key
-        # RealClientError is raised before this try and stays fatal, by design.)
-        print(f"[run_librarian] paper_failed: extraction client failure: {exc}")
-        return 4
+        return _paper_failed(exc)
 
     _write_outputs(result, out_dir)
     _report(result, out_dir, model_a, model_b)

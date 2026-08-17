@@ -18,6 +18,7 @@ Pins three driver behaviours WITHOUT a live model (Phase-F gated):
 
 from __future__ import annotations
 
+from agents.librarian.pipeline import FakeModelClient
 from agents.librarian.pipeline.real_client import RealClientError
 from scripts import run_librarian
 from scripts.run_librarian import PAPERS, main
@@ -51,3 +52,24 @@ def test_client_failure_routes_to_paper_failed_not_crash(tmp_path, monkeypatch, 
     assert "paper_failed" in capsys.readouterr().out
     # D31: a client failure emits NO partial spec set.
     assert list(out.iterdir()) == []
+
+
+def test_missing_constructions_seed_does_not_crash(tmp_path):
+    # A corpus paper carries no `constructions` fake seed; _fake_pair must fall back to
+    # an empty seed (`.get(..., ())`), not KeyError. Under --enumeration live the empty
+    # seed yields zero constructions -> REVIEW (exit 2), never a crash.
+    rc = main(["--paper", "dfps", "--phase", "fake", "--enumeration", "live",
+               "--out", str(tmp_path / "seed")])
+    assert rc == 2
+
+
+def test_enumeration_client_failure_routes_to_paper_failed(tmp_path, monkeypatch):
+    # M1 regression: a client failure at the LIVE enumeration gate (where WS-3 observed
+    # 429s) must degrade to paper_failed (exit 4), same as a per-field failure -- not crash.
+    def boom(self, _ct):
+        raise RealClientError("mistral:small enumeration: 429 retries exhausted")
+
+    monkeypatch.setattr(FakeModelClient, "extract_enumeration", boom)
+    rc = main(["--paper", "bbw", "--phase", "fake", "--enumeration", "live",
+               "--out", str(tmp_path / "enum")])
+    assert rc == 4
