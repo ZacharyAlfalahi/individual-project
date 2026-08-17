@@ -66,7 +66,9 @@ STATED locators as binding.
   (`enum_bbw_2019.yaml`, `enum_drr_2026.yaml`, `enum_jnps_2013.yaml`; NO-MODEL-CONSULT). Scale-layer
   enumeration golds (RQ2 coverage) remain **outstanding**, gated on the O1 scale-layer scope decision
   (an open decision — see `docs/backlog/remaining_work.md`), and are authored by the human,
-  never by an automated agent.
+  never by an automated agent. The full reconciled inventory is `docs/evaluation/corpus_inventory.md`;
+  the scale-layer selection rule (proposing O1's resolution, not yet decided) is
+  `docs/evaluation/t2_selection_prereg.md`.
 
 _All three anchor golds are now INSTANTIATED under schema v1.1 (str 2026-07-12; drf + mom6
 2026-07-15 on the JNPS freeze). The former outstanding items — the JNPS canonical-text freeze +

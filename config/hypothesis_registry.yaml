@@ -18,6 +18,14 @@
 # monthly units on |effect|; direction is in expected_sign. `magnitude: sign_only`
 # marks a factor with no defensible external magnitude band (direction tested,
 # magnitude not) — its gate is sign-only.
+#
+# RQ3 ANCHOR-MEMBERSHIP INVARIANT (D-A59, auditor_design.md §15): a factor may be
+# registered here only if a hand-authored StrategySpec gold exists for it
+# (evaluation/gold_specs/) — a gold-free strategy has no paper-stated baseline, so
+# its OFF state would be compiler-inferred and pooling it under one prevalence n_i
+# mixes two estimands. The SOLE grandfathered gold-free row is the traded_liquidity
+# negative control (a synthetic specificity device, sign 0). Enforced by
+# tests/unit/test_rq3_requires_gold.py.
 
 version: v1
 seeded_from: "auditor_design.md §13.2 (commit b855632, tag auditor-prereg-2026-07-22)"

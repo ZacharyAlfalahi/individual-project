@@ -1052,3 +1052,52 @@ p1_codegen:
   sandbox:
     wall_clock_seconds: 600
     memory_mb: 8192
+
+# ---------------------------------------------------------------------------
+# Scale-layer / corpus-growth SELECTION RULE (frozen before candidate papers are
+# examined). Narrative spec: docs/evaluation/t2_selection_prereg.md; inventory:
+# docs/evaluation/corpus_inventory.md. Pre-registers the resolution of
+# data-FINAL-log open item O1 (RQ2 coverage / external reference, NOT RQ3
+# prevalence). Consistency-
+# guarded by tests/unit/test_t2_selection_prereg.py. The git tag
+# `t2-selection-prereg` was applied when `status` reached 'frozen';
+# a rule's whole force is that it precedes the candidate papers.
+#
+# `status` gates the freeze exactly like auditor.ipca_differential.status: while
+# 'draft_pending_review', the TO_SET fields are PROPOSALS, not
+# commitments, and the rule must NOT be cited as pre-registered. It is flipped
+# to 'frozen' (and tagged) only once every TO_SET value is chosen.
+# ---------------------------------------------------------------------------
+corpus:
+  selection:
+    status: draft_pending_review       # -> 'frozen' on review + tag
+    # T2 = the extraction subset (StrategySpec extraction gold; RQ1 generalisation).
+    # Target 3 unseen papers; drops to 2 if the human gold-authoring budget binds.
+    t2_target_count: 3
+    t2_min_count: 2
+    # Admission constraints (TO_SET — the values, once committed, give
+    # the rule its force; proposed defaults are in the narrative spec §3).
+    source_venue_constraint: TO_SET     # proposed: peer-reviewed finance journal OR arXiv q-fin
+    strategy_type_constraint: TO_SET    # proposed: cross-sectional sort OR fitted latent-factor model
+    source_date_window_from: TO_SET     # proposed: 2013-01 (not older than the earliest anchor, JNPS 2013)
+    source_date_window_to: TO_SET       # proposed: 2026-12 (through the project data ceiling)
+    tie_break: TO_SET                    # proposed: earliest publication, then alphabetical first-author surname
+    # Papers TOUCHED during design are INELIGIBLE. Append-only. At minimum every
+    # paper with a frozen canonical text (evaluation/canonical_texts/*.frozen.yaml)
+    # must appear here — enforced by the consistency test.
+    design_touched_exclusions:
+      - bbw_2019        # anchors drf/crf/lrf
+      - bbw_2021        # frozen for corpus scaling (2026-08-17)
+      - drr_2026        # anchor str; DRR-documented mom6 look-ahead + drf measurement error
+      - jnps_2013       # anchor mom6
+      - kpp_2023        # fitted-model anchor
+      - bpw_2011        # gamma-illiquidity mechanism source
+      - dfps_2026       # DFPS-4 secondary benchmark (SC-SCI-5)
+      - dmr_2023        # DRR-documented drf/mom6 error source (DMR 2023)
+      - gkx_2022        # mechanism-library source (GKX survey)
+      - dg_2025         # DNN showcase / mechanism-library source (Duraj-Giesecke)
+    # Downstream artefact depth by layer (project decision).
+    t2_gold_depth: extraction_only            # StrategySpec extraction gold; downstream observed/profiled, not oracle-graded
+    scale_gold_depth: enumeration_only        # paper-only NO-MODEL-CONSULT factor list (RQ2 coverage)
+    gold_authoring: human_no_model_consult    # no automated agent authors any gold (2026-08-17 corpus-scaling decision)
+    rq3_eligible: false                        # scale/T2 strategies NEVER enter the RQ3 census (D-A59)
