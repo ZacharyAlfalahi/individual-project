@@ -69,7 +69,11 @@ from agents.librarian.pipeline import (  # noqa: E402
     load_prompt_manifest,
     run_paper,
 )
-from agents.librarian.pipeline.real_client import PromptBuilder, build_client_pair  # noqa: E402
+from agents.librarian.pipeline.real_client import (  # noqa: E402
+    PromptBuilder,
+    RealClientError,
+    build_client_pair,
+)
 from agents.librarian.registries import load_signal_concept_registry  # noqa: E402
 from agents.librarian.registries.silence_policy import load_silence_policy_table  # noqa: E402
 from agents.librarian.schema import (  # noqa: E402
@@ -136,6 +140,21 @@ PAPERS: dict[str, dict] = {
                 "cls": "strategy",
             },
         ],
+    },
+    # Scale-layer corpus papers (RQ2 coverage). Enumeration comes from the authored
+    # per-paper enum gold via load_gold_list (--enumeration gold, the default), which
+    # bypasses the D20 dual-model gate. No fake seed -- --phase fake is the anchor
+    # wiring proof only (its scripted field quotes locate in BBW 2019 alone). Frozen
+    # text + enum gold both verified: every enum quote locates at L1.
+    "bbw2021": {
+        "paper_id": "BBW_2021",
+        "canonical_text": "evaluation/canonical_texts/bbw_2021.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_bbw_2021.yaml",
+    },
+    "dfps": {
+        "paper_id": "DFPS_2026",
+        "canonical_text": "evaluation/canonical_texts/dfps_2026.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_dfps_2026.yaml",
     },
 }
 
@@ -380,7 +399,7 @@ def _fake_pair(paper: dict):
     }
     seed = tuple(
         Construction(name=c["name"], quote=c["quote"], cls=c["cls"])
-        for c in paper["constructions"]
+        for c in paper.get("constructions", ())  # corpus papers carry no fake seed
     )
 
     def _client(cid):
@@ -495,6 +514,17 @@ def main(argv=None) -> int:
     except AssemblyIncomplete as exc:
         print(f"[run_librarian] REVIEW: {exc}")
         return 2
+    except RealClientError as exc:
+        # A model/transport failure during extraction (e.g. retries exhausted on a
+        # 429) is an infra failure, NOT paper silence. Degrading the un-asked fields
+        # to UNKNOWN would fabricate "the paper was silent" from "we could not ask"
+        # (the not_extracted != UNKNOWN distinction), inflating the RQ1 UNKNOWN count;
+        # and v1 emits no partial spec set (D31). So route to a typed paper_failed
+        # outcome and stop -- re-run the paper later (paced / paid model) as a NEW
+        # counted run, never a silent resume (I3). (The build-time missing-key
+        # RealClientError is raised before this try and stays fatal, by design.)
+        print(f"[run_librarian] paper_failed: extraction client failure: {exc}")
+        return 4
 
     _write_outputs(result, out_dir)
     _report(result, out_dir, model_a, model_b)

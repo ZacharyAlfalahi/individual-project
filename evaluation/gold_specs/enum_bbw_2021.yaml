@@ -1,6 +1,6 @@
 # Gold enumeration list -- BBW (2021), scale-layer paper (RQ2 coverage / D20).
 # Bai, Bali & Wen, "Is there a risk-return tradeoff in the corporate bond market?",
-# JFE 142 (2021) 1017-1037. Distinct paper from the retracted BBW (2019); not retracted.
+# JFE 142 (2021) 1017-1037. 
 #
 # Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
 # `constructions` list of {name, quote, class, grid?}. The `authoring` block below is

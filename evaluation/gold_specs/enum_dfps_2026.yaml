@@ -1,6 +1,6 @@
 # Gold enumeration list -- DFPS (2026), scale-layer paper (RQ2 coverage / D20).
 # Dick-Nielsen, Feldhutter, Pedersen & Stolborg, "Corporate Bond Factors: Replication
-# Failures and a New Framework", 21 Apr 2026. (Not DRR -- separate replication paper.)
+# Failures and a New Framework", 21 Apr 2026. 
 #
 # Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
 # `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
