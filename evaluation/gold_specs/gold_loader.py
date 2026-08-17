@@ -88,6 +88,11 @@ _ANCHORS: dict[str, dict[str, Any]] = {
     # frozen BBW canonical text as drf; sort path (no ``kind``), so it flows through
     # this loader's section-scoped multi-leg parse.
     "crf": {"file": "gold_crf_bbw_2019.md", "spec_key": "crf_bbw_2019", "binding": True},
+    # (P1 oracle) LRF — BBW's liquidity risk factor: a single-leg bivariate
+    # rating×illiquidity sort, structurally identical to drf except the sort signal
+    # is the Bao–Pan–Wang gamma (illiquidity) measure, not var_5pct. Same frozen BBW
+    # canonical text; single leg, so it flows through the standard loader path.
+    "lrf": {"file": "gold_lrf_bbw_2019.md", "spec_key": "lrf_bbw_2019", "binding": True},
     # (v1.2) The fitted-factor-model anchor (KPP / IPCA). ``kind: estimation``
     # routes load_gold_spec to the parallel kpp_gold_loader; its field set (the
     # estimation block + instrument list) is disjoint from the sort schema, so the

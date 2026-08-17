@@ -37,12 +37,13 @@ _FROZEN = {
     "mom6": "jnps_2013.frozen.yaml",
     "kpp": "kpp_2023.frozen.yaml",
     "crf": "bbw_2019.frozen.yaml",  # CRF shares BBW's frozen canonical text with drf
+    "lrf": "bbw_2019.frozen.yaml",  # LRF shares BBW's frozen canonical text with drf/crf
 }
 
-# Golds the loader cannot build until their locators exist (multi-block / multi-leg
-# constructions), so their backfill is bootstrapped from the RAW gold Markdown
-# instead of a loaded spec: KPP's estimation gold and CRF's three-leg sort gold.
-_MARKDOWN_BOOTSTRAP = frozenset({"kpp", "crf"})
+# Golds whose backfill is bootstrapped from the RAW gold Markdown instead of a loaded
+# spec (backfill-before-load chicken-and-egg): KPP's estimation gold, CRF's three-leg
+# sort gold, and LRF (built as a P1 oracle via the same markdown-bootstrap path).
+_MARKDOWN_BOOTSTRAP = frozenset({"kpp", "crf", "lrf"})
 
 # Field-style quote (estimation / paper_facts / instrument source_class lines):
 # ``quote: "..."   page: N`` (whitespace before ``page:``). The as_described form

@@ -1,6 +1,6 @@
 # Anchor Gold Specs
 
-Hand-authored answer keys for the three anchor strategies, per the authoring template
+Hand-authored answer keys for the sort anchor strategies (five sort golds as of 2026-08-15), per the authoring template
 (`fields-spec-anchor.md`, Project root). Forward input for G2 (round trip) and answer key for G3
 (calibration). Authored 2026-07-11 from the papers only (rule library off, zero INFERRED); every
 STATED value carries a verbatim quote located at L1 by the project's own `locate_quote`
@@ -13,17 +13,25 @@ STATED value carries a verbatim quote located at L1 by the project's own `locate
 | `gold_drf_bbw_2019.md` | DRF | BBW (2019), JFE | **INSTANTIATED 2026-07-15 (schema v1.1)** — BBW text frozen; every STATED quote an exact L1 substring with a binding locator; G2 byte-equality green (par-proxy weighting carried as a standing register row) |
 | `gold_mom6_jnps_2013.md` | mom6 | Jostova et al. (2013), RFS | **INSTANTIATED 2026-07-15 (schema v1.1)** — JNPS canonical text frozen (`jnps_2013.frozen.yaml`); all STATED locators re-verified binding; `expost_trim=truncate` delegated to the `lab_trim` toggle via `lab_trim_delegation_v1`; G2 byte-equality green |
 | `gold_str_drr_2026.md` | str | Dickerson, Robotti & Rossetti (2026) | **INSTANTIATED 2026-07-12 (schema v1.1)** — concept grounded (`prior_1m_excess_return`→`xret`, table v2), DRR text frozen, quotes re-verified against the frozen text |
+| `gold_crf_bbw_2019.md` | CRF | BBW (2019), JFE | **INSTANTIATED 2026-08-04 (schema v1.1)** — the first **multi-leg** sort gold (composite of independent rating-signal sorts); G2 composite byte-equality green (`expected_composite_rulebook("crf")`). **RQ1+RQ2 only — RQ3-excluded** (D15). Enters the CRF-inclusive extraction denominator (`ANCHOR_SET_WITH_CRF`). |
+| `gold_lrf_bbw_2019.md` | LRF | BBW (2019), JFE | **INSTANTIATED 2026-08-15 (schema v1.1)** — BBW's liquidity risk factor: a single-leg 5×5 rating×gamma-illiquidity sort, mirrors the DRF gold field-for-field; built as a **5th P1 oracle** (`bbw_factors.parquet → lrf_corr`). **RQ1+RQ2 only — RQ3-excluded.** A **within-anchor RQ2 fidelity reference — NOT external validity** (same paper / data / family). G2 rulebook + aggregation wiring **deferred** (absent from `round_trip.py` and `aggregation.PAPER_OF`). |
 
-**Sort** gold set = str, drf, mom6 — **final** (project decision 2026-07-11; CRF considered and excluded —
-combiner path deferred to the corpus BBW extraction). ◇ control field is named `control_axis` per the
-2026-07-11 brief amendment (shipped code name kept; `control_signal` rejected).
+**Sort** gold family = str, drf, mom6, **crf, lrf** (five as of 2026-08-15). **str/drf/mom6 are the
+RQ3 census** (`ANCHOR_SET`); **crf (D15, 2026-08-04) and lrf (2026-08-15) are RQ1/RQ2-only sort golds,
+RQ3-excluded** — crf enters the CRF-inclusive extraction denominator (`ANCHOR_SET_WITH_CRF`), lrf's
+aggregation wiring is deferred. The earlier "CRF considered and excluded" ruling (2026-07-11) was
+superseded by the corpus BBW extraction (crf gold) and the BBW-family extension (lrf gold); it is kept
+here as history. ◇ control field is named `control_axis` per the 2026-07-11 brief amendment (shipped
+code name kept; `control_signal` rejected).
 
 | file | anchor | paper | class | status |
 |---|---|---|---|---|
 | `gold_kpp_ipca.md` | kpp | Kelly, Palhares & Pruitt (2023), JF | **fitted-factor-model (schema v1.2)** | **INSTANTIATED 2026-08-03** — the first non-sort gold: an `EstimationBlock` (11 fields) + a 29-instrument set (Table A.I), ~90 STATED quotes all L1-located (42 binding rows, zero cross-page/drift). Loaded by `kpp_gold_loader.py` (routed via `load_gold_spec("kpp")`). Graded as a **separate, non-pooled** RQ1 sub-metric — NOT part of the sort G3 set above (different field set; contract v1.3 §3.7 / D42). |
 
-The fitted-model gold is a *separate construction class*; the sort gold set (str/drf/mom6) is
-unchanged and stays the sort-G3 denominator. See `docs/librarian/specs/schema_v1_2_estimation_block.md`
+The fitted-model gold is a *separate construction class*, never pooled with the sort family. The RQ1
+sort-grading denominator is `ANCHOR_SET` (str/drf/mom6) by default, or `ANCHOR_SET_WITH_CRF` when crf
+is in the scored paper set (`evaluation/harness/aggregation.py`; lrf is not yet wired in). See
+`docs/librarian/specs/schema_v1_2_estimation_block.md`
 and `.../implementation-notes/kpp_rq1_fitted_model_record_2026-08-03.md`.
 
 ## Canonical-text status
@@ -54,7 +62,11 @@ STATED locators as binding.
 
 ## Outstanding (not in scope of this pass)
 
-- D20 enumeration golds (recipe-list per paper) — separate artifact, still to author.
+- D20 enumeration golds (recipe-list per paper) — **authored for the three anchor papers**
+  (`enum_bbw_2019.yaml`, `enum_drr_2026.yaml`, `enum_jnps_2013.yaml`; NO-MODEL-CONSULT). Scale-layer
+  enumeration golds (RQ2 coverage) remain **outstanding**, gated on the O1 scale-layer scope decision
+  (an open decision — see `docs/backlog/remaining_work.md`), and are authored by the human,
+  never by an automated agent.
 
 _All three anchor golds are now INSTANTIATED under schema v1.1 (str 2026-07-12; drf + mom6
 2026-07-15 on the JNPS freeze). The former outstanding items — the JNPS canonical-text freeze +

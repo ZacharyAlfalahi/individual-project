@@ -35,7 +35,7 @@ _PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
 _THRESHOLDS = _REPO_ROOT / "docs" / "thresholds.yaml"
 _CONTRACT = _REPO_ROOT / "docs" / "extensions" / "contracts" / "p1_codegen_ablation.md"
 
-STRATEGIES: tuple[str, ...] = ("drf", "str", "mom6", "crf")
+STRATEGIES: tuple[str, ...] = ("drf", "str", "mom6", "crf", "lrf")
 
 # Keys removed from the serialised gold spec before it enters a prompt: the
 # paper's own performance numbers. Recorded verbatim in the mini-contract.

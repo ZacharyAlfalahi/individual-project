@@ -27,6 +27,7 @@ ORACLES: dict[str, tuple[str, str]] = {
     "crf": ("data/development/factors/bbw_factors.parquet", "crf_corr"),
     "str": ("data/development/factors/str.parquet", "str_corr"),
     "mom6": ("data/development/factors/mom6.parquet", "mom6_corr"),
+    "lrf": ("data/development/factors/bbw_factors.parquet", "lrf_corr"),
 }
 
 

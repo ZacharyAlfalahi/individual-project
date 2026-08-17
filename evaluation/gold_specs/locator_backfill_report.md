@@ -131,3 +131,18 @@ pending parse, so its offsets below were unchanged and re-verified binding
 | crf_bbw_2019 | 6 | 806 | 1038 | Downside risk is the 5% VaR of corporate bond return, defined as the s |
 | crf_bbw_2019 | 8 | 696 | 848 | we follow Bao, Pan, and Wang (2011) to construct bond- level illiquidi |
 | crf_bbw_2019 | 15 | 1034 | 1196 | Return re- versal factor ( REV) is constructed by independently sortin |
+| lrf_bbw_2019 | 15 | 721 | 1033 | Liquidity risk factor ( LRF ) is con- structed by independently sortin |
+| lrf_bbw_2019 | 15 | 4844 | 4889 | the newly proposed factors of corporate bonds |
+| lrf_bbw_2019 | 14 | 5245 | 5349 | We construct the bond factors in a similar vein to Fama and French (20 |
+| lrf_bbw_2019 | 15 | 813 | 867 | 5 × 5 quintiles based on illiquidity and credit rating |
+| lrf_bbw_2019 | 14 | 6152 | 6334 | The liquid- ity risk factor, LRF , is the value-weighted average retur |
+| lrf_bbw_2019 | 9 | 549 | 619 | The portfolios are value weighted using amount outstanding as weights. |
+| lrf_bbw_2019 | 14 | 5411 | 5518 | for each month from July 2004 to December 2016, we form bivariate port |
+| lrf_bbw_2019 | 14 | 6189 | 6304 | the value-weighted average return difference between the highest-illiq |
+| lrf_bbw_2019 | 5 | 4555 | 4701 | We denote R i, t as bond i 's excess return, R i,t = r i,t −r f,t, whe |
+| lrf_bbw_2019 | 15 | 1801 | 1891 | Model 3 is the ten-factor model that combines the five stock and five  |
+| lrf_bbw_2019 | 15 | 1957 | 2020 | LRF and REV cover the period from August 2002 to December 2016. |
+| lrf_bbw_2019 | 5 | 1566 | 1823 | Remove bonds that are not listed or traded in the US public market, wh |
+| lrf_bbw_2019 | 15 | 2188 | 2225 | Liquidity risk factor (LRF) 0.52 5.02 |
+| lrf_bbw_2019 | 8 | 696 | 795 | we follow Bao, Pan, and Wang (2011) to construct bond- level illiquidi |
+| lrf_bbw_2019 | 14 | 5101 | 5243 | it is natural to use credit risk (proxied by credit rating) as the ﬁrs |
