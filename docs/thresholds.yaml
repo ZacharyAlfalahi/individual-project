@@ -1101,3 +1101,31 @@ corpus:
     scale_gold_depth: enumeration_only        # paper-only NO-MODEL-CONSULT factor list (RQ2 coverage)
     gold_authoring: human_no_model_consult    # no automated agent authors any gold (2026-08-17 corpus-scaling decision)
     rq3_eligible: false                        # scale/T2 strategies NEVER enter the RQ3 census (D-A59)
+
+# ---------------------------------------------------------------------------
+# P2 coverage-boundary experiment (Workstream C) — the credential-independent
+# BUILD of the agreement-at-scale study the P1 mini-contract §7 sequenced.
+# Estimand: inter-model AGREEMENT rates + divergence magnitudes + a failure
+# taxonomy — NEVER Sharpes-as-performance (no oracle exists to separate "strategy
+# fails to replicate" from "code is wrong"; the §6 caveat is binding). Read
+# fail-loud by evaluation/codegen/p2_metrics.py::load_p2_scoring_thresholds
+# (a silent default would move the agreement/divergence boundary). Numbers are
+# emitted only once the scale census EXISTS and corpus.selection.status=='frozen'
+# until the scale census exists, --dry-run only.
+# Contract: docs/extensions/contracts/p1_codegen_ablation.md §11 (v1.3).
+# ---------------------------------------------------------------------------
+p2_codegen:
+  arms:
+    arm_b_max: 5                      # Arm B = first min(|Arm A|, 5) compilable members
+    below_floor_min_arm_a: 5          # |Arm A| < 5 -> suppress agreement/divergence (below-floor rule)
+  agreement:
+    correlation_min: 0.99             # a pair "agrees" iff corr >= this AND sign agreement below
+    sign_agreement_min: 0.95
+  divergence_strata:                  # labelled by DIVERGENCE magnitude (high divergence = low corr)
+    high_divergence_corr_lt: 0.90     # high  divergence: corr < 0.90
+    medium_divergence_corr_lt: 0.99   # medium divergence: 0.90 <= corr < 0.99 (low: corr >= 0.99)
+  taxonomy_sampling:
+    strata: [arm, divergence_magnitude]   # pre-registered failure-sampler strata (arm × magnitude)
+  zoo_list:
+    frozen_sha256: TO_SET       # sha256 of the frozen scale zoo-list; set + tagged at freeze
+  min_overlap_months: 24             # below -> the pair's overlap is insufficient (agreement not scored)
