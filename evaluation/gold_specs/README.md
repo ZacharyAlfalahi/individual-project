@@ -1,6 +1,7 @@
 # Anchor Gold Specs
 
-Hand-authored answer keys for the sort anchor strategies (five sort golds as of 2026-08-15), per the authoring template
+Hand-authored answer keys for the sort anchor strategies (**four settled RQ1/RQ2 golds: str, drf, mom6, crf**;
+a fifth, `lrf`, is a proposed amendment **unresolved**, not settled — see below), per the authoring template
 (`fields-spec-anchor.md`, Project root). Forward input for G2 (round trip) and answer key for G3
 (calibration). Authored 2026-07-11 from the papers only (rule library off, zero INFERRED); every
 STATED value carries a verbatim quote located at L1 by the project's own `locate_quote`
@@ -14,15 +15,19 @@ STATED value carries a verbatim quote located at L1 by the project's own `locate
 | `gold_mom6_jnps_2013.md` | mom6 | Jostova et al. (2013), RFS | **INSTANTIATED 2026-07-15 (schema v1.1)** — JNPS canonical text frozen (`jnps_2013.frozen.yaml`); all STATED locators re-verified binding; `expost_trim=truncate` delegated to the `lab_trim` toggle via `lab_trim_delegation_v1`; G2 byte-equality green |
 | `gold_str_drr_2026.md` | str | Dickerson, Robotti & Rossetti (2026) | **INSTANTIATED 2026-07-12 (schema v1.1)** — concept grounded (`prior_1m_excess_return`→`xret`, table v2), DRR text frozen, quotes re-verified against the frozen text |
 | `gold_crf_bbw_2019.md` | CRF | BBW (2019), JFE | **INSTANTIATED 2026-08-04 (schema v1.1)** — the first **multi-leg** sort gold (composite of independent rating-signal sorts); G2 composite byte-equality green (`expected_composite_rulebook("crf")`). **RQ1+RQ2 only — RQ3-excluded** (D15). Enters the CRF-inclusive extraction denominator (`ANCHOR_SET_WITH_CRF`). |
-| `gold_lrf_bbw_2019.md` | LRF | BBW (2019), JFE | **INSTANTIATED 2026-08-15 (schema v1.1)** — BBW's liquidity risk factor: a single-leg 5×5 rating×gamma-illiquidity sort, mirrors the DRF gold field-for-field; built as a **5th P1 oracle** (`bbw_factors.parquet → lrf_corr`). **RQ1+RQ2 only — RQ3-excluded.** A **within-anchor RQ2 fidelity reference — NOT external validity** (same paper / data / family). G2 rulebook + aggregation wiring **deferred** (absent from `round_trip.py` and `aggregation.PAPER_OF`). |
+| `gold_lrf_bbw_2019.md` | LRF | BBW (2019), JFE | **unresolved — artefact present, role NOT yet ratified as a gold.** Verified: a StrategySpec gold file + a 5th P1 oracle (`bbw_factors.parquet → lrf_corr`), 2026-08-15. The **authoritative Part 4 role is the negative-control construction — NOT a fifth RQ1/RQ2 gold** (crf remains the fourth). Elevating it to a fifth gold is a *proposed amendment*: declare its RQ1/RQ2-only role and **freeze its denominator treatment before scoring it**. It is **not** in the scoring denominator today (absent from `round_trip.py`/`aggregation.PAPER_OF`) — retain the four-gold headline (str/drf/mom6/crf) beside any expanded five-gold denominator. Not external validity (same paper/data/family). |
 
-**Sort** gold family = str, drf, mom6, **crf, lrf** (five as of 2026-08-15). **str/drf/mom6 are the
-RQ3 census** (`ANCHOR_SET`); **crf (D15, 2026-08-04) and lrf (2026-08-15) are RQ1/RQ2-only sort golds,
-RQ3-excluded** — crf enters the CRF-inclusive extraction denominator (`ANCHOR_SET_WITH_CRF`), lrf's
-aggregation wiring is deferred. The earlier "CRF considered and excluded" ruling (2026-07-11) was
-superseded by the corpus BBW extraction (crf gold) and the BBW-family extension (lrf gold); it is kept
-here as history. ◇ control field is named `control_axis` per the 2026-07-11 brief amendment (shipped
-code name kept; `control_signal` rejected).
+**Sort** gold family — **four settled RQ1/RQ2 golds: str, drf, mom6, crf** (the authoritative headline;
+crf is the fourth, D15 2026-08-04). **str/drf/mom6 are the RQ3 census** (`ANCHOR_SET`); **crf is
+RQ1/RQ2-only, RQ3-excluded**, entering the CRF-inclusive extraction denominator (`ANCHOR_SET_WITH_CRF`).
+A fifth artefact, **`lrf`** (2026-08-15), exists in the working tree but its role as a fifth RQ1/RQ2 gold
+is **unresolved — a proposed amendment, not settled**: the authoritative Part 4 casts `lrf` as the
+**negative-control construction**. Ratify only after declaring its RQ1/RQ2-only role and **freezing its
+denominator treatment before scoring** — adding it changes the evaluation denominator after earlier
+four-gold evidence exists, defensible only if the capability rationale and before/after reporting are
+frozen first. The earlier "CRF considered and excluded" ruling (2026-07-11) was superseded by the
+corpus BBW extraction (crf gold); it is kept here as history. ◇ control field is named `control_axis` per
+the 2026-07-11 brief amendment (shipped code name kept; `control_signal` rejected).
 
 | file | anchor | paper | class | status |
 |---|---|---|---|---|

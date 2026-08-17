@@ -15,6 +15,7 @@ pre-registered (mirrors `auditor.ipca_differential.status`).
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -52,6 +53,15 @@ def _sentinel_paths(obj, prefix: str = "") -> list[str]:
     return [prefix] if obj == _SENTINEL else []
 
 
+def _frozen_gate_violations(sel: dict) -> list[str]:
+    """Sentinel paths a rule with status 'frozen' is not allowed to carry. Empty for
+    a draft — the gate only bites once the rule is frozen, so a half-specified rule
+    cannot flip to 'frozen' and masquerade as pre-registered."""
+    if sel.get("status") != "frozen":
+        return []
+    return _sentinel_paths(sel)
+
+
 def test_spec_doc_exists():
     if not SPEC.exists():
         pytest.skip("selection-rule spec doc not shipped in this copy")
@@ -83,20 +93,27 @@ def test_status_is_valid():
 
 
 def test_frozen_status_has_no_unset_owner_fields():
-    # A 'frozen' rule cannot still carry TO_SET sentinels — anywhere, incl.
-    # nested fields (recursive walk, not just top-level values).
-    sel = _selection()
-    if sel["status"] == "frozen":
-        unset = _sentinel_paths(sel)
-        assert not unset, f"status=frozen but TO_SET fields remain: {unset}"
+    # The REAL block: a 'frozen' rule cannot still carry TO_SET sentinels
+    # anywhere (recursive). Silent today because the block is a draft — the
+    # parametrized test below proves the gate fires once frozen.
+    assert _frozen_gate_violations(_selection()) == []
 
 
-def test_freeze_gate_detects_a_nested_sentinel():
-    # Proves the recursive gate actually fires (the real block is a draft today, so
-    # the gate's body never runs on it — validate it on a synthetic frozen rule).
-    assert _sentinel_paths({"status": "frozen", "w": {"from": _SENTINEL}}) == ["w.from"]
-    assert _sentinel_paths({"status": "frozen", "x": ["ok", _SENTINEL]}) == ["x[1]"]
-    assert _sentinel_paths({"status": "frozen", "a": "committed"}) == []
+@pytest.mark.parametrize(
+    "sel, should_fire",
+    [
+        # draft: gate stays silent even with an unset field
+        ({"status": "draft_pending_review", "x": _SENTINEL}, False),
+        # frozen + a sentinel at each nesting depth: gate MUST fire
+        ({"status": "frozen", "x": _SENTINEL}, True),
+        ({"status": "frozen", "w": {"from": _SENTINEL}}, True),
+        ({"status": "frozen", "x": ["ok", _SENTINEL]}, True),
+        # frozen + everything committed: gate silent
+        ({"status": "frozen", "x": "committed", "w": {"from": "2013-01"}}, False),
+    ],
+)
+def test_freeze_gate_fires_only_when_frozen_and_unset(sel, should_fire):
+    assert bool(_frozen_gate_violations(sel)) is should_fire
 
 
 def test_design_touched_papers_are_excluded():
