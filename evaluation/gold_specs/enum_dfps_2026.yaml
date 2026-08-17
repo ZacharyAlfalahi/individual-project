@@ -1,0 +1,155 @@
+# Gold enumeration list -- DFPS (2026), scale-layer paper (RQ2 coverage / D20).
+# Dick-Nielsen, Feldhutter, Pedersen & Stolborg, "Corporate Bond Factors: Replication
+# Failures and a New Framework", 21 Apr 2026. (Not DRR -- separate replication paper.)
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+#
+# Scope notes (authoring rules applied; evaluation contract section 5.1 granularity):
+#  * Strategy rows: the paper's own factor table (Table G.1, "the corporate bond factors
+#    used in our study") is the enumeration unit -- one row per signal concept. The
+#    bond-level / within-firm / firm-level methodologies (sections 3.1, 4.1) are
+#    construction METHODS applied to these same signals, not separate constructions.
+#    G.1's 28 rows collapse to 24 under the D20 grid rule: 3m/6m/9m/12m Momentum -> one
+#    grid (headline '6m. Momentum' -- the JNPS cell the paper features as "momentum
+#    (Jostova et al., 2013)" in Appendix C); VaR(5%)/VaR(10%) -> one grid (headline
+#    'VaR(5%)', the BBW cell featured as "value-at-risk (Bai et al., 2019)" in Appendix
+#    C); ES(10%) is a distinct estimator, its own row. Plus: the 153-equity-signal
+#    firm-level factor family (ONE row -- the individual signals are defined in Jensen
+#    et al. (2022), not in this text) and the three equity-signal factors the body text
+#    individually defines as four-factor-model components (bev_mev, seas_1_1na, at_me;
+#    section 5.2). Family members appearing only as Table H.1 code-name rows do not
+#    spawn rows (a results listing, not definitions).
+#  * Auxiliary rows (2): CMKT and TERM (fn 6) -- market/duration factors built as
+#    regression controls.
+#  * NOT rows (documented exclusions): the clean return database (data, not a
+#    portfolio/factor/strategy); the four-/N-factor models themselves (factor
+#    combinations -- their components are rows); the long-only building-block portfolios
+#    (fn 13); lagged-signal, liquid-universe, hedged-return, ICE-data, subperiod, and
+#    rating-split variants (robustness variants, excluded by contract section 5.1).
+#  * Quote artifacts: 'regres- sion' / 'fac- tors' are the frozen text's own line-break
+#    hyphen folds, and G.1 quotes are 'Name Description' spans from the table layout --
+#    all copied character-for-character; do NOT "fix" them (L1 location depends on them).
+#    Factor names drop G.1's trailing '*' (a long-the-low figure marker, not the name).
+#  * Count note: section 5.1's "22 bond-level factors" (the Sharpe-ratio model universe)
+#    differs from G.1's 28 described factors (daily-data factors are unavailable in some
+#    samples; Kurtosis / Credit Rating drop from some tables); the gold enumerates what
+#    the text describes (G.1), not the model-universe count.
+authoring:
+  procedure: NO-MODEL-CONSULT
+  method: >
+    Hand-enumerated from the FROZEN canonical text only, with ZERO outside knowledge:
+    every construction the paper itself builds (D20 ontology), at evaluation-contract
+    section 5.1 granularity, with the two parameter grids registered at the paper's
+    featured headline cells. Every quote is copied character-for-character from the
+    frozen text (line breaks flattened to single spaces) and is L1-locatable on a
+    single page. NO-MODEL-CONSULT here records that no Librarian-pipeline model was
+    consulted and no model enumeration output seeded or filtered this list. Drafted
+    2026-08-17 from the frozen text; pending
+    row-by-row verification against the frozen text, on which this file's adoption as
+    the human reference standard depends.
+  authored: 2026-08-17
+  source_text: evaluation/canonical_texts/dfps_2026.frozen.yaml
+
+gold: true
+paper_id: DFPS_2026
+constructions:
+  - name: 'VaR'
+    quote: 'VaR(5%) -1 * 2nd lowest observation in a 36 month rolling window'
+    class: strategy
+    grid:
+      is_grid: true
+      headline_cell: 'VaR(5%)'
+      cells_noted: ['VaR(10%)']
+  - name: 'ES(10%)'
+    quote: 'ES(10%) -1 * mean of 4 lowest obs. in 36 month rolling window'
+    class: strategy
+  - name: 'Credit Rating'
+    quote: 'Credit Rating Numerical credit rating from 1-21'
+    class: strategy
+  - name: 'Liquidity'
+    quote: 'Liquidity* -1 * covariance of daily returns within a month'
+    class: strategy
+  - name: 'Liquidity-beta'
+    quote: 'Liquidity-beta The regression coefficient on liquidity in a rolling regres- sion of bond excess return on stock market excess return, SMB, HML, DEF, TERM and Amihud Illiquidity fac- tors'
+    class: strategy
+  - name: 'Short Term Reversal'
+    quote: 'Short Term Reversal Return from t-1 to t, sign flipped'
+    class: strategy
+  - name: 'Volatility'
+    quote: 'Volatility 36 month vol'
+    class: strategy
+  - name: 'Skewness'
+    quote: 'Skewness* 36 month skew'
+    class: strategy
+  - name: 'Kurtosis'
+    quote: 'Kurtosis 36 month kurt'
+    class: strategy
+  - name: 'Book-to-price'
+    quote: 'Book-to-price Bond book value / market price'
+    class: strategy
+  - name: 'Systematic risk'
+    quote: 'Systematic risk Total var minus var on residual from factor regression'
+    class: strategy
+  - name: 'Momentum'
+    quote: '6m. Momentum 6 month momentum'
+    class: strategy
+    grid:
+      is_grid: true
+      headline_cell: '6m. Momentum'
+      cells_noted: ['3m. Momentum', '9m. Momentum', '12m. Momentum']
+  - name: 'Duration'
+    quote: 'Duration* Modified Macaulay duration'
+    class: strategy
+  - name: 'Long Term Reversal'
+    quote: 'Long Term Reversal Loser minus winners from t-48 to t-13'
+    class: strategy
+  - name: 'Vix-beta'
+    quote: 'Vix-beta* The regression coefficient on VIX innovations in a rolling regression of bond excess return on stock market excess return, SMB, HML, DEF, TERM, Amihud Illiquidity and VIX factors.'
+    class: strategy
+  - name: 'Default-beta'
+    quote: 'Default-beta The regression coefficient on DEF in a rolling regression of bonds excess return on the DEF factor.'
+    class: strategy
+  - name: 'Term-beta'
+    quote: 'Term-beta The regression coefficient on TERM in a rolling regres- sion of bonds excess return on the TERM factor.'
+    class: strategy
+  - name: 'Yield to maturity'
+    quote: 'Yield to maturity Promised yield to maturity'
+    class: strategy
+  - name: 'Credit Spread'
+    quote: 'Credit Spread Yield to maturity minus the yield on a cash-flow matched portfolio of treasuries'
+    class: strategy
+  - name: 'Bond Age'
+    quote: 'Bond Age Fraction of bond life expired'
+    class: strategy
+  - name: 'Amount Outstanding'
+    quote: 'Amount Outstanding* Bond notional * number of bonds outstanding'
+    class: strategy
+  - name: 'Market Value'
+    quote: 'Market Value* Price * Amount Outstanding'
+    class: strategy
+  - name: 'Equity Momentum'
+    quote: 'Equity Momentum 6 month equity momentum'
+    class: strategy
+  - name: 'Value'
+    quote: 'Value The residual from a cross-sectional regression of the log of credit spread onto the log of duration, rating and bond excess return volatility (12 month)'
+    class: strategy
+  - name: 'Firm-level factors from 153 equity signals (Jensen et al. 2022)'
+    quote: 'we test whether 153 equity-based signals from Jensen et al. (2022) predict bond returns'
+    class: strategy
+  - name: 'Firm-level value factor (VALfirm / bev_mev)'
+    quote: 'based on a firm’s cheapness at the enterprise level, measured as book enterprise value scaled by market enterprise value (labeled “bev mev” in Table 1 based on Jensen et al. (2022))'
+    class: strategy
+  - name: 'Firm-level equity momentum factor (EQMOMfirm / seas_1_1na)'
+    quote: 'constructed from average equity returns over months t −11 to t −1 (labelled “seas 1 1na”)'
+    class: strategy
+  - name: 'Firm-level leverage factor (LEVfirm / at_me)'
+    quote: 'a leverage factor, measured as total assets scaled by market equity (labeled “at me”)'
+    class: strategy
+  - name: 'Corporate bond market factor (CMKT)'
+    quote: 'we calculate CMKT as the value-weighted average excess return of all corporate bonds in our sample'
+    class: auxiliary
+  - name: 'TERM factor'
+    quote: 'TERM is the average return on Treasury bonds with maturities greater than 120 months from CRSP’s Fama Maturity Portfolios, in excess of the T-Bill rate from Ken French’s website'
+    class: auxiliary

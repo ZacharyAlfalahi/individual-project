@@ -1,0 +1,90 @@
+# Gold enumeration list -- BBW (2021), scale-layer paper (RQ2 coverage / D20).
+# Bai, Bali & Wen, "Is there a risk-return tradeoff in the corporate bond market?",
+# JFE 142 (2021) 1017-1037. Distinct paper from the retracted BBW (2019); not retracted.
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+#
+# Scope notes (authoring rules applied; evaluation contract section 5.1 granularity):
+#  * Strategy rows (5): the sorted-portfolio / trading constructions the paper forms and
+#    reports -- bond SR quintile sort (Table 5, the headline), bond IR quintile sort
+#    (Table 6), the market-timing strategy (section 3.2), and the stock SR and stock IR
+#    quintile sorts (Table 8; equity asset class -- expected downstream fate is a typed
+#    refusal, recorded here because the paper builds and reports them). The two stock rows
+#    share the Table 8 caption quote, which introduces both in one sentence.
+#  * Auxiliary rows (8): factors the paper itself constructs as inputs/controls -- the
+#    VW bond market index (section 2.2; also the MKT factor), DEF, TERM, MOM_Bond,
+#    LIQ_Bond (section 4.2), and DRF/CRF/LRF (the BBW four-factor model in Eq. (10);
+#    section 4.7 "we form the liquidity risk factor (LRF)" confirms in-paper construction).
+#  * NOT rows (documented exclusions): externally sourced factors -- Kenneth French /
+#    Pastor stock factors, FF5/Q factors, VIX, the Merrill Lynch and CRSP indexes
+#    ("described in and obtained from ... online data libraries", fn 16/22 -- used, not
+#    built); bond characteristics and betas (VaR, ILLIQ, INST, beta_MKT/DEF/TERM/VIX --
+#    variables, not portfolio/factor constructions); the bivariate and INST /
+#    orthogonalised-INST control sorts and the alternative-factor-model SR/IR measures
+#    (sections 4.5, 4.8, 5.2-5.3, Tables 9/10 -- control/robustness variants of the same
+#    signal concepts); the CER mean-variance allocation (Eqs. 6-8, forecast-evaluation
+#    apparatus, not a named trading strategy -- the named "market-timing strategy" is the
+#    row); the "portfolios sorted by total ... risk" phrase in section 4.2 (no total-risk
+#    sort is formed or reported anywhere in the text).
+#  * 'the liquidity risk factors (LRF)' -- plural "factors" is the paper's own wording,
+#    copied verbatim. Quotes preserve the frozen text's ligatures (e.g. 'defined' with
+#    the fi ligature) and spacing artifacts; line breaks are flattened to single spaces.
+authoring:
+  procedure: NO-MODEL-CONSULT
+  method: >
+    Hand-enumerated from the FROZEN canonical text only, with ZERO outside knowledge:
+    every construction the paper itself builds (D20 ontology), at evaluation-contract
+    section 5.1 granularity. Every quote is copied character-for-character from the
+    frozen text (line breaks flattened to single spaces) and is L1-locatable on a
+    single page. NO-MODEL-CONSULT here records that no Librarian-pipeline model was
+    consulted and no model enumeration output seeded or filtered this list. Drafted
+    2026-08-17 from the frozen text; pending
+    row-by-row verification against the frozen text, on which this file's adoption as
+    the human reference standard depends.
+  authored: 2026-08-17
+  source_text: evaluation/canonical_texts/bbw_2021.frozen.yaml
+
+gold: true
+paper_id: BBW_2021
+constructions:
+  - name: 'Systematic risk (SR) quintile portfolios'
+    quote: 'For each month from January 1997 to June 2019, we form value-weighted univariate portfolios by sorting corporate bonds into quintiles based on their systematic risk (SR)'
+    class: strategy
+  - name: 'Idiosyncratic risk (IR) quintile portfolios'
+    quote: 'Quintile portfolios are formed every month from January 1997 to June 2019 by sorting corporate bonds based on idiosyncratic risk (IR), deﬁned as the residual variance from regression (10)'
+    class: strategy
+  - name: 'Market-timing strategy'
+    quote: 'we simulate the returns of a trading strategy based on the out-of-sample one-month-ahead forecasts of the bond market using its realized variance'
+    class: strategy
+  - name: 'Stock systematic risk (SR) quintile portfolios'
+    quote: 'Quintile portfolios are formed every month by sorting stocks based on systematic risk and idiosyncratic risk'
+    class: strategy
+  - name: 'Stock idiosyncratic risk (IR) quintile portfolios'
+    quote: 'Quintile portfolios are formed every month by sorting stocks based on systematic risk and idiosyncratic risk'
+    class: strategy
+  - name: 'Corporate bond market index (VW bond / MKT)'
+    quote: 'the value-weighted corporate bond market index (VW bond )'
+    class: auxiliary
+  - name: 'Default factor (DEF)'
+    quote: 'the difference between the return on a market portfolio of long-term corporate bonds and the long-term government bond return (DEF)'
+    class: auxiliary
+  - name: 'Term factor (TERM)'
+    quote: 'the difference between long-term return on government bonds and the one-month Treasury bill (TERM)'
+    class: auxiliary
+  - name: 'Bond momentum factor (MOM Bond)'
+    quote: 'the bond momentum factor (MOM Bond )'
+    class: auxiliary
+  - name: 'Bond liquidity factor (LIQ Bond)'
+    quote: 'We construct the liquidity risk factor (LIQ Bond ) in line with Lin et al. (2011) , which is the innovations in the Pastor-Stambaugh liquidity measure'
+    class: auxiliary
+  - name: 'Downside risk factor (DRF)'
+    quote: 'the downside risk factor (DRF)'
+    class: auxiliary
+  - name: 'Credit risk factor (CRF)'
+    quote: 'the credit risk factor (CRF)'
+    class: auxiliary
+  - name: 'Liquidity risk factor (LRF)'
+    quote: 'the liquidity risk factors (LRF)'
+    class: auxiliary
