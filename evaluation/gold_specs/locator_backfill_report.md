@@ -1,15 +1,44 @@
-# Locator Backfill Report — anchor gold specs
+# Locator Backfill Report — gold specs
 
 _Re-generated 2026-07-12 by running every `quote:` field through the project's `locate_quote`
-(`agents/librarian/config/locate.py`) at ladder level **L1** (v2 ladder). 59/59 quotes located;
-zero cross-page fallbacks. Offsets are into `normalise(page, L1)` (store-L0 / normalise-on-read),
-pages 1-based._
+(`agents/librarian/config/locate.py`) at ladder level **L1** (v2 ladder). 59/59 quotes located
+(the original three sort golds — `str`/`drf`/`mom6` — see the 2026-08-19 consolidated totals below
+for all six golds); zero cross-page fallbacks. Offsets are into `normalise(page, L1)` (store-L0 /
+normalise-on-read), pages 1-based._
 
 **Locator authority:** BBW, DRR-2026, and JNPS-2013 offsets index their **frozen** canonical texts
 (`bbw_2019.frozen.yaml`, `drr_2026.frozen.yaml`, `jnps_2013.frozen.yaml`) — real, binding D6 locators.
 JNPS-2013 was frozen 2026-07-15 (`scripts/freeze_canonical_text.py`); the freeze reproduced the
 pending parse, so its offsets below were unchanged and re-verified binding
 (`scripts/regenerate_locator_backfill.py mom6`).
+
+## Consolidated totals — all six golds (2026-08-19)
+
+The table below spans **all six golds** — the original three sort golds plus `crf`, `lrf`, and `kpp`,
+folded in as they were built. `crf`/`lrf` offsets index `bbw_2019.frozen.yaml` (shared with `drf`);
+`kpp` offsets index `kpp_2023.frozen.yaml` — all real, binding D6 locators.
+
+Re-verified **read-only** on 2026-08-19 by running every `quote:` field through `locate_quote` at L1
+across all six golds (`scripts/regenerate_locator_backfill.py` `verify` / `verify_from_markdown`,
+tallied — the committed rows below were **not** altered): **every quote located, 0 not-found,
+0 cross-page fallbacks, 0 offset-drift.**
+
+| gold | role | rows | distinct spans |
+|---|---|---|---|
+| str  | sort                         | 20  | 14  |
+| drf  | sort                         | 18  | 16  |
+| mom6 | sort                         | 21  | 17  |
+| crf  | sort (4th)                   | 17  | 17  |
+| **sort subtotal** |             | **76**  | **64**  |
+| lrf  | negative control / P1 oracle | 15  | 15  |
+| kpp  | IPCA methodology exemplar    | 42  | 42  |
+| **all golds** |                 | **133** | **121** |
+
+Denominator note: **rows** counts proposed quote instances — the original three sort golds retain
+duplicate rows from the pre-dedup 2026-07-12 generation, and their 59 rows are the historical
+"59/59"; **distinct spans** dedups by page + char-span and is the figure to cite. `crf`/`lrf`/`kpp`
+rows were already deduped at write time, so their two columns coincide. This section is additive —
+no data row below was changed.
 
 | spec | page | char_start | char_end | quote (first 70 chars) |
 |---|---|---|---|---|
