@@ -17,9 +17,10 @@ from __future__ import annotations
 # RQ2 v1.6 re-scope flipped validation.anchor_criterion "bias_attribution" -> "construction_rulebook"
 # (contract §7 gates 1-2; D-Q17); RE-PINNED 2026-08-17 after the `corpus:` scale-layer selection-rule
 # block was added (T2-SEL-1); RE-PINNED 2026-08-17 after the `p2_codegen:` block was added (Workstream C
-# P2 coverage-boundary build). one-shot holdout's real run has not run, so re-pinning is maintenance, not a
-# provenance break. Any later thresholds change must re-pin.
-FROZEN_THRESHOLDS_SHA256 = "90637f5b19cf250e3322a5aed0c09139c6eb895f84154e43a9b07fd326e22554"
+# P2 coverage-boundary build); RE-PINNED 2026-08-19 after appending `bkmx_2009` to
+# corpus.selection.design_touched_exclusions (T2-SEL-2). one-shot holdout's real run has not run, so re-pinning is
+# maintenance, not a provenance break. Any later thresholds change must re-pin.
+FROZEN_THRESHOLDS_SHA256 = "278f7cd27491d36dc013d0c9cc16d51369f6608bfbd7340a6ca710d0bac2f4b9"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library

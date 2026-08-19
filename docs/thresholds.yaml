@@ -1096,6 +1096,7 @@ corpus:
       - dmr_2023        # DRR-documented drf/mom6 error source (DMR 2023)
       - gkx_2022        # mechanism-library source (GKX survey)
       - dg_2025         # DNN showcase / mechanism-library source (Duraj-Giesecke)
+      - bkmx_2009       # data-cleaning methodology source (FL-D21 rung-2; grounds bbw_2019/jostova cleaning profiles). No frozen text, so completeness-only; no-strategy + pre-window (2009) => non-candidate (2026-08-19)
     # Downstream artefact depth by layer (project decision).
     t2_gold_depth: extraction_only            # StrategySpec extraction gold; downstream observed/profiled, not oracle-graded
     scale_gold_depth: enumeration_only        # paper-only NO-MODEL-CONSULT factor list (RQ2 coverage)
