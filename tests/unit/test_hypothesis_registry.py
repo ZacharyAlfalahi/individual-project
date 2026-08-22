@@ -30,8 +30,10 @@ def test_committed_registry_loads_and_seeds_from_22july():
     assert d.dominant_bias == "meas_err" and d.expected_sign == -1
     assert d.magnitude_mode == "sign_only" and d.expected_magnitude_range is None
     assert d.is_locked and d.is_confirmatory
-    # negative control
-    assert reg["traded_liquidity"].expected_sign == 0
+    # negative control — falsifiable `separated` specificity gate (D20 §4.5 remediation)
+    tl = reg["traded_liquidity"]
+    assert tl.expected_sign == 0
+    assert tl.magnitude_mode == "separated" and tl.expected_magnitude_range is None
     # every row carries the registering commit
     assert all(h.registered_commit for h in reg.values())
 
@@ -137,3 +139,17 @@ def test_sign_only_locked_is_allowed(tmp_path):
     """)
     reg = load_hypothesis_registry(p)
     assert reg["drf"].magnitude_mode == "sign_only" and reg["drf"].is_confirmatory
+
+
+def test_separated_mode_loads(tmp_path):
+    # The negative control's shape: locked, sign 0, magnitude `separated` (no band).
+    # It must load — the band falsifiability guard applies only to banded factors;
+    # `separated` carries its falsifiable threshold in the evaluator (±vartheta), not a band.
+    p = _write(tmp_path, """
+        version: v1
+        factors:
+          c: {dominant_bias: none, expected_sign: 0, magnitude: separated,
+              is_locked: true, status: negative_control, source: s, registered_commit: abc}
+    """)
+    reg = load_hypothesis_registry(p)
+    assert reg["c"].magnitude_mode == "separated" and reg["c"].expected_magnitude_range is None

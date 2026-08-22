@@ -8,7 +8,7 @@ factor, seeded from auditor_design.md §13.2) and exposes:
   * ``FactorHypothesis`` — the frozen per-factor expectation.
   * ``load_hypothesis_registry`` — fail-loud loader (mirrors
     ``anchor_triangulation.load_anchor_gate``'s D-1..D-4 guards; adds `sign_only`
-    / `near_zero` magnitude modes for factors with no external band).
+    / `near_zero` / `separated` magnitude modes for factors with no external band).
   * ``require_factor_registered`` — the RUNTIME GATE: raises
     ``FactorHypothesisAbsent`` (a DsrPreRegistrationAbsent-style refusal) when a
     factor's CONFIRMATORY OUTCOME is requested but its row is absent/unlocked.
@@ -34,6 +34,11 @@ _SECTION = "spec v4 Part F (factor-level hypothesis registry)"
 # Magnitude modes for a factor with no defensible external band.
 _SIGN_ONLY = "sign_only"
 _NEAR_ZERO = "near_zero"
+# `separated` — a negative control whose falsifiable specificity threshold is not a
+# band but a required separation from the materiality floor (evaluated by
+# evaluate_negative_control against ±vartheta). Replaces `near_zero`, which carried
+# no threshold and so could not fail (the D20 §4.5 defect this remedies).
+_SEPARATED = "separated"
 
 # The status vocabulary. `is_confirmatory` keys on the exact string "pilot", and the
 # runtime gate refuses non-confirmatory rows — so a mislabelled status (e.g. "Pilot")
@@ -65,7 +70,7 @@ class FactorHypothesis:
     factor_id: str
     dominant_bias: str
     expected_sign: int                          # +1 / -1 / 0 (negative control)
-    magnitude_mode: str                          # 'band' | 'sign_only' | 'near_zero'
+    magnitude_mode: str                          # 'band' | 'sign_only' | 'near_zero' | 'separated'
     expected_magnitude_range: tuple[float, float] | None  # decimal monthly, unsigned; None if not 'band'
     is_locked: bool
     status: str
@@ -145,12 +150,12 @@ def load_hypothesis_registry(path: str | Path | None = None) -> dict[str, Factor
                     f"got a degenerate [{lo}, {hi}]"
                 )
             magnitude_mode, mag_range = "band", (lo, hi)
-        elif mode_token in (_SIGN_ONLY, _NEAR_ZERO):
+        elif mode_token in (_SIGN_ONLY, _NEAR_ZERO, _SEPARATED):
             magnitude_mode, mag_range = mode_token, None
         else:
             raise HypothesisRegistryError(
                 f"{stem}: needs expected_magnitude_range [lo,hi] OR magnitude: "
-                f"sign_only|near_zero; got magnitude={mode_token!r}"
+                f"sign_only|near_zero|separated; got magnitude={mode_token!r}"
             )
 
         out[fid] = FactorHypothesis(
@@ -191,3 +196,61 @@ def require_factor_registered(
             f"status={hyp.status!r}) — pilots/unlocked factors have no confirmatory outcome",
         )
     return hyp
+
+
+@dataclass(frozen=True)
+class NegativeControlVerdict:
+    """The falsifiable outcome of the negative-control specificity gate (§10.3).
+
+    A control registered with ``magnitude: separated`` PASSES iff its whole
+    corrected-vs-uncorrected bootstrap interval lies strictly within ±vartheta
+    (the pre-registered materiality floor). Because vartheta sits below every
+    documented implementation bias, a control that moved as much as a real
+    correction breaches the interval and FAILS. A wide interval that pokes past
+    ±vartheta fails even about a near-zero point estimate — that is intended:
+    specificity not established with precision is not certified.
+
+    This replaces the earlier ``near_zero`` mode, which carried no threshold and
+    therefore could not fail (the D20 §4.5 defect this gate remedies)."""
+
+    factor_id: str
+    ci_low: float
+    ci_high: float
+    vartheta: float
+    passed: bool
+    absolute_gap: float          # max(|ci_low|, |ci_high|) — the reported gap magnitude
+
+
+def evaluate_negative_control(
+    hyp: FactorHypothesis, ci_low: float, ci_high: float, vartheta: float
+) -> NegativeControlVerdict:
+    """Judge a negative control against the ``separated`` specificity condition.
+
+    ``ci_low`` / ``ci_high`` are the bounds of the control's corrected-vs-uncorrected
+    differential bootstrap interval (an ``InferenceResult``'s ``ci_low``/``ci_high``);
+    ``vartheta`` is the pre-registered materiality floor
+    (``auditor.practical_significance.vartheta``). PASS ⟺ the interval lies strictly
+    within ``(−vartheta, +vartheta)``. Pure and side-effect-free — the caller supplies
+    the interval and the floor, so nothing here reads the run or the thresholds file."""
+    if hyp.magnitude_mode != _SEPARATED:
+        raise HypothesisRegistryError(
+            f"evaluate_negative_control requires magnitude_mode 'separated'; "
+            f"factor {hyp.factor_id!r} is {hyp.magnitude_mode!r}"
+        )
+    if not vartheta > 0.0:
+        raise HypothesisRegistryError(
+            f"vartheta must be a positive materiality floor; got {vartheta!r}"
+        )
+    if not ci_low <= ci_high:
+        raise HypothesisRegistryError(
+            f"ci_low must not exceed ci_high; got [{ci_low}, {ci_high}]"
+        )
+    passed = (ci_low > -vartheta) and (ci_high < vartheta)
+    return NegativeControlVerdict(
+        factor_id=hyp.factor_id,
+        ci_low=float(ci_low),
+        ci_high=float(ci_high),
+        vartheta=float(vartheta),
+        passed=passed,
+        absolute_gap=float(max(abs(ci_low), abs(ci_high))),
+    )

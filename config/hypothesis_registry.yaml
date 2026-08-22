@@ -64,7 +64,15 @@ factors:
   traded_liquidity:
     dominant_bias: none           # negative control (§10.3)
     expected_sign: 0              # ≈0 — small gaps throughout (specificity test)
-    magnitude: near_zero
+    # SPECIFICITY-GATE ADDED (2026-08-22, D20 §4.5 defect remediation; §13.3 recorded
+    # revision — a motivated methodology change, not a silent mutation; mirrors the drf
+    # citation-correction precedent above). `near_zero` carried NO falsifiable threshold,
+    # so the control could not fail. Replaced with `separated`: the corrected-vs-uncorrected
+    # bootstrap interval must lie within ±vartheta (the pre-registered materiality floor,
+    # auditor.practical_significance.vartheta = 0.001), with the absolute gap reported.
+    # Pre-register (git-tag) before the control is examined. Evaluator:
+    # hypothesis_registry.evaluate_negative_control.
+    magnitude: separated
     is_locked: true
     status: negative_control
     source: "§13.2: traded-liquidity negative control, small gaps throughout (§10.3)"
