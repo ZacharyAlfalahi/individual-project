@@ -73,7 +73,7 @@ def run_experimentalist(
     m: int = 6,
     sr_std: float = 0.5,
     q: float = 0.10,
-    cap: int = 3,
+    cap: int | None = None,           # SC-SCI-14: cap removed (was 3) -> advance ALL CPCV survivors
     direction: int = 1,               # gating sign, DERIVED from the realised parent premium sign,
                                       # NOT the paper's claim (str realises +1 momentum, not DRR's -1)
     crowding_config=None,

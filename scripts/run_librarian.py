@@ -45,6 +45,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -75,6 +76,11 @@ from agents.librarian.pipeline.real_client import (  # noqa: E402
     build_client_pair,
 )
 from agents.librarian.registries import load_signal_concept_registry  # noqa: E402
+from shared.reporting.run_manifest import (  # noqa: E402
+    build_operational_profile,
+    build_run_manifest,
+    write_run_manifest,
+)
 from agents.librarian.registries.silence_policy import load_silence_policy_table  # noqa: E402
 from agents.librarian.schema import (  # noqa: E402
     Combiner,
@@ -155,6 +161,15 @@ PAPERS: dict[str, dict] = {
         "paper_id": "DFPS_2026",
         "canonical_text": "evaluation/canonical_texts/dfps_2026.frozen.yaml",
         "gold_enum": "evaluation/gold_specs/enum_dfps_2026.yaml",
+    },
+    # T4(b) synthetic evaluation instrument (end-to-end known-answer test). Registered mode
+    # is gold-enum (a single SBM construction); the planted answer key lives at
+    # evaluation/synthetic/planted_key_synth_2026.yaml. Not a scale-layer corpus paper and
+    # never enters the RQ1/RQ3 denominators.
+    "synth": {
+        "paper_id": "SYNTH_2026",
+        "canonical_text": "evaluation/canonical_texts/synth_2026.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_synth_2026.yaml",
     },
 }
 
@@ -470,6 +485,7 @@ def main(argv=None) -> int:
     model_a, model_b = build_clients(args.phase, builder, out_dir, paper, min_interval_s=args.min_interval_s)
 
     now = datetime.now(timezone.utc).isoformat()
+    t_start = time.monotonic()   # WS-8 wall-clock: covers enumeration + per-field extraction
     prov = RunProvenance(
         paper_id=paper["paper_id"],
         registry_version=registry.version,
@@ -537,8 +553,38 @@ def main(argv=None) -> int:
         return _paper_failed(exc)
 
     _write_outputs(result, out_dir)
+    _emit_run_manifest(out_dir, prov, args.phase, model_a, model_b,
+                       n_specs=len(result.specs), wall_clock_seconds=time.monotonic() - t_start)
     _report(result, out_dir, model_a, model_b)
     return 0 if result.specs else 3
+
+
+def _emit_run_manifest(out_dir, prov, phase, model_a, model_b, *, n_specs, wall_clock_seconds):
+    """WS-8 (§4.7): the per-run operational log sidecar. Tokens/calls/retries are summed
+    across both models from their mechanical counters (a FakeModelClient has none, so the
+    profile degrades to zeros — recorded, never guessed). Emitted on the completion path;
+    the review/failure exits are a documented follow-up."""
+    def _usage(m):
+        return m.operational_usage() if hasattr(m, "operational_usage") else {}
+    ua, ub = _usage(model_a), _usage(model_b)
+    def _sum(k):
+        return (ua.get(k, 0) or 0) + (ub.get(k, 0) or 0)
+    write_run_manifest(out_dir, build_run_manifest(
+        run_id=prov.run_id,
+        driver="run_librarian",
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        configs=["docs/thresholds.yaml"],
+        outputs=[str(out_dir / f"spec_{i}.json") for i in range(n_specs)],
+        operational_profile=build_operational_profile(
+            phase=str(phase),
+            model_calls=_sum("model_calls"),
+            prompt_tokens=_sum("prompt_tokens") or None,
+            completion_tokens=_sum("completion_tokens") or None,
+            wall_clock_seconds=wall_clock_seconds,
+            retries=_sum("retries"),
+            capability="llm",
+        ),
+    ))
 
 
 def _write_outputs(result, out_dir: Path) -> None:

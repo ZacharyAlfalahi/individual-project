@@ -93,7 +93,10 @@ def test_g5_orders_by_median_cpcv_then_simplicity_then_id():
         {"proposal_id": "c", "median_cpcv_sharpe": 0.3, "n_changes": 1},   # ties a on median, simpler
     ]
     assert select_g5(survivors, cap=3) == ["b", "c", "a"]      # b, then simpler-c, then a
-    assert select_g5(survivors, cap=2) == ["b", "c"]           # cap respected
+    assert select_g5(survivors, cap=2) == ["b", "c"]           # integer cap respected
+    # SC-SCI-14 — cap removed: cap=None (and the default) advances EVERY survivor, still ordered.
+    assert select_g5(survivors, cap=None) == ["b", "c", "a"]
+    assert select_g5(survivors) == ["b", "c", "a"]
 
 
 def test_g5_is_not_a_composite_score():

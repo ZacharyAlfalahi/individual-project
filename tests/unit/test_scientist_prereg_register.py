@@ -76,7 +76,10 @@ def test_cpcv_embargo_is_months(reg, proto):
 
 
 def test_holdout_cap_and_gate(reg, proto):
-    assert reg["holdout"]["cap"] == proto["holdout"]["cap"] == 3
+    # SC-SCI-14 — the advancement cap is REMOVED (was 3); the RQ4 numerator is now ALL CPCV
+    # survivors, and the register + protocol must agree on the removal (null in both).
+    assert reg["holdout"]["cap"] is None and proto["holdout"]["cap"] is None
+    assert reg["holdout"]["descriptive_only"] is True and proto["holdout"]["descriptive_only"] is True
     # A5 — no self-opening date; the protocol carries artefact open_conditions, not `opens:`.
     assert "opens" not in proto["holdout"]
     assert "open_conditions" in proto["holdout"]

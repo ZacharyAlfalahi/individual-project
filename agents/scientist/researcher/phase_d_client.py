@@ -58,6 +58,11 @@ class PhaseDModelClient:
         self._backoff_base = float(backoff_base)
         self._backoff_cap = float(backoff_cap)
         self._last_call_ts = 0.0
+        # WS-8 (§4.7) mechanical operational counters (mirrors RealModelClient).
+        self.model_calls = 0
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_retries = 0
 
     def generate(self, prompt: str, *, seed: int) -> str:
         """One structured vendor call, paced + retried. Returns raw text (the generation loop in
@@ -69,6 +74,14 @@ class PhaseDModelClient:
             try:
                 text, _version = self._backend.generate(prompt, self.max_output_tokens)
                 self._last_call_ts = time.monotonic()
+                self.model_calls += 1
+                self.total_retries += attempt
+                u = getattr(self._backend, "last_usage", None)
+                if u:
+                    if u.get("prompt") is not None:
+                        self.total_prompt_tokens += u["prompt"]
+                    if u.get("completion") is not None:
+                        self.total_completion_tokens += u["completion"]
                 return text or ""
             except Exception as exc:  # classify: re-raise the un-retryable, back off on the rest
                 # lazy import: only reached on a live vendor error, never at module import time.
@@ -85,6 +98,15 @@ class PhaseDModelClient:
                 time.sleep(delay)
         raise RuntimeError(
             f"phase_d client {self.name!r} exhausted {self._max_retries} retries") from last_exc
+
+    def operational_usage(self) -> dict:
+        """Mechanical token/call/retry totals (WS-8 / §4.7), mirroring RealModelClient."""
+        return {
+            "model_calls": self.model_calls,
+            "prompt_tokens": self.total_prompt_tokens,
+            "completion_tokens": self.total_completion_tokens,
+            "retries": self.total_retries,
+        }
 
     def _pace(self) -> None:
         """Free tiers cap requests/sec; sleep so calls are >= min_interval_s apart (0 = no pacing)."""

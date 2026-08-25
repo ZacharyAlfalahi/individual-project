@@ -628,6 +628,12 @@ auditor:
     # clear the smallest known effect to count as "material" -- a conservative,
     # ex-ante floor, not chosen from any result.
     vartheta: 0.001
+    # §8.2.3 / §9 neighbouring-threshold SENSITIVITY grid: the materiality classification
+    # (P(|theta|>vartheta)) and the prevalence (pi-tilde(vartheta)) are recomputed at every
+    # grid point so no conclusion rests on one cutoff. {5, 10, 15, 20} bp/month brackets the
+    # frozen headline (vartheta, 10 bp); this is a robustness column, NEVER a replacement.
+    # The headline vartheta MUST appear in the grid.
+    vartheta_sensitivity_grid: [0.0005, 0.001, 0.0015, 0.002]
   compression:
     # §8.1 D_max: main + confirmatory two-way effects must carry >= 90% of total
     # effect energy; > 10% in third-and-higher order means the bias structure is
@@ -897,6 +903,16 @@ scientist:
     tier: within_strategy_bh_adjusted_p
   # The generation/evaluation protocol is committed separately (see header).
   protocol_ref: docs/scientist_protocol.yaml
+  # SC-SCI-14 (2026-08-24) — RQ4 development-window TOST equivalence margin. STORE THE PARAMETER,
+  # DERIVE delta in code (never store 0.0005): delta = factor_of_vartheta * vartheta
+  # = 0.5 * 0.001 = 0.0005 (5 bp/month). Half the materiality floor vartheta, so a residual alpha must
+  # lie inside a STRICTER half-width than the material-effect floor before being called approximately
+  # zero — a deliberate design choice (half of vartheta), not a universal constant. Consumed only by the
+  # development-only equivalence test (scientist_protocol.yaml inference.equivalence_test); registered
+  # before the holdout qualifier count is known (register-before-run).
+  equivalence_margin:
+    factor_of_vartheta: 0.5
+    vartheta_ref: auditor.practical_significance.vartheta   # delta = factor_of_vartheta * vartheta
   # Rung-3 (llm_researcher) generative model wiring (SC-SCI-9). SKUs MIRROR
   # librarian.model_stack.phase_d (D4 phase_d — the free DEV pair, NON-reportable). Read fail-loud
   # by agents/scientist/researcher/phase_d_client.load_model_stack. Reportable generative figures
@@ -1097,6 +1113,7 @@ corpus:
       - gkx_2022        # mechanism-library source (GKX survey)
       - dg_2025         # DNN showcase / mechanism-library source (Duraj-Giesecke)
       - bkmx_2009       # data-cleaning methodology source (FL-D21 rung-2; grounds bbw_2019/jostova cleaning profiles). No frozen text, so completeness-only; no-strategy + pre-window (2009) => non-candidate (2026-08-19)
+      - synth_2026      # T4(b) synthetic evaluation instrument — ineligible by construction (not a real paper); has a frozen canonical text, so listed per the consistency rule (2026-08-24)
     # Downstream artefact depth by layer (project decision).
     t2_gold_depth: extraction_only            # StrategySpec extraction gold; downstream observed/profiled, not oracle-graded
     scale_gold_depth: enumeration_only        # paper-only NO-MODEL-CONSULT factor list (RQ2 coverage)

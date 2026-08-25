@@ -268,7 +268,12 @@ class PromptBuilder:
 
 class _Backend(Protocol):
     def generate(self, prompt: str, max_output_tokens: int) -> tuple[str, str | None]:
-        """Return (raw_text, returned_model_version). Raises on hard failure."""
+        """Return (raw_text, returned_model_version). Raises on hard failure.
+
+        Concrete backends also set ``last_usage`` (a ``{"prompt", "completion"}`` dict, or
+        ``None`` when the vendor returned no usage) as a side channel after each call, so
+        token capture (WS-8) does not change this return contract. Read it via
+        ``getattr(backend, "last_usage", None)`` — a fake backend need not set it."""
         ...
 
 
@@ -287,6 +292,7 @@ class _GeminiBackend:
     def generate(self, prompt: str, max_output_tokens: int) -> tuple[str, str | None]:
         from google.genai import types  # lazy
 
+        self.last_usage = None
         resp = self._client.models.generate_content(
             model=self.model_id,
             contents=prompt,
@@ -303,6 +309,14 @@ class _GeminiBackend:
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
+        # WS-8: stash the vendor token counts as a side channel (leaves the (text, version)
+        # contract unchanged so no unpacker/fake backend breaks); the client reads it after.
+        um = getattr(resp, "usage_metadata", None)
+        if um is not None:
+            self.last_usage = {
+                "prompt": getattr(um, "prompt_token_count", None),
+                "completion": getattr(um, "candidates_token_count", None),
+            }
         return resp.text or "", getattr(resp, "model_version", None)
 
 
@@ -321,6 +335,7 @@ class _MistralBackend:
         self._client = Mistral(api_key=self.api_key)
 
     def generate(self, prompt: str, max_output_tokens: int) -> tuple[str, str | None]:
+        self.last_usage = None
         resp = self._client.chat.complete(
             model=self.model_id,
             messages=[{"role": "user", "content": prompt}],
@@ -334,6 +349,12 @@ class _MistralBackend:
             content = "".join(
                 getattr(chunk, "text", "") for chunk in content if getattr(chunk, "type", "text") == "text"
             )
+        u = getattr(resp, "usage", None)  # WS-8 token side channel (see _GeminiBackend)
+        if u is not None:
+            self.last_usage = {
+                "prompt": getattr(u, "prompt_tokens", None),
+                "completion": getattr(u, "completion_tokens", None),
+            }
         return content or "", getattr(resp, "model", None)
 
 
@@ -349,6 +370,7 @@ class _AnthropicBackend:
         self._client = anthropic.Anthropic(api_key=self.api_key)
 
     def generate(self, prompt: str, max_output_tokens: int) -> tuple[str, str | None]:
+        self.last_usage = None
         resp = self._client.messages.create(
             model=self.model_id,
             max_tokens=max_output_tokens,
@@ -356,6 +378,12 @@ class _AnthropicBackend:
             messages=[{"role": "user", "content": prompt}],
         )
         text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+        u = getattr(resp, "usage", None)  # WS-8 token side channel (see _GeminiBackend)
+        if u is not None:
+            self.last_usage = {
+                "prompt": getattr(u, "input_tokens", None),
+                "completion": getattr(u, "output_tokens", None),
+            }
         return text, getattr(resp, "model", None)
 
 
@@ -650,6 +678,13 @@ class RealModelClient:
         self._last_call_ts: float = 0.0
         self.current_strategy_label: str = "the strategy described in this paper"
         self.format_failures: int = 0
+        # WS-8 (§4.7) mechanical operational counters over this client's lifetime. Captured
+        # live so a reportable run's cost is reconstructable from tokens later; see
+        # operational_usage(). retries = extra attempts beyond the first, summed over calls.
+        self.model_calls: int = 0
+        self.total_prompt_tokens: int = 0
+        self.total_completion_tokens: int = 0
+        self.total_retries: int = 0
 
     # -- ModelClient.answer --------------------------------------------------
     def answer(self, query: FieldQuery, canonical_text: CanonicalText) -> ModelAnswer:
@@ -713,6 +748,19 @@ class RealModelClient:
             return ()
         return _constructions_from_parsed(parsed)
 
+    # -- mechanical operational usage (WS-8 / §4.7) -------------------------
+    def operational_usage(self) -> dict:
+        """Token / call / retry totals captured over this client's lifetime, for the run
+        manifest's operational profile. Cost is derived downstream from the tokens times a
+        cited rate — this method reports only mechanically-recorded values, never an
+        estimate."""
+        return {
+            "model_calls": self.model_calls,
+            "prompt_tokens": self.total_prompt_tokens,
+            "completion_tokens": self.total_completion_tokens,
+            "retries": self.total_retries,
+        }
+
     # -- proactive rate-limit pacing ----------------------------------------
     def _pace(self) -> None:
         if self._min_interval_s <= 0:
@@ -733,6 +781,15 @@ class RealModelClient:
             try:
                 out = self._backend.generate(prompt, max_tokens)
                 self._last_call_ts = time.monotonic()
+                # WS-8: record the successful call + its retries + vendor tokens (side channel).
+                self.model_calls += 1
+                self.total_retries += attempt          # 0 on a first-try success
+                u = getattr(self._backend, "last_usage", None)
+                if u:
+                    if u.get("prompt") is not None:
+                        self.total_prompt_tokens += u["prompt"]
+                    if u.get("completion") is not None:
+                        self.total_completion_tokens += u["completion"]
                 return out
             except Exception as exc:  # vendor SDK exception surface is broad
                 last_exc = exc

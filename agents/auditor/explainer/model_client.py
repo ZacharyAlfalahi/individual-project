@@ -76,10 +76,31 @@ class LiveExplainerClient:
         self.model_id = model_id
         self._max_output_tokens = max_output_tokens
         self._backend = make_backend(vendor, model_id, api_key, temperature)
+        # WS-8 (§4.7) mechanical operational counters (mirrors RealModelClient).
+        self.model_calls = 0
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_retries = 0
 
     def generate(self, prompt: str) -> ExplainerResponse:
         text, version = self._backend.generate(prompt, self._max_output_tokens)
+        self.model_calls += 1
+        u = getattr(self._backend, "last_usage", None)
+        if u:
+            if u.get("prompt") is not None:
+                self.total_prompt_tokens += u["prompt"]
+            if u.get("completion") is not None:
+                self.total_completion_tokens += u["completion"]
         return ExplainerResponse(text=text, model_version=version)
+
+    def operational_usage(self) -> dict:
+        """Mechanical token/call/retry totals (WS-8 / §4.7), mirroring RealModelClient."""
+        return {
+            "model_calls": self.model_calls,
+            "prompt_tokens": self.total_prompt_tokens,
+            "completion_tokens": self.total_completion_tokens,
+            "retries": self.total_retries,
+        }
 
 
 def build_live_explainer_client(

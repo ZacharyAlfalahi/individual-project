@@ -82,7 +82,9 @@ selection:
 
 holdout:
   advance: all_cpcv_qualified_survivors
-  cap: 3
+  cap: null                                  # SC-SCI-14 — cap removed (was 3); numerator = ALL CPCV survivors
+  descriptive_only: true                     # SC-SCI-14 — one protected observation; sign + diff + interval only
+  no_family_level_success_claim: true        # SC-SCI-14 — no holdout-family success rate
   accesses: 1
   gate: artefact_conditions_not_self_opening_date
 

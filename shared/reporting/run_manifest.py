@@ -3,10 +3,16 @@ Shared per-run execution manifest (WS-8 / data-layer O11).
 
 A unified sidecar every ``scripts/run_*.py`` driver can emit: execution timestamp +
 code hash + input-data hashes + config hashes + output hashes + a per-run
-*operational profile* (cost / capability). This is the per-run EXECUTION record the
-corpus / Phase-F runs need so the cost / capability-table data actually exists — the
-gap the data-layer register flags as O11 ("no unified per-run manifest, no shared
-run_id").
+*operational profile* (model calls, tokens in/out, wall-clock, retries, human
+interventions, and a cost slot). This is the per-run EXECUTION record the corpus /
+Phase-F runs need so the cost / capability-table data actually exists — the gap the
+data-layer register flags as O11 ("no unified per-run manifest, no shared run_id").
+
+Cost discipline: ``cost_usd`` is left ``None`` and DERIVED post-hoc from the stored
+token counts times a CITED per-model rate — the mechanical figures (tokens, calls,
+wall-clock, retries) are captured live so the cost is reconstructable later, and no
+uncited cost is ever invented (the same honesty-of-unavailability rule the cost
+register applies to trading costs).
 
 It is deliberately distinct from ``agents/reporter/manifest.py`` (the hand-maintained
 cross-agent *pointer* file that joins one strategy's artefacts by human assertion).
@@ -27,7 +33,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-MANIFEST_SCHEMA = 1
+MANIFEST_SCHEMA = 2   # v2 (2026-08-24): operational_profile gains wall_clock_seconds, retries,
+                      # interventions (the WS-8 / §4.7 mechanical operational log).
 
 
 def _sha256_file(abs_path: Path) -> str | None:
@@ -70,11 +77,48 @@ def default_operational_profile() -> dict:
     when cost is 0, so a Phase-F run populates the same shape and the cost / capability
     table has data to read (WS-8 rationale)."""
     return {
-        "phase": None,          # "D" | "F" | None(deterministic)
+        "phase": None,              # "D" | "F" | None(deterministic)
         "model_calls": 0,
-        "tokens": None,         # {prompt, completion} once a model is called
-        "cost_usd": None,
+        "tokens": None,             # {prompt, completion} once a model is called
+        "cost_usd": None,           # DERIVED later from tokens x a cited rate; None until cited
+        "wall_clock_seconds": None,
+        "retries": 0,
+        "interventions": [],        # human operator interventions w/ reason codes (operator-fed)
         "capability": "deterministic",
+    }
+
+
+def build_operational_profile(
+    *,
+    phase: str | None = None,
+    model_calls: int = 0,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    wall_clock_seconds: float | None = None,
+    retries: int = 0,
+    cost_usd: float | None = None,
+    interventions: list | None = None,
+    capability: str = "llm",
+) -> dict:
+    """Assemble an operational profile from mechanically-captured values (WS-8 / §4.7).
+
+    Token counts are the load-bearing figures: ``cost_usd`` is DERIVED downstream from the
+    stored tokens times a cited per-model rate, so it is left ``None`` here rather than
+    invented. A token count that the vendor did not return stays ``None`` (unavailable,
+    never guessed). ``interventions`` is a list of ``{reason_code, ...}`` records fed by the
+    operator; an empty list means an unattended run."""
+    tokens = None
+    if prompt_tokens is not None or completion_tokens is not None:
+        tokens = {"prompt": prompt_tokens, "completion": completion_tokens}
+    return {
+        "phase": phase,
+        "model_calls": model_calls,
+        "tokens": tokens,
+        "cost_usd": cost_usd,
+        "wall_clock_seconds": wall_clock_seconds,
+        "retries": retries,
+        "interventions": list(interventions or []),
+        "capability": capability,
     }
 
 

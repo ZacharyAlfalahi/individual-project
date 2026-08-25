@@ -144,6 +144,15 @@ inference:
     - retrieval_only             # per strategy
     - random_eligible            # per strategy
     - extension_1_standalone     # single hypothesis, not a family
+  equivalence_test:              # SC-SCI-14 — development-window TOST (two one-sided tests): is a
+                                 #   residual alpha provably inside [-delta, +delta]? Its OWN joint
+                                 #   BH-FDR family, SEPARATE from the proposal `families` above; a
+                                 #   FAILURE to establish equivalence is never evidence of a non-zero alpha.
+    method: tost
+    margin_ref: scientist.equivalence_margin   # delta = 0.5*vartheta (thresholds.yaml), DERIVED in code
+    bh_fdr_q: 0.10               # this family's own BH level; never pooled with the proposal families
+    window: development_only     # needs >= 60 months; the 45-month holdout cannot host it
+    asymmetry: failing_equivalence_is_not_evidence_of_nonzero_alpha
 
 cpcv:
   n_groups: 8
@@ -178,8 +187,15 @@ selection:
 
 holdout:
   advance: all_cpcv_qualified_survivors
-  cap: 3                         # A6 / O2 — CPCV-qualified survivors/strategy; generous enough
-                                 #   it likely never binds; committed ex ante.
+  cap: null                      # SC-SCI-14 (2026-08-24) — the advancement cap is REMOVED (was A6/O2
+                                 #   cap:3). The RQ4 numerator is now ALL CPCV-qualified survivors, not a
+                                 #   capped top-k; null => no cap (select_g5 advances every survivor).
+  descriptive_only: true         # SC-SCI-14 — the holdout is ONE protected observation: it reports
+                                 #   sign + paired difference + interval per candidate. No binary
+                                 #   success/failure verdict.
+  no_family_level_success_claim: true   # SC-SCI-14 — no "at least one candidate worked => RQ4 succeeds"
+                                 #   success-rate over the holdout family. Registered BEFORE the qualifier
+                                 #   count is known (register-before-run).
   accesses: 1
   # A5 — artefact-gated, NOT a self-opening date. The build enforces every condition; a bare
   # date backstop (if used) must never be the trigger.
@@ -361,3 +377,38 @@ amendments:                      # logged amendments appended here post-tag (see
       (5) No lattice inference runs on the holdout window, by design; the lattice support floor
       (min_common_months = 60) governs a different estimand and is cross-referenced, not applied.
       (6) The seed-sensitivity arm is development-only and outside this amendment.
+  - id: SC-SCI-14
+    date: 2026-08-24
+    status: DRAFT                 # PENDING TAG. This is the RQ4 "Part B" bundle — decided but held for
+                                  # approval. It MUST be git-tagged (e.g. sc-sci-14-rq4-partb) BEFORE the
+                                  # holdout is opened / the qualifier count is known (register-before-run,
+                                  # I5): its force is entirely that it precedes the results. Written to the
+                                  # working docs now so the diff is reviewable; NOT yet committed/tagged.
+    finding: RQ4-PartB
+    summary: >
+      RQ4 Part-B registration bundle (four coupled amendments), all committed EX ANTE of the holdout
+      qualifier count so none is chosen after seeing a result:
+      (1) HOLDOUT ADVANCEMENT CAP REMOVED. A6/O2's holdout.cap = 3 is superseded: holdout.cap = null,
+      so G5 advances ALL CPCV-qualified survivors and the RQ4 numerator is the full survivor set, not
+      a capped top-k. Realised in code (select_g5 / run_experimentalist treat cap=None as "no cap",
+      Python list[:None]); one-shot holdout stage-2 is unaffected (it evaluates whatever survivor list it is handed).
+      The tracked register prereg/scientist_prereg.yaml is updated in lockstep (the register-agreement
+      tripwire, test_scientist_prereg_register, keeps the two from drifting).
+      (2) HOLDOUT DESCRIPTIVE-ONLY / NO FAMILY-LEVEL CLAIM. holdout.descriptive_only = true and
+      holdout.no_family_level_success_claim = true: the holdout is ONE protected observation reporting
+      per-candidate sign + paired difference + interval; there is no binary success/failure verdict and
+      no "at least one candidate worked => RQ4 succeeds" success-rate over the holdout family. This
+      registers the all-qualifier, descriptive-only interpretation BEFORE the qualifier count is known.
+      (3) DEVELOPMENT-WINDOW TOST EQUIVALENCE FAMILY. inference.equivalence_test registers a two
+      one-sided-tests equivalence check on residual alpha over [-delta, +delta] as its OWN joint BH-FDR
+      family (q = 0.10), separate from the proposal families; development-only (needs >= 60 months, so
+      the 45-month holdout cannot host it); asymmetric (failing equivalence is never evidence of a
+      non-zero alpha). This reverses the earlier §4.9.1-era refusal to run an equivalence test, on the
+      D-E7 condition that a pre-registered margin exists (see item 4); the reversal is disclosed here.
+      (4) EQUIVALENCE MARGIN delta = 1/2 * vartheta = 5 bp/month, registered in thresholds.yaml
+      (scientist.equivalence_margin) as a DERIVED value (factor_of_vartheta = 0.5 * the auditor
+      materiality floor vartheta = 0.001), never a stored literal — a residual must lie inside a STRICTER
+      half-width than the material-effect floor before being called approximately zero. A deliberate
+      design choice (half of vartheta), not a universal constant. Adding this thresholds.yaml key
+      re-pins FROZEN_THRESHOLDS_SHA256 (agents/scientist/experimentalist/oneshot_holdout/frozen.py); the one-shot holdout real
+      one-shot has not run, so the re-pin is maintenance, not a provenance break.
