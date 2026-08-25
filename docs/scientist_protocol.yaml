@@ -379,11 +379,10 @@ amendments:                      # logged amendments appended here post-tag (see
       (6) The seed-sensitivity arm is development-only and outside this amendment.
   - id: SC-SCI-14
     date: 2026-08-24
-    status: DRAFT                 # PENDING TAG. This is the RQ4 "Part B" bundle — decided but held for
-                                  # approval. It MUST be git-tagged (e.g. sc-sci-14-rq4-partb) BEFORE the
-                                  # holdout is opened / the qualifier count is known (register-before-run,
-                                  # I5): its force is entirely that it precedes the results. Written to the
-                                  # working docs now so the diff is reviewable; NOT yet committed/tagged.
+    status: APPROVED              # TAGGED sc-sci-14-rq4-partb at the registration commit (2026-08-25),
+                                  # BEFORE the holdout is opened / the qualifier count is known
+                                  # (register-before-run, I5): its force is entirely that it precedes the
+                                  # results. The RQ4 "Part B" bundle below is thereby pre-registered.
     finding: RQ4-PartB
     summary: >
       RQ4 Part-B registration bundle (four coupled amendments), all committed EX ANTE of the holdout
