@@ -62,14 +62,20 @@ class CoordinatePosterior:
     p_negative: float
     p_positive: float
     p_material: float          # P(|θ| > ϑ) — feeds prevalence (§8.2.3)
+    # ((ϑ, P(|θ|>ϑ)), ...) neighbouring-threshold sensitivity (§8.2.3/§9); empty when
+    # no grid was requested. Always contains the headline ϑ when populated.
+    p_material_sweep: tuple = ()
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "mean": self.mean, "sd": self.sd,
             "ci_low": self.ci_low, "ci_high": self.ci_high,
             "p_negative": self.p_negative, "p_positive": self.p_positive,
             "p_material": self.p_material,
         }
+        if self.p_material_sweep:
+            d["p_material_sweep"] = [[v, p] for v, p in self.p_material_sweep]
+        return d
 
 
 @dataclass(frozen=True, eq=False)
@@ -132,6 +138,16 @@ def regularise_covariance(
     return V_reg, V_inv, CovarianceRegularisation(n_clipped, epsilon, min_before)
 
 
+def _material_probability(m: float, s: float, vartheta: float) -> float:
+    """P(|θ| > ϑ) under the posterior N(m, s²) — the material-effect probability that feeds
+    §9 classification and §8.2.3 prevalence. Used for both the headline ϑ and the sweep."""
+    if s <= 0:
+        p = float(abs(m) > vartheta)
+    else:
+        p = (1.0 - normal_cdf((vartheta - m) / s)) + normal_cdf((-vartheta - m) / s)
+    return min(1.0, max(0.0, p))
+
+
 def _posterior(theta_hat: np.ndarray, V_inv: np.ndarray, prior_scale: float):
     """Conjugate normal-normal posterior with prior N(0, prior_scale² I). Takes the
     (regularised) precision `V_inv` directly; `V_inv + prior_prec` is positive
@@ -152,8 +168,11 @@ def run_bayes(
     vartheta: float,
     epsilon: float,
     conditioning_signature: tuple = (),
+    vartheta_grid: Sequence[float] = (),
 ) -> BayesianResult:
-    """Fit the Bayesian normal approximation over the confirmatory coordinates."""
+    """Fit the Bayesian normal approximation over the confirmatory coordinates. When
+    `vartheta_grid` is non-empty, each coordinate also carries P(|θ|>ϑ) recomputed at every
+    grid ϑ (the §8.2.3/§9 neighbouring-threshold sensitivity), never replacing the headline."""
     coords = list(coordinates)
     d = len(coords)
     if d == 0:
@@ -176,17 +195,14 @@ def run_bayes(
     posteriors: dict[frozenset, CoordinatePosterior] = {}
     for i, T in enumerate(coords):
         m, s = float(mu_post[i]), float(sd[i])
-        if s <= 0:
-            p_neg = float(m < 0)
-            p_material = float(abs(m) > vartheta)
-        else:
-            p_neg = normal_cdf((0.0 - m) / s)
-            p_material = (1.0 - normal_cdf((vartheta - m) / s)) + normal_cdf((-vartheta - m) / s)
+        p_neg = float(m < 0) if s <= 0 else normal_cdf((0.0 - m) / s)
+        sweep = tuple((float(v), _material_probability(m, s, v)) for v in vartheta_grid)
         posteriors[T] = CoordinatePosterior(
             coordinate=T, mean=m, sd=s,
             ci_low=m - z * s, ci_high=m + z * s,
             p_negative=p_neg, p_positive=1.0 - p_neg,
-            p_material=min(1.0, max(0.0, p_material)),
+            p_material=_material_probability(m, s, vartheta),
+            p_material_sweep=sweep,
         )
 
     return BayesianResult(

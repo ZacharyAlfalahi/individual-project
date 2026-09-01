@@ -67,6 +67,28 @@ def circular_block_indices(t: int, ell: int, rng: np.random.Generator) -> np.nda
     return idx[:t]
 
 
+def stationary_block_indices(t: int, mean_ell: int, rng: np.random.Generator) -> np.ndarray:
+    """A length-T resample index sequence from the stationary (Politis–Romano 1994)
+    bootstrap: block lengths are geometric with success probability p = 1/ℓ (so the
+    EXPECTED length is ℓ = mean_ell), each block starts uniformly in [0,T) and wraps
+    around, concatenated until the sequence reaches T, then truncated.
+
+    Pre-registered SENSITIVITY ONLY (D-A29): the fixed-block scheme is normative,
+    because the geometric block length constrains only the MEAN — short blocks still
+    occur and are precisely the ones that sever the overlapping-holding dependence the
+    H_max floor exists to preserve (§6.2). `mean_ell` is set to ℓ = max(H_max, ℓ_data-
+    driven) so the expected block length still clears the holding horizon."""
+    p = 1.0 / float(mean_ell)
+    parts: list[np.ndarray] = []
+    filled = 0
+    while filled < t:
+        start = int(rng.integers(0, t))
+        length = int(rng.geometric(p))  # >= 1, mean 1/p = mean_ell
+        parts.append(np.arange(start, start + length) % t)
+        filled += length
+    return np.concatenate(parts)[:t]
+
+
 def _metric_of(values: np.ndarray, metric: str, months_per_year: int) -> float:
     """The primary metric of one resampled return vector (a functional of the
     values). Uses the shared summarize_returns; the resampled series carries a
@@ -85,6 +107,7 @@ class BootstrapResult:
     gap_draws: np.ndarray                       # (B,)
     doe_draws: Mapping[frozenset, np.ndarray]   # subset -> (B,)
     shapley_draws: Mapping[ToggleId, np.ndarray]  # toggle -> (B,)
+    scheme: str = "fixed"                       # "fixed" (normative) | "stationary" (D-A29 sensitivity)
 
     def interval(self, draws: np.ndarray, alpha: float = 0.05) -> tuple[float, float]:
         lo, hi = np.percentile(draws, [100 * alpha / 2, 100 * (1 - alpha / 2)])
@@ -100,6 +123,25 @@ class BootstrapResult:
         return {t: self.interval(d, alpha) for t, d in self.shapley_draws.items()}
 
 
+def first_order_covariance(
+    result: "BootstrapResult", toggles: Sequence[ToggleId]
+) -> tuple[tuple[ToggleId, ...], np.ndarray]:
+    """The k×k sample covariance of the first-order DOE effects {E_i} across the
+    bootstrap replicates — the FULL measurement covariance V̂_s the cross-strategy
+    hierarchy consumes (D-A32: keep V̂ full, constrain the population to diagonal).
+
+    Built entirely from the existing singleton `doe_draws[frozenset({i})]`, so it costs
+    no extra resampling. Rows/columns follow `toggles` — the CALLER must build the matching
+    `StrategyVector.estimate`/`coords` in the SAME order, or the joint measurement model is
+    scrambled. A single-toggle strategy yields a 1×1 matrix (np.cov collapses to a scalar;
+    re-shaped here)."""
+    labels = tuple(toggles)
+    cols = [np.asarray(result.doe_draws[frozenset({tg})], dtype=float) for tg in labels]
+    stacked = np.column_stack(cols)          # (B, k)
+    cov = np.atleast_2d(np.cov(stacked, rowvar=False))
+    return labels, cov
+
+
 def run_bootstrap(
     cells: Sequence[CellReturns],
     months: pd.DatetimeIndex,
@@ -112,11 +154,20 @@ def run_bootstrap(
     metric: str = "average",
     months_per_year: int = 12,
     seed: int = 0,
+    scheme: str = "fixed",
 ) -> BootstrapResult:
-    """Run the synchronised fixed-block bootstrap and return per-quantity draws.
+    """Run the synchronised block bootstrap and return per-quantity draws.
+
+    `scheme="fixed"` (default, normative §6.1) is the circular moving block bootstrap
+    with a LITERAL block length ℓ; `scheme="stationary"` is the Politis–Romano geometric-
+    block sensitivity (D-A29), same ℓ as the EXPECTED block length. Only the per-replicate
+    index generator differs — the synchronisation, refusal gates, replicate count and §5
+    maps are identical — so `scheme="fixed"` reproduces the prior behaviour exactly.
 
     Raises BootstrapError if the block length is incompatible with the common
     support (ℓ >= T_common, or fewer than `min_effective_blocks` effective blocks)."""
+    if scheme not in ("fixed", "stationary"):
+        raise BootstrapError(f"unknown bootstrap scheme {scheme!r} (fixed | stationary)")
     keys, R = return_matrix(cells, months)
     t = R.shape[0]
     if t == 0 or R.shape[1] == 0:
@@ -150,7 +201,11 @@ def run_bootstrap(
     shapley_draws: dict[ToggleId, list] = {tg: [] for tg in toggles}
 
     for b in range(n_replicates):
-        pos = circular_block_indices(t, ell, rng)  # ONE common sequence for all cells
+        # ONE common sequence for all cells (synchronisation); scheme picks the generator.
+        if scheme == "stationary":
+            pos = stationary_block_indices(t, ell, rng)
+        else:
+            pos = circular_block_indices(t, ell, rng)
         # Y^(b): the metric of every cell on the SAME resampled positions.
         Yb: dict[frozenset, float] = {}
         for k, j in key_index.items():
@@ -175,4 +230,5 @@ def run_bootstrap(
         gap_draws=gap_draws,
         doe_draws={T: np.asarray(v) for T, v in doe_draws.items()},
         shapley_draws={tg: np.asarray(v) for tg, v in shapley_draws.items()},
+        scheme=scheme,
     )

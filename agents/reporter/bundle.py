@@ -23,6 +23,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Mapping
 
+import yaml
+
 from shared.reporting.claims import ArtefactType
 
 from .manifest import REPO_ROOT, ArtefactRef, ManifestError, RunManifest
@@ -101,14 +103,44 @@ class ReportabilityStatus(str, Enum):
     NON_REPORTABLE_OTHER = "non_reportable_other"
 
 
-def derive_reportability(phase: str) -> ReportabilityStatus:
-    """Phase F -> reportable; phase D -> non-reportable (free dev pair); anything else fails
-    closed to NON_REPORTABLE_OTHER (never reportable)."""
-    if phase == "F":
-        return ReportabilityStatus.REPORTABLE
-    if phase == "D":
+def load_phase_stacks() -> tuple[frozenset[str], frozenset[str]]:
+    """Return ``(phase_f_ids, phase_d_ids)`` — the configured reportable/dev model-id sets from
+    ``docs/thresholds.yaml`` (one home per number). Read from the real repo root: the reportable
+    stack is a fixed governance constant, independent of where a run's artefacts live."""
+    stack = yaml.safe_load(
+        (REPO_ROOT / "docs" / "thresholds.yaml").read_text()
+    )["librarian"]["model_stack"]
+
+    def _ids(block: dict) -> frozenset[str]:
+        return frozenset({block["model_a"]["model_id"], block["model_b"]["model_id"]})
+
+    return _ids(stack["phase_f"]), _ids(stack["phase_d"])
+
+
+def derive_reportability(
+    declared_phase: str,
+    recorded_model_ids: str | None,
+    *,
+    phase_f_ids: frozenset[str],
+    phase_d_ids: frozenset[str],
+) -> ReportabilityStatus:
+    """Reportability is derived from the model identities the (hash-verified) extraction artefact
+    RECORDS, cross-checked against the pointer's declared phase — never from the declared phase
+    alone, which is a requester-supplied label the design does not trust. The declared phase may
+    only ratify what the recorded stack already proves: a recorded free-dev pair is
+    NON_REPORTABLE_PHASE_D whatever the pointer claims, and an absent record, an unrecognised
+    stack, or a stack that disagrees with the declared phase all fail closed to
+    NON_REPORTABLE_OTHER (INV-7)."""
+    recorded = frozenset(
+        m.strip() for m in (recorded_model_ids or "").split(",") if m.strip()
+    )
+    if not recorded:
+        return ReportabilityStatus.NON_REPORTABLE_OTHER  # nothing to verify what actually ran
+    if recorded == phase_d_ids:
         return ReportabilityStatus.NON_REPORTABLE_PHASE_D
-    return ReportabilityStatus.NON_REPORTABLE_OTHER
+    if recorded == phase_f_ids and declared_phase == "F":
+        return ReportabilityStatus.REPORTABLE
+    return ReportabilityStatus.NON_REPORTABLE_OTHER  # mislabel / unrecognised stack
 
 
 @dataclass(frozen=True)
@@ -497,6 +529,15 @@ def load_bundle(
         audit=_stamp_from_log(docs.get(ArtefactType.AUDIT_RUN_LOG)),
         auditor_prereg_tag=_prereg_tag(docs.get(ArtefactType.AUDIT_RUN_LOG)),
     )
+    # Reportability is derived from the model identities the (hash-verified) extraction artefact
+    # records — the pointer's declared phase can only ratify them, never assert them alone.
+    spec_doc = docs.get(ArtefactType.STRATEGY_SPEC)
+    recorded_model_ids: str | None = None
+    if isinstance(spec_doc, dict):
+        header = spec_doc.get("header")
+        if isinstance(header, dict) and isinstance(header.get("model_ids"), str):
+            recorded_model_ids = header["model_ids"]
+    phase_f_ids, phase_d_ids = load_phase_stacks()
     return ReportBundle(
         reporter_run_id=manifest.reporter_run_id,
         paper_id=manifest.paper_id,
@@ -504,7 +545,12 @@ def load_bundle(
         phase=manifest.phase,
         docs=docs,
         stages=stages,
-        reportability=derive_reportability(manifest.phase),
+        reportability=derive_reportability(
+            manifest.phase,
+            recorded_model_ids,
+            phase_f_ids=phase_f_ids,
+            phase_d_ids=phase_d_ids,
+        ),
         artefacts=tuple(manifest.artefacts.values()),
         upstream_stamps=upstream,
         code_version=code_version or current_code_version(),

@@ -2,11 +2,10 @@
 
 one-shot holdout is the sole caller that loads the holdout panels behind the gate and hands the in-memory
 survivor / parent / benchmark series to the CANONICAL, pure computation function
-``shared.stats.holdout_inference_window_sensitivity`` (primary paired NW-HAC t + each series'
-own NW-HAC alpha, plus the labelled-diagnostic block bootstrap, on the registered 45-month
-window AND the tagged ≤2024-12 sub-window in one call). This module adds only the SC-SCI-11 P3
-posterior on the survivor alpha and shapes the descriptive record — it introduces no new
-statistical convention.
+``shared.stats.holdout_inference`` (primary paired NW-HAC t + each series' own NW-HAC alpha,
+plus the labelled-diagnostic block bootstrap, on the registered 45-month window). This module
+adds only the SC-SCI-11 P3 posterior on the survivor alpha and shapes the descriptive record
+— it introduces no new statistical convention.
 
 FIREWALL (§1.4): the evaluator reaches statistics ONLY through the sanctioned ``shared.stats``
 surface — never ``agents.auditor`` directly — and runs no lattice/attribution inference on the
@@ -25,7 +24,7 @@ from shared.evaluation.thresholds import load_holdout_bootstrap_diagnostic_confi
 from shared.stats import (
     HoldoutInferenceWindow,
     alpha_se_from_t,
-    holdout_inference_window_sensitivity,
+    holdout_inference,
     posterior_summary,
 )
 
@@ -36,7 +35,6 @@ from .windows import Window
 class BenchmarkResult:
     benchmark: str
     full: dict                       # HoldoutInferenceWindow.to_dict() + {"posterior": ...}
-    sensitivity: dict                # same shape for the tagged ≤2024-12 sub-window
 
 
 @dataclass(frozen=True)
@@ -89,21 +87,19 @@ def evaluate_survivors(
     survivors: list[SurvivorInput],
     benchmarks: Mapping[str, pd.DataFrame],
     window: Window,
-    sub_window: Window,
     priors: Mapping[str, float],
     *,
     base_seed: int = 82026,
     config_path=None,
 ) -> list[SurvivorResult]:
-    """Evaluate every survivor on both windows under every benchmark, in one pass, via the
-    canonical ``holdout_inference_window_sensitivity``. Every series is first CLIPPED to the
-    registered ``window`` so the "full" statistic is exactly ``window.n_months`` — seed / pre-window
-    months can never leak into the holdout statistic. ``sub_window.end`` supplies the tagged ≤ cutoff.
-    The block lengths / replicate count / floor / lag come from the fail-loud config."""
+    """Evaluate every survivor on the registered window under every benchmark, in one pass, via
+    the canonical ``holdout_inference``. Every series is first CLIPPED to the registered ``window``
+    so the "full" statistic is exactly ``window.n_months`` — seed / pre-window months can never leak
+    into the holdout statistic. The block lengths / replicate count / floor / lag come from the
+    fail-loud config."""
     if not benchmarks:
         raise ValueError("at least one benchmark factor set is required (BBW-4 primary)")
     cfg = load_holdout_bootstrap_diagnostic_config(config_path)
-    cutoff = pd.Period(sub_window.end, "M").to_timestamp("M")
     lo = pd.Period(window.start, "M").to_timestamp("M")
     hi = pd.Period(window.end, "M").to_timestamp("M")
 
@@ -122,11 +118,10 @@ def evaluate_survivors(
         parent = _clip_series(survivor.parent_returns)
         per_benchmark: dict[str, BenchmarkResult] = {}
         for bi, (bname, factors) in enumerate(clipped_benchmarks.items()):
-            full, sub = holdout_inference_window_sensitivity(
+            full = holdout_inference(
                 surv,
                 parent,
                 factors,
-                subwindow_cutoff=cutoff,
                 block_lengths=tuple(cfg.block_lengths),
                 n_replicates=cfg.n_replicates,
                 min_effective_blocks=cfg.min_effective_blocks,
@@ -135,7 +130,6 @@ def evaluate_survivors(
             per_benchmark[bname] = BenchmarkResult(
                 benchmark=bname,
                 full=_window_record(full, priors),
-                sensitivity=_window_record(sub, priors),
             )
         results.append(SurvivorResult(survivor.survivor_id, survivor.is_extension_1, per_benchmark))
     return results

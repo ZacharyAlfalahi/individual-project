@@ -14,6 +14,7 @@ pre-registered numbers.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,6 +37,7 @@ from ..thresholds import (
     load_shapley_pct_denominator_min,
     load_support_gate,
     load_vartheta,
+    load_vartheta_grid,
 )
 from .algebra import saturated_basis
 from .bayes import assemble_theta, run_bayes
@@ -47,6 +49,10 @@ from .inference import infer_doe_effects
 from .metrics import metric_set_on
 from .orchestrator import audit_spine
 from .support import common_support, primary_metric_vector
+
+# Disjoint seed stream for the stationary-bootstrap sensitivity so it never shadows the
+# primary fixed-block draws while staying fully deterministic.
+_STATIONARY_SEED_OFFSET = 10_000
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,9 @@ class AuditorConfig:
     fdr_q: float
     bayes: BayesParams
     gap_bands: EconomicGapBands
+    # §8.2.3/§9 neighbouring-threshold sensitivity grid (must contain the headline vartheta);
+    # empty () skips the sweep, so tests that build the config explicitly are unaffected.
+    vartheta_grid: tuple = ()
     holding_period: int = 1
     months_per_year: int = 12
     lib_gap_lags: tuple[int, int] = (0, 1)
@@ -71,6 +80,9 @@ class AuditorConfig:
     # re-run, never a bare default flip.
     meas_err_off_family: str = "raw"
     alpha: float = 0.05
+    # Run the pre-registered stationary-bootstrap sensitivity beside the primary (D-A29).
+    # Default on; a dev pass can set False to skip the second B-replicate bootstrap.
+    report_stationary_sensitivity: bool = True
 
     @classmethod
     def from_thresholds(cls, path: str | Path | None = None) -> "AuditorConfig":
@@ -88,6 +100,7 @@ class AuditorConfig:
             fdr_q=load_fdr_q(path),
             bayes=load_bayes_params(path),
             gap_bands=load_economic_gap_bands(path),
+            vartheta_grid=load_vartheta_grid(path),
         )
 
 
@@ -140,6 +153,29 @@ def run_full_audit(
         months_per_year=config.months_per_year,
         seed=seed,
     )
+    # Pre-registered stationary-bootstrap sensitivity (D-A29), reported BESIDE the
+    # normative fixed-block run and never feeding the verdict: it reuses the same ℓ as
+    # the EXPECTED geometric block length and a disjoint seed stream. Its refusal
+    # conditions are identical to the primary's (same ℓ, same support), so a primary that
+    # ran cannot fail here. A non-finite CI (a degenerate resample) is dropped rather than
+    # serialised as a "number".
+    stationary_gap_lo = stationary_gap_hi = stationary_block = None
+    if config.report_stationary_sensitivity:
+        bootstrap_stationary = run_bootstrap(
+            lattice.cells, common, toggles,
+            n_replicates=config.n_replicates,
+            data_driven_block_months=config.block_length_months,
+            min_effective_blocks=config.min_effective_blocks,
+            holding_period=config.holding_period,
+            metric=config.primary_metric,
+            months_per_year=config.months_per_year,
+            seed=seed + _STATIONARY_SEED_OFFSET,
+            scheme="stationary",
+        )
+        lo, hi = bootstrap_stationary.gap_ci(config.alpha)
+        if math.isfinite(lo) and math.isfinite(hi):
+            stationary_gap_lo, stationary_gap_hi = lo, hi
+            stationary_block = bootstrap_stationary.block_length
 
     coords = confirmatory_coordinates(toggles)
     inference = infer_doe_effects(
@@ -165,6 +201,7 @@ def run_full_audit(
         prior_scale=config.bayes.prior_scale, vartheta=config.vartheta,
         epsilon=config.bayes.epsilon,
         conditioning_signature=pf.conditioning_signature,
+        vartheta_grid=config.vartheta_grid,
     )
     compression = run_compression(doe, bootstrap, d_max=config.d_max, alpha=config.alpha)
 
@@ -194,6 +231,9 @@ def run_full_audit(
             block_length=bootstrap.block_length,
             effective_blocks=bootstrap.effective_blocks,
             t_common=bootstrap.t_common,
+            stationary_gap_ci_low=stationary_gap_lo,
+            stationary_gap_ci_high=stationary_gap_hi,
+            stationary_block_length=stationary_block,
         ),
         inference=inference,
         fdr=fdr,

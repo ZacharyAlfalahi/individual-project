@@ -98,6 +98,34 @@ def test_tighter_prior_shrinks_posterior_mean_toward_zero():
     assert abs(tight.posteriors[T].mean) < abs(loose.posteriors[T].mean)
 
 
+# --------------------------------------------------------------------------
+# Materiality sweep (§8.2.3/§9): P(|θ|>ϑ) recomputed across the neighbouring grid
+# --------------------------------------------------------------------------
+
+def test_p_material_sweep_matches_headline_and_is_monotone():
+    grid = (0.0005, 0.001, 0.0015, 0.002)
+    coords, theta_hat, draws = _theta_and_draws("meas_err", seed=2)
+    result = run_bayes(theta_hat, draws, coords, prior_scale=0.1, vartheta=0.001,
+                       epsilon=1e-8, vartheta_grid=grid)
+    for post in result.posteriors.values():
+        sweep = dict(post.p_material_sweep)
+        assert set(sweep) == set(grid)
+        # the headline ϑ entry of the sweep equals the primary p_material.
+        assert abs(sweep[0.001] - post.p_material) < 1e-12
+        # P(|θ|>ϑ) is non-increasing as ϑ grows.
+        vals = [sweep[v] for v in grid]
+        assert all(vals[i] >= vals[i + 1] - 1e-12 for i in range(len(vals) - 1))
+        assert "p_material_sweep" in post.to_dict()
+
+
+def test_p_material_sweep_empty_without_grid():
+    coords, theta_hat, draws = _theta_and_draws("meas_err", seed=1)
+    result = run_bayes(theta_hat, draws, coords, prior_scale=0.1, vartheta=0.005, epsilon=1e-8)
+    for post in result.posteriors.values():
+        assert post.p_material_sweep == ()
+        assert "p_material_sweep" not in post.to_dict()
+
+
 def test_regularisation_and_sensitivity_recorded():
     coords, theta_hat, draws = _theta_and_draws("stale_price", seed=4)
     result = run_bayes(theta_hat, draws, coords, prior_scale=0.1, vartheta=0.005, epsilon=1e-8)

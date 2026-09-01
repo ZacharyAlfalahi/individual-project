@@ -49,7 +49,7 @@ from shared.stats.posterior import (
 from shared.stats.holdout_bootstrap import (
     BlockBootstrapCI,
     HoldoutInferenceWindow,
-    holdout_inference_window_sensitivity,
+    holdout_inference,
     own_alpha_bootstrap,
     paired_difference_bootstrap,
 )
@@ -88,7 +88,7 @@ __all__ = [
     # Holdout block-bootstrap diagnostic (net-new, holdout_bootstrap.py — SC-SCI-13)
     "BlockBootstrapCI",
     "HoldoutInferenceWindow",
-    "holdout_inference_window_sensitivity",
+    "holdout_inference",
     "own_alpha_bootstrap",
     "paired_difference_bootstrap",
 ]

@@ -1108,7 +1108,7 @@ corpus:
       - jnps_2013       # anchor mom6
       - kpp_2023        # fitted-model anchor
       - bpw_2011        # gamma-illiquidity mechanism source
-      - dfps_2026       # DFPS-4 secondary benchmark (SC-SCI-5)
+      - dfps_2026       # DFPS corpus paper (RQ2 coverage set, with bbw_2021)
       - dmr_2023        # DRR-documented drf/mom6 error source (DMR 2023)
       - gkx_2022        # mechanism-library source (GKX survey)
       - dg_2025         # DNN showcase / mechanism-library source (Duraj-Giesecke)

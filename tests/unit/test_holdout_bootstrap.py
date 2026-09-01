@@ -13,7 +13,7 @@ import pytest
 
 from agents.quant.library.characteristic_sort import regress_on_benchmark
 from shared.stats.holdout_bootstrap import (
-    holdout_inference_window_sensitivity,
+    holdout_inference,
     own_alpha_bootstrap,
     paired_difference_bootstrap,
 )
@@ -43,10 +43,10 @@ def _series(frame: pd.DataFrame, a0: float, betas: dict, *, noise: float = 0.000
 
 
 def test_effective_block_counts_exact():
-    # The numbers SC-SCI-13 pre-registers: 45/{3,6}=15/7, 36/{3,6}=12/6, labelled vs the 10-floor.
+    # The numbers SC-SCI-13 pre-registers on the registered 45-month window:
+    # 45/{3,6}=15/7, labelled vs the 10-floor.
     for T, expected in [
         (45, {3: (15, "floor_met"), 6: (7, "below_floor")}),
-        (36, {3: (12, "floor_met"), 6: (6, "below_floor")}),
     ]:
         diff = pd.Series(np.linspace(-0.01, 0.01, T), index=_dates(T))
         cis = paired_difference_bootstrap(
@@ -85,11 +85,11 @@ def test_primary_uses_pinned_lag_2():
     fr = _frame(45, seed=8)
     surv = _series(fr, 0.003, {"mktb": 0.5}, seed=9)
     par = _series(fr, 0.001, {"mktb": 0.5}, seed=10)
-    full, sub = holdout_inference_window_sensitivity(
-        surv, par, fr, subwindow_cutoff=pd.Timestamp("2024-12-31"),
+    full = holdout_inference(
+        surv, par, fr,
         n_replicates=100, min_effective_blocks=10, seed=1,
     )
-    assert full.nw_lags_used == 2 and sub.nw_lags_used == 2
+    assert full.nw_lags_used == 2
     # The auto rule would NOT pick 2 at T=45 — proves the pin is doing work, not coinciding.
     assert regress_on_benchmark(surv, fr, None)["nw_lags_used"] != 2
 
@@ -98,10 +98,10 @@ def test_determinism_same_seed():
     fr = _frame(45, seed=8)
     surv = _series(fr, 0.003, {"mktb": 0.5}, seed=9)
     par = _series(fr, 0.001, {"mktb": 0.5}, seed=10)
-    kw = dict(subwindow_cutoff=pd.Timestamp("2024-12-31"), n_replicates=300, min_effective_blocks=10)
-    a, _ = holdout_inference_window_sensitivity(surv, par, fr, seed=42, **kw)
-    b, _ = holdout_inference_window_sensitivity(surv, par, fr, seed=42, **kw)
-    c, _ = holdout_inference_window_sensitivity(surv, par, fr, seed=43, **kw)
+    kw = dict(n_replicates=300, min_effective_blocks=10)
+    a = holdout_inference(surv, par, fr, seed=42, **kw)
+    b = holdout_inference(surv, par, fr, seed=42, **kw)
+    c = holdout_inference(surv, par, fr, seed=43, **kw)
     assert a.to_dict() == b.to_dict()
     assert a.to_dict() != c.to_dict()
 
@@ -125,24 +125,23 @@ def test_is_confirmatory_always_false():
     fr = _frame(45, seed=8)
     surv = _series(fr, 0.003, {"mktb": 0.5}, seed=9)
     par = _series(fr, 0.001, {"mktb": 0.5}, seed=10)
-    full, sub = holdout_inference_window_sensitivity(
-        surv, par, fr, subwindow_cutoff=pd.Timestamp("2024-12-31"),
+    full = holdout_inference(
+        surv, par, fr,
         n_replicates=50, min_effective_blocks=10, seed=1,
     )
-    assert all(c.is_confirmatory is False for c in full.bootstrap_cis + sub.bootstrap_cis)
+    assert all(c.is_confirmatory is False for c in full.bootstrap_cis)
 
 
-def test_window_sensitivity_two_windows():
+def test_single_registered_window():
     fr = _frame(45, seed=8, start="2022-01-31")   # synthetic 2022-01 .. 2025-09
     surv = _series(fr, 0.003, {"mktb": 0.5}, seed=9)
     par = _series(fr, 0.001, {"mktb": 0.5}, seed=10)
-    full, sub = holdout_inference_window_sensitivity(
-        surv, par, fr, subwindow_cutoff=pd.Timestamp("2024-12-31"),
+    full = holdout_inference(
+        surv, par, fr,
         n_replicates=50, min_effective_blocks=10, seed=1,
     )
     assert full.window_label == "full_45m" and full.n_obs == 45
-    assert sub.window_label == "subwindow_le_2024_12" and sub.n_obs == 36
-    assert len(full.bootstrap_cis) == 6 and len(sub.bootstrap_cis) == 6
+    assert len(full.bootstrap_cis) == 6                          # 3 statistics x {3, 6}
 
 
 def test_diagnostic_labels_are_licensed():
@@ -152,7 +151,7 @@ def test_diagnostic_labels_are_licensed():
 
     vocab = {
         "paired_mean_difference", "survivor_alpha", "parent_alpha",
-        "floor_met", "below_floor", "full_45m", "subwindow_le_2024_12",
+        "floor_met", "below_floor", "full_45m",
     }
     for label in vocab:
         low = label.lower()

@@ -62,8 +62,10 @@ windows:
     # History: {2024-12, 36} at tag scientist-prereg (with a note forbidding "2022-2025" for this
     # window); {2025-12, 48} by SC-SCI-10 (2026-08-05) — premise FALSE, the pull terminates
     # 2025-09-30; {2025-09, 45} by SC-SCI-12 (2026-08-07) — the frontier-completeness condition is now
-    # MET (WRDS saved-query date parameters PI-verified 2026-08-08), so the window is settled, with the
-    # tagged 36-month sub-window always reported as sensitivity (spec SC-SCI-13).
+    # MET (WRDS saved-query date parameters PI-verified 2026-08-08), so the window is settled. The
+    # tagged 36-month sub-window was reported as sensitivity (spec SC-SCI-13 clause 3) UNTIL SC-SCI-15
+    # (2026-09-01) retired it once the frontier-completeness CONDITION was verified; the 45-month window
+    # is now the SOLE reported evaluation window.
     # 45 is a third option adopted after the 2026-08-06 completeness gate resolved to "partial" —
     # see SC-SCI-12 for the disclosure. holdout_end_year=2025 (thresholds.yaml) = year-grain ingest
     # ceiling, unchanged and distinct from this month-grain window.
@@ -76,8 +78,10 @@ windows:
       SC-SCI-12, superseding SC-SCI-10's false 48 / end-2025-12. The frontier-completeness condition
       SC-SCI-12 attached is MET — the WRDS saved-query date parameters for the 2026-06-09 pull (range
       2002-07-01 – 2025-09-30) were PI-verified 2026-08-08 (docs/data/registers/citations_verified.md
-      §3) — so the 45-month window is settled; the tagged 2022-2024 sub-window is always reported
-      alongside as sensitivity (SC-SCI-13). holdout_end_year=2025 in thresholds.yaml is the
+      §3) — so the 45-month window is settled and is the SOLE reported evaluation window (the tagged
+      2022-2024 sub-window was reported alongside as sensitivity under SC-SCI-13 clause 3 UNTIL
+      SC-SCI-15 (2026-09-01) retired that cross-check on the now-verified completeness condition).
+      holdout_end_year=2025 in thresholds.yaml is the
       year-grain ingest raise-CEILING (an upper bound, not the data end), distinct from this
       month-grain window; the window ends 2025-09 and does NOT coincide with it. The frozen holdout
       script asserts these exact values before its one-shot execution.
@@ -123,16 +127,6 @@ inference:
     sided: two
     hac: newey_west
     lag_rule: floor_T_pow_0.25
-  secondary_benchmark:
-    # POINT-11 ESCALATION. BBW-4 (Bai-Bali-Wen 2019) is retracted (retraction notice JFE 150(3),
-    # 2023). If DFPS show DRF/CRF/LRF are spanned by MKT_Bond, then alpha vs BBW-4 approximates
-    # alpha vs MKT_Bond alone — a weak benchmark makes extension alpha easier and INFLATES the
-    # RQ4 endpoint (a bias in the primary endpoint, not a write-up caveat). BBW-4 stays PRIMARY
-    # (changing it breaks the replication chain to the corpus strategies); this secondary
-    # benchmark is reported ALONGSIDE it, and BOTH go in the tag so neither is chosen post-hoc.
-    factor_set: DFPS4
-    source: "Dick-Nielsen, Feldhutter, Pedersen & Stolborg (2026), papers/pdf/Corporate bond factors replication crisis.pdf"
-    status: pre_registered_build_pending      # constructed with the G3 inference gate
   secondary_test: paired_difference_vs_corrected_parent
   descriptive_only: comparison_vs_as_published
   bh_fdr_q: 0.10                 # proposal-family BH level. Coincides with auditor.fdr.q by
@@ -325,6 +319,11 @@ amendments:                      # logged amendments appended here post-tag (see
       (2) SENSITIVITY — the tagged 2022-2024 sub-window is computed in the same single one-shot holdout execution
       and reported beside every registered 45-month figure (spec: SC-SCI-13), so the window move's
       effect is visible in the results, not asserted away.
+      [SENSITIVITY safeguard (2) RETIRED by SC-SCI-15 (2026-09-01): once the frontier-completeness
+      CONDITION (safeguard (1)) was SATISFIED AND VERIFIED (citations_verified.md §3, PI-verified
+      2026-08-08), the window-sensitivity cross-check is no longer load-bearing and is withdrawn.
+      SC-SCI-12's window ruling itself is UNCHANGED — 45 months (2022-01..2025-09) remains the sole
+      reported evaluation window.]
       CONSEQUENCES: OOS T = 45 (SC-SCI-10's "36 -> 48" is void; it is 36 -> 45); the 60-month
       support floors still bind (45 < 60), so amendment A7 applies UNCHANGED; the frozen holdout
       script must assert window == 2022-01..2025-09 before its one-shot execution; one value
@@ -372,6 +371,12 @@ amendments:                      # logged amendments appended here post-tag (see
       on the tagged 2022-2024 sub-window, computed in the same single one-shot holdout execution — the SC-SCI-12
       window move is visible in the results, not narrated. This requires the one-shot holdout / frozen-holdout
       script to compute both windows in one pass (build item E14, not yet wired).
+      *** RETIRED by SC-SCI-15 (2026-09-01). *** Clause (3) ONLY is withdrawn: once the
+      frontier-completeness CONDITION was verified (citations_verified.md §3, PI-verified 2026-08-08),
+      the separate window-sensitivity cross-check is no longer load-bearing. The block-bootstrap
+      diagnostic (clauses (1),(2),(4)) is RETAINED, now on the 45-month window ONLY (block lengths
+      {3,6}, labelled, non-confirmatory); the "both windows in one pass" build item E14 is void.
+      Clauses (1),(2),(4),(5),(6) stand unchanged.
       (4) HAC's small-sample fragility at this T is stated as a further reason the holdout claim is
       DESCRIPTIVE, never a verdict.
       (5) No lattice inference runs on the holdout window, by design; the lattice support floor
@@ -411,3 +416,31 @@ amendments:                      # logged amendments appended here post-tag (see
       design choice (half of vartheta), not a universal constant. Adding this thresholds.yaml key
       re-pins FROZEN_THRESHOLDS_SHA256 (agents/scientist/experimentalist/oneshot_holdout/frozen.py); the one-shot holdout real
       one-shot has not run, so the re-pin is maintenance, not a provenance break.
+  - id: SC-SCI-15
+    date: 2026-09-01
+    status: APPROVED              # Recorded pre-holdout 2026-09-01; no protected
+                                  # data (holdout artefact/listing/metadata) accessed. Register-before-run.
+    finding: retire-36mo-window-sensitivity
+    summary: >
+      Retires the 36-month holdout window sensitivity (SC-SCI-13 clause (3) and the corresponding
+      SC-SCI-12 SENSITIVITY safeguard). The single registered 45-month window (2022-01..2025-09,
+      SC-SCI-12) becomes the sole reported evaluation window.
+      RATIONALE: SC-SCI-12 adopted 45 months under two safeguards — (i) the frontier-completeness
+      CONDITION and (ii) the 36-month SENSITIVITY (the tagged 2022-2024 sub-window reported beside
+      every 45-month figure). Safeguard (i) is now SATISFIED AND VERIFIED (citations_verified.md §3;
+      WRDS saved-query date parameters 2002-07-01–2025-09-30, PI-verified 2026-08-08), directly
+      establishing that all 45 months exist, are complete, and are never-read. With completeness
+      verified and the holdout held DESCRIPTIVE-ONLY (SC-SCI-14, no verdict rests on it), the
+      retained 45-month block-bootstrap CI (SC-SCI-13 clauses (1),(2),(4)) is the distribution-free
+      uncertainty measure, and the separate window-sensitivity cross-check is withdrawn as no longer
+      load-bearing. The 36-month figure was the originally tagged window under a mistaken belief about
+      the extent of complete months (corrected by SC-SCI-12), not a substantive alternative design.
+      SCOPE: SC-SCI-12's window ruling stands unchanged. SC-SCI-13 is RETAINED except clause (3):
+      the block-bootstrap diagnostic now runs on the 45-month window only (block lengths {3,6},
+      labelled, non-confirmatory); clause (3)'s "both windows in one pass" build item (E14) is void.
+      CODE: derive_sensitivity_subwindow and all sub_window plumbing removed (windows.py,
+      gate_checklist.py, run_oneshot_holdout.py, stage1_build.py, stage2_evaluate.py, panel_builder.py);
+      shared/stats holdout_inference reduced to a single window; FROZEN_ONESHOT_HOLDOUT_SCRIPT_HASH re-pinned;
+      71 offline tests pass; thresholds.yaml unchanged.
+      TIMING: recorded pre-holdout (register-before-run); no holdout artefact, listing, or metadata
+      accessed — so no window-selection (post-hoc) risk.

@@ -45,4 +45,4 @@ def test_evaluator_goes_through_shared_stats():
     # Positive assertion: the evaluator DOES use the sanctioned shared surface.
     src = (ONESHOT_HOLDOUT_DIR / "stage2_evaluate.py").read_text()
     assert "from shared.stats import" in src
-    assert "holdout_inference_window_sensitivity" in src
+    assert "holdout_inference" in src

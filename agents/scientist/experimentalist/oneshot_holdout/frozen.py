@@ -22,12 +22,17 @@ from __future__ import annotations
 # auditor.practical_significance.vartheta_sensitivity_grid (§8.2.3/§9 materiality sweep); RE-PINNED
 # 2026-08-24 after appending `synth_2026` to corpus.selection.design_touched_exclusions (T2-SEL-3,
 # the T4(b) synthetic instrument); RE-PINNED 2026-08-24 after adding scientist.equivalence_margin
-# (SC-SCI-14 RQ4 Part-B: the development-window TOST margin delta = 1/2*vartheta). one-shot holdout's real run
+# (SC-SCI-14 RQ4 Part-B: the development-window TOST margin delta = 1/2*vartheta); RE-PINNED 2026-09-01
+# after a comment-only edit to a corpus.selection.design_touched_exclusions entry; RE-PINNED 2026-09-01
+# after renaming a cost-scenario key (standing terminology fix). one-shot holdout's real run
 # has not run, so re-pinning is maintenance, not a provenance break. Any later thresholds change must re-pin.
-FROZEN_THRESHOLDS_SHA256 = "43f073a385ac85c9d0d2a362c85eae12adbca038bf4ee7b77ebcbe3395264c6e"
+FROZEN_THRESHOLDS_SHA256 = "7c04f14bc1042fe4e238c93c31cf2c175195c48d73a7dc24e46eb2bdef9dfd16"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library
-# lift of load_feed + the FISD builders). Any later edit to an oneshot_holdout module invalidates this and must re-pin
-# it to the new _dir_code_hash(); an empty/stale value fails the real gate closed.
-FROZEN_ONESHOT_HOLDOUT_SCRIPT_HASH = "6ef1fe79c8b42ffbaea128f2bfa182a02f007f99ae94ff233dd93e68a7ee7f01"
+# lift of load_feed + the FISD builders); RE-PINNED 2026-08-31 after the 36-month holdout sensitivity
+# sub-window was removed from the one-shot holdout modules (windows/gate_checklist/stage1/stage2/run_oneshot_holdout/panel_builder),
+# leaving the single registered 45-month window; RE-PINNED 2026-09-01 after a panel_builder.py docstring
+# edit. Any later edit to an oneshot_holdout module invalidates this and must
+# re-pin it to the new _dir_code_hash(); an empty/stale value fails the real gate closed.
+FROZEN_ONESHOT_HOLDOUT_SCRIPT_HASH = "86c360076d08e4bf2e9f419f9fffdb079630894e86eabe2af0b8a546c3b9feed"

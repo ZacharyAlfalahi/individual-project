@@ -49,7 +49,7 @@ def _rehearsal_survivors_and_benchmarks():
     surv = pd.Series(bbw[num[0]].to_numpy(), index=bbw["date"])
     parent = pd.Series(bbw[num[1] if len(num) > 1 else num[0]].to_numpy(), index=bbw["date"])
     survivors = [SurvivorInput("rehearsal_standin", surv, parent)]
-    benchmarks = {"bbw4": bbw[["date"] + num], "dfps4": bbw[["date"] + num]}
+    benchmarks = {"bbw4": bbw[["date"] + num]}
     return survivors, benchmarks
 
 
@@ -94,7 +94,7 @@ def _run_rehearsal() -> int:
     )
     report = run_oneshot_holdout(cfg)
     print(f"one-shot holdout rehearsal GREEN={report.green} seed_start={report.seed_start} "
-          f"window={report.window.start}..{report.window.end} sub={report.sub_window.start}..{report.sub_window.end}")
+          f"window={report.window.start}..{report.window.end}")
     print(f"  seeded artefacts non-NaN at first month: {report.stage1.all_seeded_green()}")
     print(f"  rehearsal-green marker: {MARKER_DIR / 'oneshot_rehearsal_marker.jsonl'}")
     return 0 if report.green else 1

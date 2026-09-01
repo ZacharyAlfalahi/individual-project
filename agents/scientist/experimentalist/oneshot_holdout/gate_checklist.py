@@ -4,7 +4,7 @@ The checklist runs BEFORE the holdout gate is ever consulted. It validates the w
 (the landed two-source guard), the release provenance (tag reachable, SC-SCI-12 APPROVED
 + discharged), the frozen configuration fingerprint, and the presence of the upstream
 artefacts the run depends on (P3 moderate-prior, E9 cost decision, run manifest wiring,
-rehearsal-green). It does NOT open the gate — it returns the validated windows and
+rehearsal-green). It does NOT open the gate — it returns the validated window and
 fingerprint for the orchestrator, or raises on the first failure.
 """
 
@@ -20,7 +20,7 @@ import yaml
 
 from .. import holdout
 from .marker import RehearsalMarker
-from .windows import Window, derive_sensitivity_subwindow, registered_window
+from .windows import Window, registered_window
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
@@ -52,7 +52,6 @@ class ChecklistConfig:
 @dataclass(frozen=True)
 class GateChecklistResult:
     window: Window
-    sub_window: Window
     thresholds_fingerprint: str
     checks_passed: tuple[str, ...] = field(default_factory=tuple)
 
@@ -84,13 +83,12 @@ def _find_amendment(protocol: dict, amendment_id: str) -> dict | None:
 
 # --- individual checks (each raises OneshotHoldoutGateError) ------------------------------------------
 
-def check_window(cfg: ChecklistConfig) -> tuple[Window, Window]:
-    """§1.2 — window assertion first (the two-source guard), then DERIVE the sub-window."""
+def check_window(cfg: ChecklistConfig) -> Window:
+    """§1.2 — window assertion (the two-source guard)."""
     triple = holdout.assert_evaluation_window(
         protocol_path=cfg.protocol_path, repo_root=cfg.repo_root,
     )
-    window = registered_window(triple)
-    return window, derive_sensitivity_subwindow(window)
+    return registered_window(triple)
 
 
 def check_release_tag(cfg: ChecklistConfig) -> None:
@@ -173,9 +171,9 @@ def check_rehearsal_green(cfg: ChecklistConfig) -> None:
 
 
 def run_pre_run_checklist(cfg: ChecklistConfig) -> GateChecklistResult:
-    """Run every §1.3 check in order, fail-loud. Returns the validated windows + fingerprint.
+    """Run every §1.3 check in order, fail-loud. Returns the validated window + fingerprint.
     Does NOT open the holdout gate."""
-    window, sub_window = check_window(cfg)
+    window = check_window(cfg)
     check_release_tag(cfg)
     check_scsci12_approved(cfg)
     fingerprint = check_thresholds_fingerprint(cfg)
@@ -185,7 +183,6 @@ def run_pre_run_checklist(cfg: ChecklistConfig) -> GateChecklistResult:
     check_rehearsal_green(cfg)
     return GateChecklistResult(
         window=window,
-        sub_window=sub_window,
         thresholds_fingerprint=fingerprint,
         checks_passed=(
             "window", "release_tag", "scsci12_approved", "thresholds_fingerprint",

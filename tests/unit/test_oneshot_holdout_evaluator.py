@@ -1,4 +1,4 @@
-"""one-shot holdout stage-2 evaluator (spec §3): descriptive-only, both windows in one pass, P3 posterior."""
+"""one-shot holdout stage-2 evaluator (spec §3): descriptive-only, the registered window, P3 posterior."""
 
 from __future__ import annotations
 
@@ -9,10 +9,7 @@ from agents.scientist.experimentalist.oneshot_holdout.stage2_evaluate import (
     SurvivorInput,
     evaluate_survivors,
 )
-from agents.scientist.experimentalist.oneshot_holdout.windows import (
-    derive_sensitivity_subwindow,
-    registered_window,
-)
+from agents.scientist.experimentalist.oneshot_holdout.windows import registered_window
 
 PRIORS = {"wide": 0.02, "moderate": 0.005, "sceptical": 0.0025}
 
@@ -30,22 +27,19 @@ def _synthetic():
     return surv, par, factors
 
 
-def test_evaluator_emits_both_windows_with_pinned_lag():
+def test_evaluator_emits_full_window_with_pinned_lag():
     surv, par, factors = _synthetic()
     reg = registered_window(("2022-01", "2025-09", 45))
-    sub = derive_sensitivity_subwindow(reg)
-    results = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, sub, PRIORS)
+    results = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, PRIORS)
     rec = results[0].benchmarks["bbw4"]
     assert rec.full["window_label"] == "full_45m" and rec.full["n_obs"] == 45
-    assert rec.sensitivity["window_label"] == "subwindow_le_2024_12" and rec.sensitivity["n_obs"] == 36
     assert rec.full["nw_lags_used"] == 2                          # ⌊T^0.25⌋ pinned
 
 
 def test_evaluator_record_has_no_pass_fail_field():
     surv, par, factors = _synthetic()
     reg = registered_window(("2022-01", "2025-09", 45))
-    sub = derive_sensitivity_subwindow(reg)
-    rec = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, sub, PRIORS)[0]
+    rec = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, PRIORS)[0]
     full = rec.benchmarks["bbw4"].full
     for forbidden in ("pass", "passed", "verdict", "advanced", "survives", "is_significant"):
         assert forbidden not in full
@@ -54,8 +48,7 @@ def test_evaluator_record_has_no_pass_fail_field():
 def test_bootstrap_cis_are_labelled_diagnostic_never_confirmatory():
     surv, par, factors = _synthetic()
     reg = registered_window(("2022-01", "2025-09", 45))
-    sub = derive_sensitivity_subwindow(reg)
-    full = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, sub, PRIORS)[0] \
+    full = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, PRIORS)[0] \
         .benchmarks["bbw4"].full
     cis = full["bootstrap_cis"]
     assert len(cis) == 6                                          # 3 statistics x {3, 6}
@@ -67,7 +60,6 @@ def test_bootstrap_cis_are_labelled_diagnostic_never_confirmatory():
 def test_posterior_has_three_priors():
     surv, par, factors = _synthetic()
     reg = registered_window(("2022-01", "2025-09", 45))
-    sub = derive_sensitivity_subwindow(reg)
-    full = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, sub, PRIORS)[0] \
+    full = evaluate_survivors([SurvivorInput("s1", surv, par)], {"bbw4": factors}, reg, PRIORS)[0] \
         .benchmarks["bbw4"].full
     assert set(full["posterior"]["priors"]) == {"wide", "moderate", "sceptical"}

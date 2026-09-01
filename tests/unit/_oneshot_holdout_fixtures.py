@@ -53,7 +53,7 @@ def synthetic_panel_builder(inventory=("drf", "crf", "ipca_oos", "fisd_ratings")
     """A PanelBuilder that returns one-shot holdout-inventory-shaped frames non-NaN from window.start,
     with a warm-up run from seed_start (mimicking a rolling construction seeded on development)."""
 
-    def _build(*, seed_start: str, window: Window, sub_window: Window):
+    def _build(*, seed_start: str, window: Window):
         idx = pd.period_range(seed_start, window.end, freq="M").to_timestamp("M")
         warm = pd.Period(window.start, "M").to_timestamp("M")
         rng = np.random.default_rng(11)
@@ -89,4 +89,4 @@ def synthetic_benchmarks(window: Window):
         "mktb": rng.normal(0, 0.02, len(months)),
         "drf": rng.normal(0, 0.02, len(months)),
     })
-    return {"bbw4": frame, "dfps4": frame}
+    return {"bbw4": frame}

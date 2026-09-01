@@ -14,11 +14,16 @@ from agents.reporter.bundle import (
     StageStatus,
     derive_reportability,
     load_bundle,
+    load_phase_stacks,
 )
 from agents.reporter.manifest import parse_manifest_text
 from shared.reporting.claims import ArtefactType
 
 _CV = CodeVersion(full="reporterfullsha", short="reporter")
+
+_PHASE_F_IDS, _PHASE_D_IDS = load_phase_stacks()
+_PF_STR = ",".join(sorted(_PHASE_F_IDS))  # the recorded reportable stack
+_PD_STR = ",".join(sorted(_PHASE_D_IDS))  # the recorded free-dev stack
 
 
 def _sha(p: Path) -> str:
@@ -31,9 +36,10 @@ def _write(path: Path, obj) -> Path:
     return path
 
 
-def _repo(tmp_path: Path, *, audit_scope="COMPLETE", with_refusal=False):
+def _repo(tmp_path: Path, *, audit_scope="COMPLETE", with_refusal=False, model_ids: str | None = None):
     files: dict[str, Path] = {}
-    files["spec"] = _write(tmp_path / "runs/g3/bbw/spec_0.json", {"header": {}})
+    header = {"model_ids": model_ids} if model_ids else {}
+    files["spec"] = _write(tmp_path / "runs/g3/bbw/spec_0.json", {"header": header})
     files["quant_result"] = _write(
         tmp_path / "results/quant/run_x/drf.json", {"summary": {"sharpe": 0.4}}
     )
@@ -109,17 +115,37 @@ def test_config_refusal_makes_compilation_refused(tmp_path):
 
 
 def test_reportability_phase_d(tmp_path):
-    b = _load(tmp_path, _repo(tmp_path), phase="D")
+    # Recorded free-dev stack + declared phase D -> non-reportable.
+    b = _load(tmp_path, _repo(tmp_path, model_ids=_PD_STR), phase="D")
     assert b.reportability is ReportabilityStatus.NON_REPORTABLE_PHASE_D
 
 
 def test_reportability_phase_f(tmp_path):
-    b = _load(tmp_path, _repo(tmp_path), phase="F")
+    # Recorded reportable stack + declared phase F -> reportable.
+    b = _load(tmp_path, _repo(tmp_path, model_ids=_PF_STR), phase="F")
     assert b.reportability is ReportabilityStatus.REPORTABLE
 
 
-def test_reportability_fails_closed():
-    assert derive_reportability("Z") is ReportabilityStatus.NON_REPORTABLE_OTHER
+def test_reportability_mislabel_cannot_upgrade_a_dev_run(tmp_path):
+    # A pointer declaring F over a run whose trace records the free-dev stack must NOT become
+    # reportable: reportability follows what actually ran, not the requester's label.
+    b = _load(tmp_path, _repo(tmp_path, model_ids=_PD_STR), phase="F")
+    assert b.reportability is ReportabilityStatus.NON_REPORTABLE_PHASE_D
+
+
+def test_reportability_absent_trace_fails_closed(tmp_path):
+    # No recorded model ids -> nothing to verify what ran -> fail closed, even under phase F.
+    b = _load(tmp_path, _repo(tmp_path), phase="F")
+    assert b.reportability is ReportabilityStatus.NON_REPORTABLE_OTHER
+
+
+def test_reportability_unrecognised_stack_fails_closed():
+    assert (
+        derive_reportability(
+            "F", "some-unpinned-model,another", phase_f_ids=_PHASE_F_IDS, phase_d_ids=_PHASE_D_IDS
+        )
+        is ReportabilityStatus.NON_REPORTABLE_OTHER
+    )
 
 
 def test_git_stamp_normalisation_never_fabricates_full(tmp_path):

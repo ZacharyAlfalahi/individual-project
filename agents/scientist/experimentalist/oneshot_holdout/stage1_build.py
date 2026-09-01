@@ -24,8 +24,9 @@ import pandas as pd
 from .seed_start import derive_seed_start
 from .windows import Window
 
-# A PanelBuilder receives the derived seed_start and both windows and returns the one-shot holdout-inventory
-# artefacts as {name: DataFrame} (both price families, signals, factors, IPCA OOS, FISD ratings).
+# A PanelBuilder receives the derived seed_start and the registered window and returns the
+# one-shot holdout-inventory artefacts as {name: DataFrame} (both price families, signals, factors, IPCA OOS,
+# FISD ratings).
 PanelBuilder = Callable[..., Mapping[str, pd.DataFrame]]
 
 
@@ -81,7 +82,6 @@ def _first_month_non_nan(df: pd.DataFrame, first_month: str) -> bool:
 def build_holdout_panel(
     *,
     window: Window,
-    sub_window: Window,
     quarantine_dir: str | Path,
     panel_builder: PanelBuilder,
     thresholds_path: str | Path | None = None,
@@ -106,7 +106,7 @@ def build_holdout_panel(
         window.start, thresholds_path=thresholds_path, margin_months=margin_months,
     )
 
-    artefacts_data = panel_builder(seed_start=seed_start, window=window, sub_window=sub_window)
+    artefacts_data = panel_builder(seed_start=seed_start, window=window)
     if not artefacts_data:
         raise ValueError("panel_builder returned no artefacts")
 

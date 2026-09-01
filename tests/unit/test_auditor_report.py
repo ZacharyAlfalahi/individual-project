@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import textwrap
 
 import pytest
@@ -79,6 +80,33 @@ def test_bootstrap_meta_recorded():
     assert d["bootstrap"]["t_common"] > 0
 
 
+def test_stationary_sensitivity_reported_beside_primary():
+    # The pre-registered stationary bootstrap (D-A29) is surfaced BESIDE the fixed-block
+    # primary — a finite gap CI at the same expected block length, never a verdict input.
+    d = _report().to_dict()["bootstrap"]
+    assert d["stationary_block_length"] == 6
+    lo, hi = d["stationary_gap_ci_low"], d["stationary_gap_ci_high"]
+    assert lo <= hi and math.isfinite(lo) and math.isfinite(hi)
+
+
+def test_materiality_sweep_wired_into_full_audit():
+    # The §8.2.3/§9 neighbouring-threshold sweep reaches the Bayesian materiality output.
+    import dataclasses
+
+    grid = (0.0005, 0.001, 0.0015, 0.002)
+    cfg = dataclasses.replace(CONFIG, vartheta=0.001, vartheta_grid=grid)
+    scenario = build_scenario("meas_err", seed=0)
+    report = run_full_audit(
+        scenario.strategy, scenario.panel, all_runnable_facts(), cfg,
+        signals=scenario.signals, n_trials=20, sr_std=0.1, seed=1,
+    )
+    posteriors = report.to_dict()["bayesian"]["posteriors"]
+    assert posteriors
+    for post in posteriors.values():
+        sweep = dict((v, p) for v, p in post["p_material_sweep"])
+        assert set(sweep) == set(grid)
+
+
 def test_partial_audit_reduces_confirmatory_family():
     facts = [
         ToggleFacts("survivorship", runnable=False,
@@ -132,6 +160,7 @@ def test_config_from_thresholds_reads_full_block(tmp_path):
             percentage_denominator_min: 0.05
           practical_significance:
             vartheta: 0.05
+            vartheta_sensitivity_grid: [0.025, 0.05, 0.075, 0.1]
           compression:
             d_max: 0.2
           fdr:
@@ -149,6 +178,7 @@ def test_config_from_thresholds_reads_full_block(tmp_path):
     assert cfg.vartheta == 0.05
     assert cfg.fdr_q == 0.1
     assert cfg.gap_bands.large == 0.10
+    assert cfg.vartheta_grid == (0.025, 0.05, 0.075, 0.1)
 
 
 def test_config_from_thresholds_fails_loud_on_missing_vartheta(tmp_path):

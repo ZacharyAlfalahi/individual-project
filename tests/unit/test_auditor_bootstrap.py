@@ -12,7 +12,9 @@ from agents.auditor.checks.bootstrap import (
     block_length,
     circular_block_indices,
     effective_blocks,
+    first_order_covariance,
     run_bootstrap,
+    stationary_block_indices,
 )
 from agents.auditor.data.synthetic_panel import build_scenario
 from agents.auditor.schemas.lattice_types import CellReturns, MetricSet
@@ -160,3 +162,87 @@ def test_injected_meas_err_effect_interval_excludes_zero():
     )
     lo, hi = res.doe_ci()[frozenset({"meas_err"})]
     assert not (lo <= 0.0 <= hi), f"meas_err CI [{lo}, {hi}] should exclude 0"
+
+
+# --------------------------------------------------------------------------
+# Stationary (Politis–Romano) sensitivity generator (D-A29)
+# --------------------------------------------------------------------------
+
+def test_stationary_block_indices_length_and_wrap():
+    rng = np.random.default_rng(0)
+    idx = stationary_block_indices(50, 6, rng)
+    assert len(idx) == 50
+    assert idx.min() >= 0 and idx.max() < 50
+
+
+def test_stationary_block_indices_mean_block_length():
+    # Empirical mean block length ≈ mean_ell: count non-contiguous breaks on a long draw.
+    rng = np.random.default_rng(1)
+    t, mean_ell = 3000, 6
+    idx = stationary_block_indices(t, mean_ell, rng)
+    breaks = 1 + int(np.sum(idx[1:] != (idx[:-1] + 1)))  # wrap counts as a rare break
+    mean_len = t / breaks
+    assert 4.0 < mean_len < 9.0, mean_len  # centred on 6, not 1 and not 50
+
+
+def test_stationary_block_indices_deterministic():
+    a = stationary_block_indices(40, 5, np.random.default_rng(7))
+    b = stationary_block_indices(40, 5, np.random.default_rng(7))
+    assert np.array_equal(a, b)
+
+
+# --------------------------------------------------------------------------
+# scheme routing: "fixed" is byte-identical to the prior default; "stationary" runs
+# --------------------------------------------------------------------------
+
+def test_scheme_fixed_reproduces_default():
+    cells, common = _clean_lattice_cells()
+    kw = dict(n_replicates=80, data_driven_block_months=6,
+              min_effective_blocks=3, holding_period=1, seed=11)
+    default = run_bootstrap(cells, common, TOGGLE_IDS, **kw)
+    explicit = run_bootstrap(cells, common, TOGGLE_IDS, scheme="fixed", **kw)
+    assert default.scheme == "fixed" and explicit.scheme == "fixed"
+    assert np.array_equal(default.gap_draws, explicit.gap_draws)
+
+
+def test_stationary_scheme_runs_and_is_recorded():
+    cells, common = _clean_lattice_cells()
+    res = run_bootstrap(
+        cells, common, TOGGLE_IDS,
+        n_replicates=100, data_driven_block_months=6,
+        min_effective_blocks=3, holding_period=1, seed=5, scheme="stationary",
+    )
+    assert res.scheme == "stationary"
+    lo, hi = res.gap_ci()
+    assert lo <= hi and np.isfinite(lo) and np.isfinite(hi)
+
+
+def test_unknown_scheme_refuses():
+    cells, common = _clean_lattice_cells()
+    with pytest.raises(BootstrapError, match="unknown bootstrap scheme"):
+        run_bootstrap(
+            cells, common, TOGGLE_IDS,
+            n_replicates=10, data_driven_block_months=6,
+            min_effective_blocks=3, holding_period=1, scheme="wild",
+        )
+
+
+# --------------------------------------------------------------------------
+# first_order_covariance: the k×k measurement V̂_s for the hierarchy (D-A32)
+# --------------------------------------------------------------------------
+
+def test_first_order_covariance_shape_symmetry_and_diagonal():
+    cells, common = _clean_lattice_cells()
+    res = run_bootstrap(
+        cells, common, TOGGLE_IDS,
+        n_replicates=200, data_driven_block_months=6,
+        min_effective_blocks=3, holding_period=1, seed=9,
+    )
+    labels, cov = first_order_covariance(res, TOGGLE_IDS)
+    k = len(TOGGLE_IDS)
+    assert labels == tuple(TOGGLE_IDS)
+    assert cov.shape == (k, k)
+    assert np.allclose(cov, cov.T)
+    # the diagonal is exactly each first-order effect's own bootstrap variance.
+    for i, tg in enumerate(TOGGLE_IDS):
+        assert np.isclose(cov[i, i], np.var(res.doe_draws[frozenset({tg})], ddof=1), rtol=1e-9)

@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from shared.stats.holdout_bootstrap import (
-    holdout_inference_window_sensitivity,
+    holdout_inference,
     paired_difference_bootstrap,
 )
 
@@ -48,7 +48,7 @@ def test_no_gate_module_imports_holdout_bootstrap():
     for path in sorted(_GATE_DIR.glob("*.py")):
         src = path.read_text(encoding="utf-8")
         assert "holdout_bootstrap" not in src, f"{path.name} references holdout_bootstrap"
-        assert "holdout_inference_window_sensitivity" not in src, path.name
+        assert "holdout_inference" not in src, path.name
 
 
 def test_module_does_no_io():
@@ -64,8 +64,8 @@ def test_module_does_not_import_the_scientist():
 def test_inputs_are_not_mutated():
     surv, par, fr = _synthetic()
     surv_b, par_b, fr_b = surv.copy(), par.copy(), fr.copy()
-    holdout_inference_window_sensitivity(
-        surv, par, fr, subwindow_cutoff=pd.Timestamp("2024-12-31"),
+    holdout_inference(
+        surv, par, fr,
         n_replicates=50, min_effective_blocks=10, seed=1,
     )
     pd.testing.assert_series_equal(surv, surv_b)

@@ -224,6 +224,30 @@ def load_vartheta(path: str | Path | None = None) -> float:
     return _require_number(value, "auditor.practical_significance.vartheta", "§9 / §8.2.3")
 
 
+def load_vartheta_grid(path: str | Path | None = None) -> tuple[float, ...]:
+    """The §8.2.3/§9 neighbouring-threshold SENSITIVITY grid. Every entry must be a
+    positive number and the frozen headline vartheta MUST be one of them, so the sweep
+    always brackets — and can never silently drift from — the primary cutoff."""
+    dotted = "auditor.practical_significance.vartheta_sensitivity_grid"
+    block = _auditor_block(path)
+    raw = _require(block, ("practical_significance", "vartheta_sensitivity_grid"), "§8.2.3 / §9")
+    if not isinstance(raw, (list, tuple)) or not raw:
+        raise AuditorThresholdError(f"{dotted} (present but not a non-empty list: {raw!r})",
+                                    "§8.2.3 / §9")
+    grid = tuple(
+        _require_number(v, f"{dotted}[{i}]", "§8.2.3 / §9") for i, v in enumerate(raw)
+    )
+    if any(v <= 0 for v in grid):
+        raise AuditorThresholdError(f"{dotted} (every threshold must be positive: {grid!r})",
+                                    "§8.2.3 / §9")
+    headline = load_vartheta(path)
+    if not any(abs(v - headline) <= 1e-15 for v in grid):
+        raise AuditorThresholdError(
+            f"{dotted} (must contain the frozen headline vartheta={headline!r})", "§8.2.3 / §9"
+        )
+    return grid
+
+
 def load_compression_dmax(path: str | Path | None = None) -> float:
     """D_max — the compression-adequacy materiality threshold (§8.1, O-A10)."""
     block = _auditor_block(path)

@@ -18,10 +18,21 @@ replicate). Verdict against a pre-registered D_max: interval below D_max →
 compression adequate; otherwise a finding (the appendix coefficients are promoted
 to the body). Failure of the compression does not invalidate the saturated
 analysis — only skipping the check is not reportable.
+
+Degenerate case. When the lattice carries no first-or-higher-order effect energy
+(a flat response surface), the ratio is 0/0 and D is UNDEFINED. It is recorded as
+NaN, never as 0: a surface with no structure has no higher-order structure to
+hide, so compression is trivially adequate, but "no higher-order structure"
+(a real D of 0) must be distinguished from "no structure at all" (D undefined).
+Silently reporting 0 would fill an undefined quantity with a zero — the very error
+the applicability discipline forbids — and, at the replicate level, would pull the
+bootstrap interval toward zero and bias the adequacy verdict toward "adequate".
+Degenerate replicates are therefore NaN and excluded from the interval.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -29,12 +40,13 @@ import numpy as np
 
 from .bootstrap import BootstrapResult
 
-_DENOM_FLOOR = 1e-18  # below this there is no effect energy at all => D := 0
+_DENOM_FLOOR = 1e-18  # below this there is no effect energy at all => D is undefined (NaN)
 
 
 def compression_statistic(doe: Mapping[frozenset, float]) -> float:
-    """D from a DOE-effect map over subsets. Returns 0.0 when there is no
-    first-or-higher-order effect energy (a clean/degenerate lattice)."""
+    """D from a DOE-effect map over subsets. Returns NaN when there is no
+    first-or-higher-order effect energy (a flat/degenerate lattice): the ratio is
+    0/0 and undefined, and must not be silently reported as 0."""
     num = 0.0
     den = 0.0
     for T, e in doe.items():
@@ -45,13 +57,15 @@ def compression_statistic(doe: Mapping[frozenset, float]) -> float:
             if order >= 3:
                 num += sq
     if den < _DENOM_FLOOR:
-        return 0.0
+        return float("nan")
     return num / den
 
 
 def compression_distribution(bootstrap: BootstrapResult) -> np.ndarray:
     """The bootstrap distribution of D, computed from the per-replicate DOE draws
-    (which cover every subset)."""
+    (which cover every subset). Degenerate replicates (no effect energy) are NaN,
+    not 0, so they are excluded from the interval rather than pulling it toward
+    zero."""
     B = bootstrap.n_replicates
     num = np.zeros(B)
     den = np.zeros(B)
@@ -62,7 +76,9 @@ def compression_distribution(bootstrap: BootstrapResult) -> np.ndarray:
             den += sq
             if order >= 3:
                 num += sq
-    return np.where(den < _DENOM_FLOOR, 0.0, num / np.where(den < _DENOM_FLOOR, 1.0, den))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        ratio = num / den
+    return np.where(den < _DENOM_FLOOR, np.nan, ratio)
 
 
 @dataclass(frozen=True, eq=False)
@@ -71,7 +87,8 @@ class CompressionResult:
     d_ci_low: float
     d_ci_high: float
     d_max: float
-    adequate: bool              # interval below D_max
+    adequate: bool              # degenerate, or finite interval below D_max
+    degenerate: bool            # no first-or-higher-order effect energy => D undefined (NaN)
     draws: np.ndarray
 
     def to_dict(self) -> dict:
@@ -81,6 +98,7 @@ class CompressionResult:
             "d_ci_high": self.d_ci_high,
             "d_max": self.d_max,
             "compression_adequate": self.adequate,
+            "compression_degenerate": self.degenerate,
         }
 
 
@@ -92,15 +110,25 @@ def run_compression(
     alpha: float = 0.05,
 ) -> CompressionResult:
     """Compute D, its bootstrap interval, and the adequacy verdict against D_max.
-    `adequate` iff the whole interval sits below D_max (§8.1)."""
+    `adequate` iff the lattice is degenerate (no structure to compress) OR the whole
+    finite interval sits below D_max (§8.1). A degenerate lattice yields an
+    undefined D (NaN), reported as such rather than as 0; its degenerate bootstrap
+    replicates are NaN and excluded from the interval."""
     d_point = compression_statistic(doe_point)
+    degenerate = not math.isfinite(d_point)
     draws = compression_distribution(bootstrap)
-    lo, hi = np.percentile(draws, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    finite = draws[np.isfinite(draws)]
+    if finite.size == 0:
+        lo = hi = float("nan")
+    else:
+        lo, hi = np.percentile(finite, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    adequate = bool(degenerate or (math.isfinite(hi) and hi < d_max))
     return CompressionResult(
         d_point=d_point,
         d_ci_low=float(lo),
         d_ci_high=float(hi),
         d_max=d_max,
-        adequate=bool(hi < d_max),
+        adequate=adequate,
+        degenerate=degenerate,
         draws=draws,
     )

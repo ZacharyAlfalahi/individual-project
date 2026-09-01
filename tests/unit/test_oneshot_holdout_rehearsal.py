@@ -49,13 +49,12 @@ def test_full_rehearsal_is_green_and_writes_marker(tmp_path):
     report = run_oneshot_holdout(cfg)
 
     assert report.green is True and report.rehearsal is True
-    assert report.window.n_months == 45 and report.sub_window.n_months == 36
+    assert report.window.n_months == 45
     assert report.stage1.all_seeded_green()                   # seeding validation (§5)
     assert report.seed_start == "2014-10"                     # 2018-01 − (36 + 3)
-    # both windows present for each survivor
+    # the registered window present for each survivor
     rec = report.results[0].benchmarks["bbw4"]
     assert rec.full["window_label"] == "full_45m"
-    assert rec.sensitivity["window_label"] == "subwindow_le_2024_12"
     # rehearsal-green marker written; the real-run marker was NOT started
     assert RehearsalMarker(cfg.rehearsal_marker_path).is_green() is True
     assert Marker(cfg.marker_path).records() == []
@@ -74,7 +73,7 @@ def test_rehearsal_refuses_when_a_construction_is_nan_at_first_month(tmp_path):
     import numpy as np
     import pandas as pd
 
-    def broken_builder(*, seed_start, window, sub_window):
+    def broken_builder(*, seed_start, window):
         idx = pd.period_range(seed_start, window.end, freq="M").to_timestamp("M")
         return {"drf": pd.DataFrame({"date": idx, "drf": np.full(len(idx), np.nan)})}
 

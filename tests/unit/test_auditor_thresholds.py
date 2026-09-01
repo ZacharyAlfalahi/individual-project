@@ -18,6 +18,8 @@ from agents.auditor.thresholds import (
     load_primary_metric,
     load_shapley_pct_denominator_min,
     load_support_gate,
+    load_vartheta,
+    load_vartheta_grid,
 )
 
 
@@ -107,6 +109,48 @@ def test_bool_is_rejected_as_int(tmp_path):
         load_bootstrap_config(path)
 
 
+def test_vartheta_grid_happy_path_contains_headline(tmp_path):
+    path = _write(
+        tmp_path,
+        """
+        auditor:
+          practical_significance:
+            vartheta: 0.001
+            vartheta_sensitivity_grid: [0.0005, 0.001, 0.0015, 0.002]
+        """,
+    )
+    grid = load_vartheta_grid(path)
+    assert grid == (0.0005, 0.001, 0.0015, 0.002)
+    assert load_vartheta(path) in grid
+
+
+def test_vartheta_grid_without_headline_raises(tmp_path):
+    path = _write(
+        tmp_path,
+        """
+        auditor:
+          practical_significance:
+            vartheta: 0.001
+            vartheta_sensitivity_grid: [0.0005, 0.0015, 0.002]
+        """,
+    )
+    with pytest.raises(AuditorThresholdError, match="headline vartheta"):
+        load_vartheta_grid(path)
+
+
+def test_vartheta_grid_missing_raises(tmp_path):
+    path = _write(
+        tmp_path,
+        """
+        auditor:
+          practical_significance:
+            vartheta: 0.001
+        """,
+    )
+    with pytest.raises(AuditorThresholdError, match="vartheta_sensitivity_grid"):
+        load_vartheta_grid(path)
+
+
 def test_the_real_thresholds_file_is_pre_registered():
     # The auditor: block is now pre-registered (git tag auditor-prereg-2026-07-22).
     # The real file must load a valid support gate, and the whole AuditorConfig must
@@ -118,3 +162,5 @@ def test_the_real_thresholds_file_is_pre_registered():
     cfg = AuditorConfig.from_thresholds()
     assert cfg.primary_metric == "average"
     assert cfg.vartheta > 0 and cfg.d_max > 0 and 0 < cfg.fdr_q < 1
+    # the neighbouring-threshold sweep grid is pre-registered and brackets the headline.
+    assert cfg.vartheta in cfg.vartheta_grid and len(cfg.vartheta_grid) >= 2

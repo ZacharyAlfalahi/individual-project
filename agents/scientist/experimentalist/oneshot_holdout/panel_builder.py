@@ -1,6 +1,6 @@
 """Concrete PanelBuilders for one-shot holdout stage 1 (spec §2) — dev-pseudo (runnable) + holdout (gated).
 
-A ``PanelBuilder`` (see ``stage1_build.PanelBuilder``) is ``(*, seed_start, window, sub_window)
+A ``PanelBuilder`` (see ``stage1_build.PanelBuilder``) is ``(*, seed_start, window)
 -> {name: DataFrame}`` returning the one-shot holdout inventory as in-memory frames. Two concrete builders:
 
   * ``dev_pseudo_builder`` — reads the EXISTING development artefacts (monthly panels, signals,
@@ -104,7 +104,7 @@ def dev_pseudo_builder(dev_root: Path | None = None):
     read is under data/development. The gate never opens for this builder."""
     root = Path(dev_root) if dev_root is not None else DEV_ROOT
 
-    def _build(*, seed_start: str, window: Window, sub_window: Window):
+    def _build(*, seed_start: str, window: Window):
         lo, hi = seed_start, window.end
         inv: dict[str, pd.DataFrame] = {}
 
@@ -220,7 +220,7 @@ def holdout_builder(dev_root: Path | None = None):
       4. Extract the window months; return the inventory. zero_leakage_check runs on fisd_ratings.
 
     Open wiring points to close during the gated run (documented, not silently assumed):
-      * survivor / benchmark derivation: the G6 survivor strategy returns and the BBW-4 / DFPS-4
+      * survivor / benchmark derivation: the G6 survivor strategy returns and the BBW-4
         benchmark factors handed to stage 2 are extracted from THIS inventory (currently OneshotHoldoutConfig
         carries them; the real path derives them here);
       * scripts.* importability: the compute_* workers live in scripts/, not the library — the gated

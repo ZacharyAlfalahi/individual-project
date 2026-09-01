@@ -31,7 +31,7 @@ from .marker import (
 )
 from .stage1_build import PanelBuilder, Stage1Result, build_holdout_panel
 from .stage2_evaluate import SurvivorInput, SurvivorResult, evaluate_survivors
-from .windows import Window, derive_sensitivity_subwindow
+from .windows import Window
 
 # The development pseudo-window mirroring the real 45-month geometry (§5). Fixed, dev-only.
 REHEARSAL_WINDOW = Window(start="2018-01", end="2021-09", n_months=45)
@@ -62,7 +62,6 @@ class OneshotHoldoutRunReport:
     rehearsal: bool
     seed_start: str
     window: Window
-    sub_window: Window
     stage1: Stage1Result
     results: list[SurvivorResult]
     manifest: dict
@@ -76,7 +75,7 @@ def _serialise_results(results: list[SurvivorResult]) -> list[dict]:
             "survivor_id": r.survivor_id,
             "is_extension_1": r.is_extension_1,
             "benchmarks": {
-                b: {"full": br.full, "sensitivity": br.sensitivity}
+                b: {"full": br.full}
                 for b, br in r.benchmarks.items()
             },
         })
@@ -95,7 +94,6 @@ def _manifest(cfg: OneshotHoldoutConfig, check: GateChecklistResult, stage1: Sta
         "output_hash": hashlib.sha256(output_blob).hexdigest(),
         "tokens_cost": "n/a",
         "window": vars(check.window),
-        "sub_window": vars(check.sub_window),
         "seed_start": stage1.seed_start,
         "holdout_processed": holdout_processed,
     }
@@ -133,20 +131,18 @@ def _open_holdout_gate(cfg: OneshotHoldoutConfig) -> None:
         cfg.holdout_reader_open()
 
 
-def _evaluate_and_manifest(cfg: OneshotHoldoutConfig, check, window, sub_window, stage1, *, holdout_processed: bool):
+def _evaluate_and_manifest(cfg: OneshotHoldoutConfig, check, window, stage1, *, holdout_processed: bool):
     # Clip to the registered window (m3) so the "full" statistic is exactly window.n_months — seed
-    # months can never leak into the holdout statistic. The canonical evaluator derives the sub-window
-    # from the cutoff.
-    results = evaluate_survivors(cfg.survivors, cfg.benchmarks, window, sub_window, cfg.priors)
+    # months can never leak into the holdout statistic.
+    results = evaluate_survivors(cfg.survivors, cfg.benchmarks, window, cfg.priors)
     manifest = _manifest(cfg, check, stage1, results, holdout_processed=holdout_processed)
     return results, manifest
 
 
 def _run_rehearsal(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> OneshotHoldoutRunReport:
     window = REHEARSAL_WINDOW.validate()
-    sub_window = derive_sensitivity_subwindow(window)
     stage1 = build_holdout_panel(
-        window=window, sub_window=sub_window, quarantine_dir=cfg.quarantine_dir,
+        window=window, quarantine_dir=cfg.quarantine_dir,
         panel_builder=cfg.panel_builder, thresholds_path=cfg.checklist.thresholds_path,
         zero_leakage_check=cfg.zero_leakage_check,
     )
@@ -154,18 +150,18 @@ def _run_rehearsal(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> One
         bad = [a.name for a in stage1.artefacts if not a.non_nan_at_first_month]
         raise RehearsalNotGreen(f"rolling constructions NaN at the first pseudo-window month: {bad}")
     results, manifest = _evaluate_and_manifest(
-        cfg, check, window, sub_window, stage1, holdout_processed=False,
+        cfg, check, window, stage1, holdout_processed=False,
     )
     write_manifest(manifest, cfg.quarantine_dir)              # persist the provenance record (§3)
     RehearsalMarker(cfg.rehearsal_marker_path).write_green(
         ts=cfg.ts, extra={"seed_start": stage1.seed_start, "data_hash": stage1.artefact_hashes(),
                           "pseudo_window": vars(window)},
     )
-    return OneshotHoldoutRunReport(True, stage1.seed_start, window, sub_window, stage1, results, manifest, green=True)
+    return OneshotHoldoutRunReport(True, stage1.seed_start, window, stage1, results, manifest, green=True)
 
 
 def _run_real(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> OneshotHoldoutRunReport:
-    window, sub_window = check.window, check.sub_window
+    window = check.window
     marker = Marker(cfg.marker_path)
     action = marker.plan_next()                                 # raises RerunRefused per §4
 
@@ -174,7 +170,7 @@ def _run_real(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> OneshotH
         marker.append("STAGE1_STARTED", ts=cfg.ts,
                       extra={"restart": action == RESTART_BUILD, "code_hash": _dir_code_hash()})
         stage1 = build_holdout_panel(
-            window=window, sub_window=sub_window, quarantine_dir=cfg.quarantine_dir,
+            window=window, quarantine_dir=cfg.quarantine_dir,
             panel_builder=cfg.panel_builder, thresholds_path=cfg.checklist.thresholds_path,
             zero_leakage_check=cfg.zero_leakage_check,
         )
@@ -182,18 +178,18 @@ def _run_real(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> OneshotH
     else:  # RESUME_EVALUATE — the builder re-reads data/holdout, so it MUST re-gate (M2).
         _open_holdout_gate(cfg)
         stage1 = build_holdout_panel(
-            window=window, sub_window=sub_window, quarantine_dir=cfg.quarantine_dir,
+            window=window, quarantine_dir=cfg.quarantine_dir,
             panel_builder=cfg.panel_builder, thresholds_path=cfg.checklist.thresholds_path,
             zero_leakage_check=cfg.zero_leakage_check,
         )
 
     marker.append("STAGE2_STARTED", ts=cfg.ts)
     results, manifest = _evaluate_and_manifest(
-        cfg, check, window, sub_window, stage1, holdout_processed=True,
+        cfg, check, window, stage1, holdout_processed=True,
     )
     write_manifest(manifest, cfg.quarantine_dir)             # persist the provenance record before COMPLETE
     marker.append("COMPLETE", ts=cfg.ts, extra={"output_hash": manifest["output_hash"]})
-    return OneshotHoldoutRunReport(False, stage1.seed_start, window, sub_window, stage1, results, manifest, green=False)
+    return OneshotHoldoutRunReport(False, stage1.seed_start, window, stage1, results, manifest, green=False)
 
 
 def run_oneshot_holdout(cfg: OneshotHoldoutConfig) -> OneshotHoldoutRunReport:

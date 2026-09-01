@@ -26,8 +26,11 @@ windows:
   # SC-SCI-12 (2026-08-07): corrected to {end: 2025-09, n_months: 45} — the complete-months span of
   # the ingest partition (2026-06-09 re-pull ends 2025-09-30; Oct-Dec 2025 do not exist). Supersedes
   # SC-SCI-10 (2026-08-05)'s {end: 2025-12, n_months: 48}; tag baseline {end: 2024-12, n_months: 36}.
-  # CONDITIONAL on the frontier-completeness citation; tagged 36-month sub-window reported as
-  # sensitivity (SC-SCI-13). holdout_end_year=2025 (thresholds.yaml) = ingest ceiling, not the window.
+  # The frontier-completeness citation is VERIFIED (citations_verified.md §3, PI-verified 2026-08-08),
+  # so the 45-month window is the SOLE reported evaluation window. SC-SCI-15 (2026-09-01) retired the
+  # tagged 36-month sub-window sensitivity (SC-SCI-13 clause 3); the block-bootstrap diagnostic is
+  # RETAINED on the 45-month window only. holdout_end_year=2025 (thresholds.yaml) = ingest ceiling,
+  # not the window.
   evaluation_holdout:  {start: 2022-01, end: 2025-09, n_months: 45}
 
 entry_rule:
@@ -54,8 +57,6 @@ generation:
 
 inference:
   bh_fdr_q: 0.10
-  secondary_benchmark: DFPS4        # SC-SCI-5 (point 11): reported alongside primary BBW-4; both
-                                    #   in the tag; DFPS-4 built with the G3 inference gate.
 
 # F6: macro conditioning series ingested from >= 1997-07 warms the expanding-window threshold, so
 # effective T stays 209 for every template (T1/T2 would otherwise be ~174). See scope_changes.md.

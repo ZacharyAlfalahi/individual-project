@@ -29,14 +29,26 @@ class BootstrapMeta:
     block_length: int
     effective_blocks: int
     t_common: int
+    # Pre-registered stationary-bootstrap sensitivity (D-A29), reported BESIDE the
+    # normative fixed-block bootstrap — never a decision rule. None when not computed;
+    # `stationary_block_length` is the EXPECTED (mean) geometric block length.
+    stationary_gap_ci_low: float | None = None
+    stationary_gap_ci_high: float | None = None
+    stationary_block_length: int | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "n_replicates": self.n_replicates,
             "block_length": self.block_length,
             "effective_blocks": self.effective_blocks,
             "t_common": self.t_common,
         }
+        if None not in (self.stationary_gap_ci_low, self.stationary_gap_ci_high,
+                        self.stationary_block_length):
+            d["stationary_gap_ci_low"] = self.stationary_gap_ci_low
+            d["stationary_gap_ci_high"] = self.stationary_gap_ci_high
+            d["stationary_block_length"] = self.stationary_block_length
+        return d
 
 
 @dataclass(frozen=True, eq=False)

@@ -27,9 +27,18 @@ from agents.reporter.bundle import (  # noqa: E402
     StageStatus,
     UpstreamStamps,
     derive_reportability,
+    load_phase_stacks,
 )
 from shared.reporting.canonical import canonical_hash  # noqa: E402
 from shared.reporting.claims import ArtefactType  # noqa: E402
+
+_PHASE_F_IDS, _PHASE_D_IDS = load_phase_stacks()
+
+
+def _fixture_model_ids(phase: str) -> str:
+    """The recorded model-id string a fixture stamps: the configured stack matching its phase, so
+    a phase-F fixture derives REPORTABLE and a phase-D fixture NON_REPORTABLE_PHASE_D."""
+    return ",".join(sorted(_PHASE_F_IDS if phase == "F" else _PHASE_D_IDS))
 
 DRF_CORE = _REPO / "results/auditor/run_45313b2/drf_core.json"
 DRF_QUANT = _REPO / "results/quant/run_aafcf13/drf.json"
@@ -97,7 +106,12 @@ def make_bundle(
         phase=phase,
         docs=docs,
         stages=stages,
-        reportability=derive_reportability(phase),
+        reportability=derive_reportability(
+            phase,
+            _fixture_model_ids(phase),
+            phase_f_ids=_PHASE_F_IDS,
+            phase_d_ids=_PHASE_D_IDS,
+        ),
         artefacts=artefacts,
         upstream_stamps=UpstreamStamps(
             quant=GitStamp(full="a" * 40, short="aaaaaaa", source_form="full+short"),

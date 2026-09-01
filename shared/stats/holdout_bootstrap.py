@@ -43,7 +43,7 @@ _SURVIVOR_ALPHA = "survivor_alpha"
 _PARENT_ALPHA = "parent_alpha"
 _STAT_CODES = {_PAIRED: 0, _SURVIVOR_ALPHA: 1, _PARENT_ALPHA: 2}
 
-# The pinned lag: floor(T ** 0.25) = 2 at both T = 36 and T = 45 (SC-SCI-13 clause 1).
+# The pinned lag: floor(T ** 0.25) = 2 at T = 45 (SC-SCI-13 clause 1).
 _PINNED_NW_LAGS = 2
 
 
@@ -76,7 +76,7 @@ class BlockBootstrapCI:
     statistic: str                 # paired_mean_difference | survivor_alpha | parent_alpha
     block_length_months: int       # 3 or 6
     n_replicates: int              # B (1000)
-    effective_blocks: int          # floor(T / ell): 45/{3,6}=15/7; 36/{3,6}=12/6
+    effective_blocks: int          # floor(T / ell): 45/{3,6}=15/7
     min_effective_blocks: int      # the floor this CI is LABELLED against (10)
     floor_label: str               # floor_met | below_floor (disclosure, never a gate)
     point: float | None            # the statistic on the un-resampled sample
@@ -107,8 +107,8 @@ class BlockBootstrapCI:
 class HoldoutInferenceWindow:
     """PRIMARY HAC-t statistics + the DIAGNOSTIC bootstrap CIs for one window."""
 
-    window_label: str              # full_45m | subwindow_le_2024_12
-    n_obs: int                     # T (paired overlap; 45 or 36)
+    window_label: str              # full_45m
+    n_obs: int                     # T (paired overlap; 45)
     nw_lags_used: int              # 2 (pinned)
     # PRIMARY — the confirmatory statistics; the bootstrap never replaces these.
     paired_mean_difference: float | None
@@ -293,17 +293,9 @@ def own_alpha_bootstrap(
 
 
 # ---------------------------------------------------------------------------
-# Window-sensitivity wrapper — the FUNCTION form of SC-SCI-13 clause 3.
+# Holdout-inference wrapper — the FUNCTION form of SC-SCI-13 clause 3.
 # (The one-shot holdout orchestrator that loads the real holdout panel and calls this is unbuilt.)
 # ---------------------------------------------------------------------------
-
-
-def _slice_le(s: pd.Series, cutoff: pd.Timestamp) -> pd.Series:
-    return s[pd.to_datetime(s.index) <= cutoff]
-
-
-def _slice_factors_le(factors: pd.DataFrame, cutoff: pd.Timestamp) -> pd.DataFrame:
-    return factors[pd.to_datetime(factors["date"]) <= cutoff]
 
 
 def _one_window(
@@ -365,12 +357,11 @@ def _one_window(
     )
 
 
-def holdout_inference_window_sensitivity(
+def holdout_inference(
     survivor: pd.Series,
     parent: pd.Series,
     factors: pd.DataFrame,
     *,
-    subwindow_cutoff: pd.Timestamp,
     block_lengths: tuple[int, ...] = (3, 6),
     n_replicates: int,
     min_effective_blocks: int,
@@ -378,31 +369,15 @@ def holdout_inference_window_sensitivity(
     months_per_year: int = 12,
     seed: int,
     alpha: float = 0.05,
-) -> tuple[HoldoutInferenceWindow, HoldoutInferenceWindow]:
-    """PRIMARY HAC-t + DIAGNOSTIC bootstrap on the full window AND the tagged sub-window
-    (SC-SCI-13 window sensitivity: 45-month primary beside the 36-month `<= subwindow_cutoff`
-    sensitivity), computed in one call. The cutoff is applied to the INPUTS before alignment
-    so the paired difference and both own-alpha regressions see the same sample. Independent,
-    reproducible generators per window via SeedSequence.spawn.
+) -> HoldoutInferenceWindow:
+    """PRIMARY HAC-t + DIAGNOSTIC bootstrap on the registered 45-month holdout window
+    (SC-SCI-13 clause 3).
 
     PURE: takes in-memory series/frames only; performs no I/O and cannot read the holdout.
     """
-    cutoff = pd.Timestamp(subwindow_cutoff)
-    seed_full, seed_sub = (
-        int(child.generate_state(1)[0]) for child in np.random.SeedSequence(int(seed)).spawn(2)
-    )
-
-    full = _one_window(
+    return _one_window(
         survivor, parent, factors, window_label="full_45m",
         block_lengths=block_lengths, n_replicates=n_replicates,
         min_effective_blocks=min_effective_blocks, nw_lags=nw_lags,
-        months_per_year=months_per_year, seed=seed_full, alpha=alpha,
+        months_per_year=months_per_year, seed=int(seed), alpha=alpha,
     )
-    sub = _one_window(
-        _slice_le(survivor, cutoff), _slice_le(parent, cutoff), _slice_factors_le(factors, cutoff),
-        window_label="subwindow_le_2024_12",
-        block_lengths=block_lengths, n_replicates=n_replicates,
-        min_effective_blocks=min_effective_blocks, nw_lags=nw_lags,
-        months_per_year=months_per_year, seed=seed_sub, alpha=alpha,
-    )
-    return full, sub

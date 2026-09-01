@@ -23,16 +23,18 @@ from agents.scientist.experimentalist.oneshot_holdout.gate_checklist import (
 from tests.unit._oneshot_holdout_fixtures import valid_checklist_cfg
 
 
-def test_checklist_happy_path_returns_windows(tmp_path):
-    result = run_pre_run_checklist(valid_checklist_cfg(tmp_path))
+def test_checklist_happy_path_returns_window(tmp_path):
+    cfg = valid_checklist_cfg(tmp_path)
+    if not _tag_reachable_from_head(cfg.release_tag, cfg.repo_root):
+        pytest.skip(f"release tag {cfg.release_tag} not shipped in this copy")
+    result = run_pre_run_checklist(cfg)
     assert (result.window.start, result.window.end, result.window.n_months) == ("2022-01", "2025-09", 45)
-    assert (result.sub_window.start, result.sub_window.end, result.sub_window.n_months) == ("2022-01", "2024-12", 36)
     assert len(result.checks_passed) == 8
 
 
 def test_window_check_passes_against_real_protocol(tmp_path):
-    window, sub = check_window(valid_checklist_cfg(tmp_path))
-    assert window.n_months == 45 and sub.n_months == 36
+    window = check_window(valid_checklist_cfg(tmp_path))
+    assert window.n_months == 45
 
 
 def test_release_tag_refused_when_absent(tmp_path):
