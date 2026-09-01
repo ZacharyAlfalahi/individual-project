@@ -1,0 +1,235 @@
+schema: planted_key_v1
+paper_id: SYNTH_2026
+strategy_label: Synthetic Bond Momentum (SBM)
+status: frozen           # frozen 2026-09-01 at tag t4b-synthetic-kat-frozen, before any live pipeline run
+
+authoring:
+  authored: '2026-08-19'
+  procedure: truth_by_construction   # panel authored first -> statistics derived from the audited engine -> prose written third
+  reverification: every planted value re-derived in-repo and confirmed bit-exact before freezing (drift gate)
+  freeze_discipline: key frozen and git-tagged (t4b-synthetic-kat-frozen) before any live pipeline run
+  errata_rule: never edited after a live run; misses are reported; key defects go through a dated errata amendment
+
+provenance:
+  pdf_file: papers/synthetic/sbm_synth_2026.pdf
+  pdf_sha256: 040b51c199fcda214fff53820e9a89b8e640e5942c4b25f8ca5b3d1c83d3e592
+  pdf_rebuilt: '2026-08-24'   # de-branding recompile (title block + banner); body text unchanged
+  canonical_text: evaluation/canonical_texts/synth_2026.frozen.yaml
+  canonical_recipe_normalise_sha256: abe11ff63b76df2e46a775a70f1feb397d10fa59984bafd38d312b178b01a79e
+  canonical_text_hash: 6ba99f10f0d84d349d870817f2501bbc0017da6c4e80571c89943fbc5457de97
+  pages: 2
+  page_convention: 1-based PDF pages (Locator.page is 0-based)
+  derivation_record: docs/evaluation/t4b_derivation_record.txt
+  derivation_env: {python: 3.11.15, numpy: 2.4.4, pandas: 3.0.2}   # original derivation environment
+  derivation_reverified: {python: 3.12.7, numpy: 2.4.4, pandas: 3.0.3, date: '2026-08-24', result: bit_exact_42_of_42}
+
+dgp:
+  generator: agents/auditor/data/synthetic_panel.py
+  recipe:
+    - 'spec = SyntheticSpec(seed=2026)'
+    - 'panel, signals = make_clean_maximal_panel(spec)'
+    - 'panel, signals = inject_survivorship(panel, signals, 0.30)'
+    - 'signals = signals.rename(columns={"score_raw": "mom6_raw", "score_corr": "mom6_corr"})  # AFTER injection'
+  params: {seed: 2026, n_bonds: 60, n_months: 72, alpha: 0.01, noise_sd: 0.015,
+           start: '2005-01-31', rf_monthly: 0.001}
+  injection:
+    bias: survivorship
+    function: inject_survivorship
+    magnitude: 0.30
+    target: top 30 percent of bonds by mean score (superset of the 12-bond long quintile)
+    n_exits: 18
+    exit_window: ['2008-01-31', '2009-06-30']
+    crater_return: -0.30
+    panel_rows_after_injection: 3843
+  analytic_base_spread: 0.013248497147105942
+  q_top_quintile_mean: 0.7009548800860327
+  q_bottom_quintile_mean: -0.6238948346245614
+
+seam_1_enumeration:
+  driver_mode: gold           # enum_synth_2026.yaml; live-enum run optional/observational
+  expected_constructions:
+    - name: Synthetic Bond Momentum (SBM)
+      class: strategy
+      quote: 'We refer to this construction as Synthetic Bond Momentum (SBM).'
+      page: 1
+
+seam_2_extraction:
+  expected_tag_counts: {part2_stated: 20, part2_unknown: 18, inferred: 0, design: 0}
+  part1:
+    formation_structure: {value: sorted_portfolios, tag: STATED, page: 1,
+      quote: 'we sort bonds into quintile portfolios on a signal and trade the difference between the top and bottom portfolios'}
+    asset_class: {value: corporate_bonds, tag: STATED, page: 1,
+      quote: 'The data are a simulated panel of corporate bonds.'}
+    method_summary:
+      rubric: [monthly quintile sort, six-month momentum signal, long Q5 short Q1, equal weights, one-month hold]
+      quotes_required: 1-3 locating
+  sort_block:
+    sort_signal:
+      concept_id: past_6m_cumulative_return
+      params: {}
+      tag: STATED
+      page: 2
+      quote: "we rank bonds on six-month momentum, defined as the bond’s cumulative return over the six months ending at the formation month-end"
+      note: registry v1 alias 'six-month momentum'; U+2019 apostrophe verbatim
+    sort_kind: {value: single, tag: STATED, page: 2,
+      quote: 'The sort is a single univariate sort; no second characteristic is used.'}
+    n_groups: {value: 5, tag: STATED, page: 2,
+      quote: 'we sort bonds into quintile portfolios (five groups) on this signal'}
+    long_leg: {value: highest_signal, tag: STATED, page: 2,
+      quote: 'The SBM factor is long the highest-momentum quintile (Q5) and short the lowest-momentum quintile (Q1).'}
+    control_axis: null
+    control_n_groups: {tag: UNKNOWN, reason: not_stated, note: vacuous - no control axis}
+    bucketing_method: {tag: UNKNOWN, reason: not_stated, probe: true,
+      note: "'quintile' names the buckets; equal-count vs breakpoint never stated; truth = engine equal_count default"}
+    stripe_aggregation: {tag: UNKNOWN, reason: not_stated, note: vacuous - single sort}
+    control_missing_policy: {tag: UNKNOWN, reason: not_stated, note: vacuous - no control axis}
+    signal_transform: {tag: UNKNOWN, reason: not_stated, probe: true,
+      note: "trap: the 'no winsorisation ... to returns' sentence is expost_trim, not a signal transform; truth = none"}
+    combiner: {tag: UNKNOWN, reason: not_stated, routes_to_default: single_leg}
+  common:
+    signal_lag: {value: 0, tag: STATED, page: 2,
+      quote: 'The signal is measured through the formation month-end, and we impose no reporting or implementation lag between signal measurement and portfolio formation.'}
+    lag_convention: {value: month_end, tag: STATED, page: 2,
+      quote: 'All observations and timing conventions are in month-end event time.'}
+    weighting_scheme: {value: equal, tag: STATED, page: 2, quote: 'Portfolios are equal-weighted.'}
+    strategy_side: {value: long_short, tag: STATED, page: 2,
+      quote: 'The SBM factor is long the highest-momentum quintile (Q5) and short the lowest-momentum quintile (Q1).'}
+    rebalance_frequency: {value: monthly, tag: STATED, page: 2,
+      quote: 'Portfolios are re-formed at the end of every month and positions are held for one month.'}
+    holding_period: {value: 1, tag: STATED, page: 2,
+      quote: 'Portfolios are re-formed at the end of every month and positions are held for one month.'}
+    return_label: {value: realisation, tag: STATED, page: 2,
+      quote: 'The factor return attributed to month t+1 is the return realised over the month following formation.'}
+    return_availability_policy: {value: require_next_month_return, tag: STATED, page: 1,
+      quote: 'a bond enters the month-t sort only if it has a valid month-end observation in both month t and month t+1; bond-months failing this requirement are excluded for that month'}
+    transaction_cost_convention: {value: gross, tag: STATED, page: 2,
+      quote: 'All returns are gross of transaction costs.'}
+    rf_convention: {value: subtract_rf, tag: STATED, page: 1,
+      quote: 'Bond returns are measured in excess of the one-month Treasury bill rate.'}
+    return_compounding: {value: arithmetic, tag: STATED, page: 1,
+      quote: 'Returns are simple arithmetic monthly returns.'}
+    significance_convention: {value: hac_t_of_mean, tag: STATED, page: 2,
+      quote: 'The t-statistic uses Newey-West standard errors with three lags.'}
+    hac_lags: {value: 3, tag: STATED, page: 2,
+      quote: 'The t-statistic uses Newey-West standard errors with three lags.',
+      note: engine auto rule floor(4*(71/100)^(2/9)) = 3 on both supports - stated value equals engine behaviour}
+    annualisation: {value: arithmetic, tag: STATED, page: 2,
+      quote: 'Annualised figures use arithmetic scaling: means are multiplied by twelve and Sharpe ratios by the square root of twelve.'}
+    benchmark_model: {value: none, tag: STATED, page: 2,
+      quote: 'We report raw factor premia; no factor-model adjustment is applied.'}
+    expost_trim: {value: none, tag: STATED, page: 2,
+      quote: 'We apply no winsorisation, truncation, or other ex-post adjustment to returns.',
+      note: STATED none makes lab_trim runnable with OFF = none}
+    eligibility_missing_policy: {tag: UNKNOWN, reason: not_stated, default: drop}
+    min_bonds: {tag: UNKNOWN, reason: not_stated, default: groups, probe: true}
+    min_bonds_granularity: {tag: UNKNOWN, reason: not_stated, default: total}
+    tie_break_policy: {tag: UNKNOWN, reason: not_stated, default: deterministic_id, probe: true,
+      note: engine truth is a DESIGN default, never paper-stated}
+    weighting_base: {tag: UNKNOWN, reason: not_stated, probe: true,
+      note: "trap: 'equal-weighted' makes the base vacuous; STATED par/market_value = hallucination"}
+    weight_timing: {tag: UNKNOWN, reason: not_stated, default: formation, note: vacuous at one-month hold}
+    empty_leg_policy: {tag: UNKNOWN, reason: not_stated, default: skip, note: never fires on this panel}
+    overlap_convention: {tag: UNKNOWN, reason: not_stated, note: vacuous - one-month hold}
+    cohort_weighting: {tag: UNKNOWN, reason: not_stated, note: vacuous - no cohorts}
+    burn_in_policy: {tag: UNKNOWN, reason: not_stated, default: keep}
+    missing_return_policy: {tag: UNKNOWN, reason: not_stated, default: drop_and_renormalise,
+      note: load-bearing part carried by the STATED availability rule}
+    realisation_min_survivors: {tag: UNKNOWN, reason: not_stated, default: 0}
+  paper_facts:
+    sample_start: {value: 2005-02, tag: STATED, page: 2,
+      quote: 'The factor series spans February 2005 to December 2010 (71 monthly observations).'}
+    sample_end: {value: 2010-12, tag: STATED, page: 2,
+      quote: 'The factor series spans February 2005 to December 2010 (71 monthly observations).'}
+    claimed_headline_metric:
+      value: {mean: 1.15, t_stat: 11.80, unit: pct_per_month}
+      tag: STATED
+      page: 2
+      quote: 'the SBM factor earns an average return of 1.15% per month (t = 11.80)'
+    universe_filter:
+      truth: simulated panel of 60 corporate bonds, Jan 2005 - Dec 2010; valid month-end observation
+        required in t and t+1; bond-months from the month of default onward excluded (the plant)
+      quotes:
+        - {page: 1, quote: 'The panel comprises 60 simulated corporate bonds observed at each month-end from January 2005 to December 2010'}
+        - {page: 1, quote: 'bonds that enter default are removed from the sample from the month of default onward, so the panel contains no post-default observations, including the default-month return itself'}
+      current_driver_expectation: NOT_ASKED   # run_librarian emits UNKNOWN 'not extracted'; set to STATED once the schema supports the prose field-type
+    defaults_count_check: {page: 1, n_exits: 18,
+      quote: 'Eighteen of the sixty bonds enter default during the sample period, all between January 2008 and June 2009'}
+
+seam_3_compile:
+  registry_version_handshake: v1
+  refusals: []
+  variant: false
+  standing_subs_applied: []
+  combiner: single_leg
+  leg:
+    binding: {concept_id: past_6m_cumulative_return, column: mom6, status: BOUND}
+    groups: 5
+    weighting: equal
+    signal_lag: 0
+    long_group: 4
+    short_group: 0
+    holding_period: 1
+    min_bonds: 5          # factory default = groups
+    trim: none            # factory default (no stated trim reaches the factory)
+  engine_settings_used: {score: mom6, control: null, control_groups: 5, nw_lags: null, months_per_year: 12}
+
+seam_4_execution_as_published:   # all-OFF cell, native support = what the paper prints
+  n_months: 71
+  first_date: '2005-02-28'
+  last_date: '2010-12-31'
+  average: 0.011508669117050785
+  t_stat: 11.798346085461471
+  annualised_average: 0.13810402940460942
+  bumpiness: 0.006367290344441838
+  sharpe: 6.261250409487398
+  nw_lags_used: 3
+  avg_bonds_per_month: 21.253521126760564
+  n_bonds_min: 17
+  n_bonds_max: 24
+  return_series_sha256: 7b8f353d9b619ddadf90671e6eb3dea73f15a424dc766f3dd5b4c23323f07cc2
+  first_three_months: {'2005-02-28': 0.0106229637, '2005-03-31': 0.0143431598, '2005-04-30': 0.0080634444}
+  printed_claims: {mean_pct_per_month: 1.15, t_stat: 11.80, ann_mean_pct: 13.81, monthly_vol_pct: 0.64, sharpe: 6.26}
+  match_rule: printed == round(exact, 2dp); executed == exact bit-for-bit in-repo
+
+seam_5_corrected_endpoint:       # all-ON cell, native support
+  n_months: 70
+  first_date: '2005-03-31'
+  last_date: '2010-12-31'
+  average: 0.004406978016512072
+  t_stat: 1.4790514447209395
+  annualised_average: 0.05288373619814486
+  bumpiness: 0.014538290816636146
+  sharpe: 1.0500697679954876
+  return_series_sha256: 9cff9ae839515b7d76191673a174aef0efac6c12ebd5ef7a7a7c1d53b66ebe81
+  note: corrected strategy keeps a genuine positive premium - the plant inflates, not fabricates
+
+seam_6_audit:                    # 2^5 lattice, metric 'average', common support
+  preflight: {audit_scope: COMPLETE, runnable: [meas_err, stale_price, survivorship, lib_gap, lab_trim]}
+  lattice_cells: 32
+  common_support: {n_months: 70, first: '2005-03-31', last: '2010-12-31'}
+  Y_two_valued:
+    survivorship_off_cells: 0.011521322051782124
+    survivorship_on_cells: 0.004406978016512072
+    within_half_tolerance: 1.0e-12
+  doe_first_order:               # ON-minus-OFF = corrected-minus-uncorrected (RQ3 sign convention)
+    survivorship: {expected: -0.007114344035270049, sign: -1}
+    meas_err: {expected: 0.0, tolerance: 1.0e-12, mechanism: bit-exact no-op (families identical)}
+    stale_price: {expected: 0.0, tolerance: 1.0e-12, mechanism: no stale rows}
+    lab_trim: {expected: 0.0, tolerance: 1.0e-12, mechanism: published trim none == ON state}
+    lib_gap: {expected: 0.0, tolerance: 1.0e-12, mechanism: persistent score - lag-invariant ranks on common support}
+  bootstrap:
+    params: {n_replicates: 200, data_driven_block_months: 6, min_effective_blocks: 3, holding_period: 1}
+    seed: 3026
+    survivorship_ci95: [-0.013766031351070088, -0.0015746727577055967]   # excludes 0
+    others: CIs include 0
+  dominance_x5: {injected_over_max_other: '>= 5', observed_ratio: ~5.5e15, passes: true}
+  shapley_efficiency_residual_max: 1.0e-9
+  planted_verdict: >
+    The as-published SBM premium is inflated by ~0.71%/mo (~62% of the common-support spread)
+    by the survivorship exclusion; meas_err, stale_price, lab_trim, and lib_gap are no-ops
+    on this instrument.
+
+non_wiring:
+  hypothesis_registry_row: FORBIDDEN     # synthetic fixture exemption; D-A59 - never RQ3 census
+  rq1_denominators: EXCLUDED             # not in ANCHOR_SET* / PAPER_OF
+  design_touched_exclusions: 'synth_2026 MUST be appended (consistency test on frozen canonical texts)'

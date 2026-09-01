@@ -1,0 +1,21 @@
+# Gold enumeration list -- SYNTH_2026, the synthetic evaluation instrument (T4(b) end-to-end KAT).
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+authoring:
+  procedure: truth_by_construction
+  method: >
+    Single-construction enumeration for the synthetic KAT paper. The one strategy row is the
+    Synthetic Bond Momentum (SBM) construction; its quote is copied verbatim from the frozen
+    canonical text and is L1-locatable. The paper is a synthetic evaluation instrument whose
+    construction is known by design and recorded seam-by-seam in planted_key_synth_2026.yaml.
+  authored: 2026-08-19
+  source_text: evaluation/canonical_texts/synth_2026.frozen.yaml
+
+gold: true
+paper_id: SYNTH_2026
+constructions:
+  - name: Synthetic Bond Momentum (SBM)
+    quote: 'We refer to this construction as Synthetic Bond Momentum (SBM).'
+    class: strategy

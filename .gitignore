@@ -16,6 +16,12 @@
 # fixtures under evaluation/quote_fixtures/ ARE committed — small excerpts.)
 /evaluation/canonical_texts/
 
+# T4(b) synthetic-KAT working bundle — local working material (handoff notes, planted-key
+# spec draft, reference freeze). The BUILT artefacts are committed under evaluation/synthetic/,
+# evaluation/gold_specs/, docs/evaluation/; the paper PDF/tex live (gitignored) under /papers/synthetic/.
+# This working bundle must never touch the remote.
+/t4b-synthetic-kat/
+
 # Python
 __pycache__/
 *.py[cod]
