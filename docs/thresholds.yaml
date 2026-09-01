@@ -1086,18 +1086,26 @@ p1_codegen:
 # ---------------------------------------------------------------------------
 corpus:
   selection:
-    status: draft_pending_review       # -> 'frozen' on review + tag
+    status: frozen                            # frozen 2026-09-01 (T2-SEL-4); tag t2-selection-prereg
     # T2 = the extraction subset (StrategySpec extraction gold; RQ1 generalisation).
     # Target 3 unseen papers; drops to 2 if the human gold-authoring budget binds.
     t2_target_count: 3
     t2_min_count: 2
-    # Admission constraints (TO_SET — the values, once committed, give
-    # the rule its force; proposed defaults are in the narrative spec §3).
-    source_venue_constraint: TO_SET     # proposed: peer-reviewed finance journal OR arXiv q-fin
-    strategy_type_constraint: TO_SET    # proposed: cross-sectional sort OR fitted latent-factor model
-    source_date_window_from: TO_SET     # proposed: 2013-01 (not older than the earliest anchor, JNPS 2013)
-    source_date_window_to: TO_SET       # proposed: 2026-12 (through the project data ceiling)
-    tie_break: TO_SET                    # proposed: earliest publication, then alphabetical first-author surname
+    # Admission constraints (committed at the T2-SEL-4 freeze; narrative spec §3).
+    source_venue_constraint: peer_reviewed_journal_or_arxiv_qfin   # any peer-reviewed journal OR arXiv q-fin preprint; SSRN-only excluded (spec 3.1)
+    strategy_type_constraint: bond_cross_sectional_sort_or_fitted_latent_factor  # corp-bond cross-sectional factor, sort OR fitted latent-factor (spec 3.3)
+    source_date_window_from: "2013-01"        # not older than the earliest anchor, JNPS 2013
+    source_date_window_to: "2026-12"          # through the project data ceiling
+    governing_date_rule: journal_issue_date_or_first_arxiv_posting # spec 3.2a — governs the window AND the tie-break
+    tie_break: earliest_governing_date_then_first_author_surname   # selection order over admissibles; first t2_target_count taken (spec 3.5)
+    # Committed search protocol (spec §3-bis) — enumeration of the candidate pool
+    # is pre-registered, not ad hoc; every surfaced candidate gets a logged verdict.
+    search_protocol:
+      sources: [google_scholar, arxiv_qfin]
+      query: '"corporate bond" AND ("cross-section" OR "cross-sectional") AND (factor OR anomaly OR premium)'
+      depth_per_source: 100                   # first 100 results per source, engine ranking, execution date
+      adjudication_log: docs/evaluation/t2_candidate_adjudication.md  # append-only; created at execution
+      executed: false                         # flips true (with a dated spec §6 entry) once the search runs
     # Papers TOUCHED during design are INELIGIBLE. Append-only. At minimum every
     # paper with a frozen canonical text (evaluation/canonical_texts/*.frozen.yaml)
     # must appear here — enforced by the consistency test.

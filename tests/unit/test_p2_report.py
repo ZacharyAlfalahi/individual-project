@@ -6,6 +6,7 @@ dry-run makes zero generate() calls."""
 from __future__ import annotations
 
 import pandas as pd
+import yaml
 
 from evaluation.codegen.census import (
     CensusInput,
@@ -144,15 +145,28 @@ def test_driver_dry_run_makes_zero_generate_calls():
     assert set(out["prompt_sha256"]) == set(sel.members())
 
 
-def test_driver_not_gated_when_status_not_frozen():
-    # even with census_available=True and dry_run=False, a draft status keeps it fixture-only
+def test_driver_not_gated_when_status_not_frozen(tmp_path):
+    # even with census_available=True and dry_run=False, a draft status keeps it
+    # fixture-only. Injected via thresholds_path: the live corpus.selection.status
+    # froze on 2026-09-01 (T2-SEL-4), so the draft state must be a fixture.
+    draft = tmp_path / "thresholds_draft.yaml"
+    draft.write_text(
+        yaml.safe_dump({
+            "librarian": {"model_stack": {"phase_f": {
+                "model_a": {"model_id": "stub-a", "vendor": "stub", "api_key_env": "X"},
+                "model_b": {"model_id": "stub-b", "vendor": "stub", "api_key_env": "Y"},
+            }}},
+            "corpus": {"selection": {"status": "draft_pending_review"}},
+        }),
+        encoding="utf-8",
+    )
     census = _census_with(5, 5)
     zoo = [f"r{i}" for i in range(5)] + [f"c{i}" for i in range(5)]
     sel = select_arms(census, zoo, _TH)
     stub = CountingStub()
 
     out = run_p2_driver(census, sel, dry_run=False, census_available=True,
-                        client_factory=lambda m: stub)
+                        client_factory=lambda m: stub, thresholds_path=draft)
 
     assert out["corpus_selection_status"] != "frozen"
     assert stub.calls == 0 and out["emitted_numbers"] is False

@@ -24,9 +24,11 @@ from __future__ import annotations
 # the T4(b) synthetic instrument); RE-PINNED 2026-08-24 after adding scientist.equivalence_margin
 # (SC-SCI-14 RQ4 Part-B: the development-window TOST margin delta = 1/2*vartheta); RE-PINNED 2026-09-01
 # after a comment-only edit to a corpus.selection.design_touched_exclusions entry; RE-PINNED 2026-09-01
-# after renaming a cost-scenario key (standing terminology fix). one-shot holdout's real run
+# after renaming a cost-scenario key (standing terminology fix); RE-PINNED 2026-09-01 after the T2-SEL-4 freeze of
+# corpus.selection (status->frozen, five admission constraints committed, governing_date_rule +
+# search_protocol added). one-shot holdout's real run
 # has not run, so re-pinning is maintenance, not a provenance break. Any later thresholds change must re-pin.
-FROZEN_THRESHOLDS_SHA256 = "7c04f14bc1042fe4e238c93c31cf2c175195c48d73a7dc24e46eb2bdef9dfd16"
+FROZEN_THRESHOLDS_SHA256 = "fbb954fc62b188fbbdf2ac4f3246567a118817a55d4a075d80f796b22c6c77e0"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library
