@@ -1,0 +1,94 @@
+# T5 adversarial tier — refusal-recall ("must-refuse") set
+#
+# Status: DRAFT -- not yet finalised. Replaces the recorded "one out-of-scope doc" with a
+# per-category refusal-recall set (a design amendment; the count must be pre-registered before the run,
+# like the RQ2 refuse/FIR set). Answer key = agents/librarian/corpus_fate.py FATE_TABLE (already
+# authored). The must-refuse grader (scripts/run_t5_adversarial.py) runs run_librarian.py on each paper
+# and asserts the outcome against `expected_run_outcome`.
+#
+# SCOPE: RQ1 Librarian-refusal categories only -- where EXTRACTION itself should refuse/route-to-review:
+#   refuse_asset_class  (equity: signal not in the bond registry -> `unrecognised` -> REVIEW)
+#   refuse_no_strategy  (survey/MHT/signal-source: zero constructions -> REVIEW)
+# EXCLUDED: refuse_family_unsupported (KPP=IPCA, DG=DNN) is a QUANT-seam refusal (the Librarian may
+#   extract a spec; the compiler refuses) -> that is the RQ2 FIR path, not RQ1 T5.
+#
+# Run mode: --enumeration live (NO gold_enum) -- the whole point is to see enumeration/assembly refuse.
+# Exit-code map (scripts/run_librarian.py): 2 = REVIEW (pass), 3 = clean-but-zero-specs (pass),
+#   0 = clean emit (FAIL -- it should not have produced a spec), 4 = infra failure (ignore/retry, not a refusal).
+# Frozen texts live under the gitignored evaluation/adversarial/frozen/ (NOT canonical_texts/), so the
+# design_touched consistency test is not triggered per reject paper.
+
+schema: reject_set_v1
+status: draft_pending_ratification   # -> finalised + count pre-registered, then tag t5-adversarial-frozen
+
+papers:
+  # --- refuse_asset_class (equity) ---
+  - handle: HXZ
+    corpus_fate_handle: "HXZ"
+    pdf: papers/pdf/HXZ.pdf
+    category: refuse_asset_class
+    expected_fate: refuse_asset_class            # corpus_fate.fate_of("HXZ")
+    expected_run_outcome: REVIEW                  # exit 2 (unrecognised signal -> AssemblyIncomplete) or 3
+    enumeration_mode: live
+  - handle: KPJ
+    corpus_fate_handle: "KPJ"
+    pdf: papers/pdf/KPJ.pdf
+    category: refuse_asset_class
+    expected_fate: refuse_asset_class
+    expected_run_outcome: REVIEW
+    enumeration_mode: live
+
+  # --- refuse_no_strategy (survey / multiple-testing / signal-definition source) ---
+  - handle: HLZ
+    corpus_fate_handle: "HLZ"
+    pdf: papers/pdf/HLZ.pdf
+    category: refuse_no_strategy
+    expected_fate: refuse_no_strategy
+    expected_run_outcome: REVIEW                  # zero constructions -> exit 2
+    enumeration_mode: live
+  - handle: GKX
+    corpus_fate_handle: "Giglio-Kelly-Xiu survey"
+    pdf: "papers/pdf/Factor models, ML, and asset pricing.pdf"
+    category: refuse_no_strategy
+    expected_fate: refuse_no_strategy
+    expected_run_outcome: REVIEW
+    enumeration_mode: live
+  - handle: GL
+    corpus_fate_handle: "Glasserman-Lin"
+    pdf: "papers/pdf/Assessing look ahead bias (GL).pdf"
+    category: refuse_no_strategy
+    expected_fate: refuse_no_strategy
+    expected_run_outcome: REVIEW
+    enumeration_mode: live
+  - handle: BPW
+    corpus_fate_handle: "BPW"
+    pdf: papers/pdf/BPW.pdf
+    category: refuse_no_strategy
+    expected_fate: refuse_no_strategy
+    expected_run_outcome: REVIEW
+    enumeration_mode: live
+
+  # --- added 2026-09-01 (finalised 8-paper set); NOT in corpus_fate -> an expected
+  #     sheet is authored for each under evaluation/adversarial/sheets/reject_<handle>.sheet.yaml ---
+  - handle: BKMX
+    corpus_fate_handle: null                     # absent from corpus_fate.FATE_TABLE
+    pdf: papers/pdf/BKMX.pdf
+    category: refuse_no_strategy                  # data-cleaning/measurement paper; no portfolio construction
+    expected_fate: refuse_no_strategy
+    expected_run_outcome: REVIEW
+    enumeration_mode: live
+    expected_sheet: TO_AUTHOR               # evaluation/adversarial/sheets/reject_bkmx.sheet.yaml
+  - handle: DMR
+    corpus_fate_handle: null                     # absent from corpus_fate.FATE_TABLE
+    pdf: "papers/pdf/DMR (2023).pdf"
+    category: refuse_no_strategy                  # factor-evaluation / model-comparison, not a new-factor sort
+    expected_fate: refuse_no_strategy
+    expected_run_outcome: REVIEW
+    enumeration_mode: live
+    expected_sheet: TO_AUTHOR               # evaluation/adversarial/sheets/reject_dmr.sheet.yaml
+
+# Pre-registered count (finalised 2026-09-01): 8 = 2 refuse_asset_class (HXZ, KPJ)
+#   + 6 refuse_no_strategy (HLZ, GKX, GL, BPW, BKMX, DMR).
+# The first 6 are in corpus_fate.FATE_TABLE (answer key pre-authored); BKMX + DMR need hand-authored sheets.
+count_prereg: 8
+status_note: BKMX + DMR expected sheets are TO_AUTHOR; the other 6 are graded off corpus_fate.
