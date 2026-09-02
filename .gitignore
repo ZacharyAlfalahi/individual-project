@@ -16,6 +16,11 @@
 # fixtures under evaluation/quote_fixtures/ ARE committed — small excerpts.)
 /evaluation/canonical_texts/
 
+# T5 adversarial perturbed frozen texts — regenerable by evaluation/harness/perturb.py from the
+# committed golds + clean frozen texts + perturbation_prereg.md + deletion_valid.yaml. Large + local,
+# never committed; the committed artefacts are perturb.py, the expected sheets, and the pre-reg.
+/evaluation/adversarial/frozen/
+
 # T4(b) synthetic-KAT working bundle — local working material (handoff notes, planted-key
 # spec draft, reference freeze). The BUILT artefacts are committed under evaluation/synthetic/,
 # evaluation/gold_specs/, docs/evaluation/; the paper PDF/tex live (gitignored) under /papers/synthetic/.
@@ -61,4 +66,3 @@ runs/
 # one-shot holdout rehearsal run artefacts (local; the gated real-run marker oneshot_marker.jsonl is committed at the real run)
 results/scientist/oneshot_rehearsal_quarantine/
 agents/scientist/experimentalist/oneshot_holdout/markers/oneshot_rehearsal_marker.jsonl
-

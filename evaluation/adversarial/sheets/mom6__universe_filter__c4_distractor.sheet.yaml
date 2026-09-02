@@ -1,0 +1,21 @@
+anchor: mom6
+field: universe_filter
+dotted_path: paper_facts.universe_filter
+class: 4
+class_id: c4_distractor
+true_value: IG + NIG U.S. corporate bonds merged from Lehman, DataStream, Bloomberg
+  (quote-based) and TRACE, FISD (trade-based), 1973–2011; per-database eliminations
+  of preferred shares, non-USD, unusual coupons, warrants, MBS/ABS, convertibles,
+  unit deals; obvious data-entry errors removed (as stated)
+regime: invariant
+expected_outcome: excluded_weaker_rubric
+scoreable: false
+gold_quote: We eliminate preferred shares, non-U.S. dollar denominated bonds, bonds
+  with unusual coupons, bonds with warrants, bonds that are mortgage backed or asset
+  backed, convertible, or part of unit deals.
+gold_page: 5
+transform_id: distractor_fixed_decoy_v1 (page=0)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 4 (distractor injection); regime invariant;
+    expected: the correct fact is still extracted.'

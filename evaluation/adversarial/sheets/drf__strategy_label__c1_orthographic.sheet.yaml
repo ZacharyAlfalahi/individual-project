@@ -1,0 +1,18 @@
+anchor: drf
+field: strategy_label
+dotted_path: header.strategy_label
+class: 1
+class_id: c1_orthographic
+true_value: DRF
+regime: invariant
+expected_outcome: excluded_not_field_extracted
+scoreable: false
+gold_quote: we form bivariate portfolios by independently sorting bonds into five
+  quintiles based on their credit rating and five quin- tiles based on their downside
+  risk (measured by 5% VaR)
+gold_page: 14
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@2; o->U+043E@4)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

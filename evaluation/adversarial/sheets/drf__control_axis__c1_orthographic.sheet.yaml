@@ -1,0 +1,17 @@
+anchor: drf
+field: control_axis
+dotted_path: part2.legs[0].control_axis.concept_id
+class: 1
+class_id: c1_orthographic
+true_value: credit_rating
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: it is natural to use credit risk (proxied by credit rating) as the first
+  sorting variable in the construction of these new bond market factors
+gold_page: 14
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@2; o->U+043E@15)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

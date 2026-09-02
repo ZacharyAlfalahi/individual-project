@@ -1,0 +1,11 @@
+# Materialised from the approved drafts (semantic_drafts.md §5, ratified T5-PRE-5). Reject-set
+# arm; graded by scripts/run_t5_adversarial.py against run_librarian's exit code.
+handle: BKMX
+paper_id: papers/pdf/BKMX.pdf   # Bessembinder, Kahle, Maxwell & Xu, "Measuring Abnormal Bond
+                                # Performance", RFS 22(10), 2009, 4219-4258 (per papers/MANIFEST.md)
+category: refuse_no_strategy
+expected_run_outcome: REVIEW    # run_librarian exit 2 (or 3 = zero specs); FAIL on exit 0 (clean emit)
+rationale: >
+  Abnormal-bond-performance MEASUREMENT methodology (event-study test specification and power, plus
+  the data-cleaning procedures this project reuses); it defines no signal-sorted portfolio
+  construction, so there is no in-scope bond factor sort to extract.

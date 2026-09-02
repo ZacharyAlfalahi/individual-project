@@ -1,0 +1,20 @@
+anchor: mom6
+field: signal_lag
+dotted_path: part2.signal_lag
+class: 7
+class_id: c7_deletion
+true_value: 1
+regime: answer_changing
+expected_outcome: abstained_gold_silent
+scoreable: true
+gold_quote: Following the equity momentum literature, we skip one month between the
+  formation and holding periods to avoid potential biases from bid-ask bounce and
+  short-term price reversal.
+gold_page: 9
+transform_id: deletion_all_l1_copies_v1 (removed=1)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: perturbation_prereg.md §3 class 7 (evidence deletion), T5-PRE-6 restricted
+    to deletion_valid once-stated fields; regime answer-changing; expected ABSTAINED_GOLD_SILENT;
+    any SHIPPED_GOLD_SILENT (fabrication) = FAIL.
+fail_if: shipped_gold_silent (any fabrication of the deleted fact = FAIL)

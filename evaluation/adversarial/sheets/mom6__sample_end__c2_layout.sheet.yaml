@@ -1,0 +1,17 @@
+anchor: mom6
+field: sample_end
+dotted_path: paper_facts.sample_end
+class: 2
+class_id: c2_layout
+true_value: 2011-06
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: bond-month observations on 81,491 U.S. corporate bonds (8,159 per month
+  on average) by 9,709 issuers from January 1973 to June 2011
+gold_page: 2
+transform_id: layout_crosspage_seam_split_v1 (split@1060, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

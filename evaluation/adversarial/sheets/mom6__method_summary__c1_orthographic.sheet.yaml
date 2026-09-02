@@ -1,0 +1,26 @@
+anchor: mom6
+field: method_summary
+dotted_path: part1.method_summary.summary
+class: 1
+class_id: c1_orthographic
+true_value: 'Each month t, bonds are ranked on their cumulative return over months
+  t−6 to t−1 and sorted into deciles P1–P10. The strategy is long the winner decile
+  P10 and short the loser decile P1, equally weighted within portfolios, with positions
+  held over months t+1 to t+6 (one skip month), so the strategy month-t return equally
+  averages the six overlapping cohorts alive that month. The output is a monthly long-short
+  momentum return series, January 1973–June 2011. Locating quotes: (1) header strategy_quote,
+  page 9; (2) "The momentum strategy is long the winner portfolio, P10, and short
+  the loser portfolio, P1." page 9; (3) "The overall momentum strategy month-t return
+  is the equally weighted average month-t return of strategies implemented in the
+  prior month and strategies formed up to six months earlier." page 9'
+regime: invariant
+expected_outcome: excluded_weaker_rubric
+scoreable: false
+gold_quote: each month t, bonds are sorted into decile portfolios, P1 to P10, based
+  on their cumulative returns over months t −6 to t −1 (formation period)
+gold_page: 9
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@4; o->U+043E@6)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

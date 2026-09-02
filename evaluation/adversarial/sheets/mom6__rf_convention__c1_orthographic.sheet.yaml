@@ -1,0 +1,17 @@
+anchor: mom6
+field: rf_convention
+dotted_path: part2.rf_convention
+class: 1
+class_id: c1_orthographic
+true_value: none
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: the momentum portfolio excess return over the risk-free rate or the momentum
+  strategy return rp,t =RP 10,t −RP 1,t
+gold_page: 12
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@3; o->U+043E@5)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

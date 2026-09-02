@@ -1,0 +1,20 @@
+anchor: str
+field: claimed_headline_metric
+dotted_path: paper_facts.claimed_headline_metric
+class: 4
+class_id: c4_distractor
+true_value:
+  mean: -0.99
+  t_stat: -4.46
+  unit: pct_per_month
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: In Panel A (single-sort), the unad- justed factor earns −0.99% per month
+  (t = −4.46), but the signal-adjusted factor earns only −0.09% (t = −0.51).
+gold_page: 17
+transform_id: distractor_fixed_decoy_v1 (page=0)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 4 (distractor injection); regime invariant;
+    expected: the correct fact is still extracted.'

@@ -1,0 +1,17 @@
+anchor: mom6
+field: sort_kind
+dotted_path: part2.legs[0].sort_kind
+class: 2
+class_id: c2_layout
+true_value: single
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: each month t, bonds are sorted into decile portfolios, P1 to P10, based
+  on their cumulative returns over months t −6 to t −1 (formation period)
+gold_page: 9
+transform_id: layout_crosspage_seam_split_v1 (split@214, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

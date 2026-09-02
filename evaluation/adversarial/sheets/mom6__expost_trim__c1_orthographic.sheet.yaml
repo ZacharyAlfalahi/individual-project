@@ -1,0 +1,18 @@
+anchor: mom6
+field: expost_trim
+dotted_path: part2.expost_trim
+class: 1
+class_id: c1_orthographic
+true_value: truncate
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: To ensure that the results are not driven by outliers, we have eliminated
+  return observations above the 99.5th percentile (returns above 30% per month). The
+  results are robust to alternative cutoffs.
+gold_page: 7
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@2; o->U+043E@1)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

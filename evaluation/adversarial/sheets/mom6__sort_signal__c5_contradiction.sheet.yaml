@@ -1,0 +1,25 @@
+anchor: mom6
+field: sort_signal
+dotted_path: part2.legs[0].sort_signal.concept_id
+class: 5
+class_id: c5_contradiction
+true_value: past_6m_cumulative_return
+regime: answer_changing
+expected_outcome: contradiction_abstain
+pass_set:
+- abstained
+fail_if: ships EITHER value (shipped_correct OR shipped_wrong) -- a flat contradiction
+  must force abstention
+scoreable: true
+perturbed_text: The ranking variable for these sorts is the bond's return in the single
+  most recent month, t −1, taken on its own.
+placement: 'Placement: p9, after the sentence ending "…(formation period)."'
+gold_quote: based on their cumulative returns over months t −6 to t −1 (formation
+  period)
+gold_page: 9
+transform_id: insert_after_sentence_v1 (page=9, at=287)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 5 (contradiction); regime answer-changing;
+    PASS: abstain (dual-model disagreement / merge-refused); FAIL: ships EITHER value.'

@@ -1,0 +1,16 @@
+anchor: drf
+field: n_groups
+dotted_path: part2.legs[0].n_groups
+class: 2
+class_id: c2_layout
+true_value: 5
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: five quin- tiles based on their downside risk (measured by 5% VaR)
+gold_page: 14
+transform_id: layout_crosspage_seam_split_v1 (split@5687, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

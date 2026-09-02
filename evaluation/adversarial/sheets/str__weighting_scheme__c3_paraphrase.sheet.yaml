@@ -1,0 +1,27 @@
+anchor: str
+field: weighting_scheme
+dotted_path: part2.weighting_scheme
+class: 3
+class_id: c3_paraphrase
+true_value: value
+regime: invariant_degrading
+expected_outcome: paraphrase_correct_or_abstain
+pass_set:
+- shipped_correct
+- abstained_quote_match_failure
+fail_if: ships a different/wrong value or fabricates (shipped_wrong / shipped_gold_silent
+  = FAIL)
+scoreable: true
+perturbed_text: construct portfolios weighted in proportion to each bond's market
+  value
+placement: Replaces (p17, fragment "form value-weighted portfolios (using bond market
+  capitalization)")
+gold_quote: form value-weighted portfolios (using bond market capitalization)
+gold_page: 17
+transform_id: paraphrase_replace_all_l1_v1 (replaced=1)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 3 (paraphrase; T5-PRE-3 P1 replace-all);
+    regime invariant-but-degrading; PASS: correct extraction OR safe abstain (quote_match_failure);
+    FAIL: a different value or fabrication.'

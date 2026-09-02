@@ -1,0 +1,23 @@
+anchor: drf
+field: universe_filter
+dotted_path: paper_facts.universe_filter
+class: 4
+class_id: c4_distractor
+true_value: 'Enhanced TRACE, July 2002–December 2016; remove: non-US-market/144A/non-USD/foreign-issuer
+  bonds; structured notes, MBS/ABS, agency-backed, equity-linked; convertibles; price
+  <$5 or >$1000; floating coupon; <1 year to maturity; when-issued/locked-in/special-condition
+  trades and >2-day settlement; cancelled/corrected/reversed records; trades <$10,000
+  (as stated, filters 1–9)'
+regime: invariant
+expected_outcome: excluded_weaker_rubric
+scoreable: false
+gold_quote: Remove bonds that are not listed or traded in the US public market, which
+  include bonds issued through private placement, bonds issued under the 144A rule,
+  bonds that do not trade in US dollars, and bond issuers not in the jurisdiction
+  of the United States.
+gold_page: 5
+transform_id: distractor_fixed_decoy_v1 (page=0)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 4 (distractor injection); regime invariant;
+    expected: the correct fact is still extracted.'

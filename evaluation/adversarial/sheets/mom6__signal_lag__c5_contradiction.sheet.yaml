@@ -1,0 +1,28 @@
+anchor: mom6
+field: signal_lag
+dotted_path: part2.signal_lag
+class: 5
+class_id: c5_contradiction
+true_value: 1
+regime: answer_changing
+expected_outcome: contradiction_abstain
+pass_set:
+- abstained
+fail_if: ships EITHER value (shipped_correct OR shipped_wrong) -- a flat contradiction
+  must force abstention
+scoreable: true
+perturbed_text: Holding begins immediately at the end of the formation period, with
+  no intervening month between formation and holding.
+placement: 'Placement: p9, after the clean sentence. (The p10 note''s "after a one-month
+  lag" remains — the document then states the skip twice and its negation once; still
+  a flat conflict.)'
+gold_quote: Following the equity momentum literature, we skip one month between the
+  formation and holding periods to avoid potential biases from bid-ask bounce and
+  short-term price reversal.
+gold_page: 9
+transform_id: insert_after_sentence_v1 (page=9, at=625)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 5 (contradiction); regime answer-changing;
+    PASS: abstain (dual-model disagreement / merge-refused); FAIL: ships EITHER value.'

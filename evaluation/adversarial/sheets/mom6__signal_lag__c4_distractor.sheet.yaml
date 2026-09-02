@@ -1,0 +1,18 @@
+anchor: mom6
+field: signal_lag
+dotted_path: part2.signal_lag
+class: 4
+class_id: c4_distractor
+true_value: 1
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: Following the equity momentum literature, we skip one month between the
+  formation and holding periods to avoid potential biases from bid-ask bounce and
+  short-term price reversal.
+gold_page: 9
+transform_id: distractor_fixed_decoy_v1 (page=0)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 4 (distractor injection); regime invariant;
+    expected: the correct fact is still extracted.'

@@ -1,0 +1,22 @@
+anchor: str
+field: universe_filter
+dotted_path: paper_facts.universe_filter
+class: 1
+class_id: c1_orthographic
+true_value: TRACE enhanced + 144A merged with Mergent FISD; retain USD-denominated,
+  fixed-rate, non-convertible, non-asset-backed bonds with $1,000 par value and original
+  maturity ≥1 year; Dick-Nielsen (2014) cleaning + the paper's decimal-shift and bounce-back
+  correctors; bonds tracked through and after default (as stated)
+regime: invariant
+expected_outcome: excluded_weaker_rubric
+scoreable: false
+gold_quote: We retain USD-denominated, fixed-rate, non-convertible, non-asset-backed
+  bonds with $1,000 par value and original maturity of at least one year. Standard
+  filters from Dick-Nielsen (2014) remove cancellations, corrections, reversals, and
+  agency-side du- plicates.
+gold_page: 8
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@9; o->U+043E@17)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

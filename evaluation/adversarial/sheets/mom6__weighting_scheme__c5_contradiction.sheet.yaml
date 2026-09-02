@@ -1,0 +1,25 @@
+anchor: mom6
+field: weighting_scheme
+dotted_path: part2.weighting_scheme
+class: 5
+class_id: c5_contradiction
+true_value: equal
+regime: answer_changing
+expected_outcome: contradiction_abstain
+pass_set:
+- abstained
+fail_if: ships EITHER value (shipped_correct OR shipped_wrong) -- a flat contradiction
+  must force abstention
+scoreable: true
+perturbed_text: Portfolio returns are computed value-weighting each bond by its amount
+  outstanding.
+placement: 'Placement: p9, after the clean sentence. (jnps contains zero value-weight
+  mentions — no collision.)'
+gold_quote: Portfolio returns are equally weighted across their constituent bonds.
+gold_page: 9
+transform_id: insert_after_sentence_v1 (page=9, at=696)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 5 (contradiction); regime answer-changing;
+    PASS: abstain (dual-model disagreement / merge-refused); FAIL: ships EITHER value.'

@@ -1,0 +1,26 @@
+anchor: drf
+field: sort_signal
+dotted_path: part2.legs[0].sort_signal.concept_id
+class: 5
+class_id: c5_contradiction
+true_value: var_5pct
+regime: answer_changing
+expected_outcome: contradiction_abstain
+pass_set:
+- abstained
+fail_if: ships EITHER value (shipped_correct OR shipped_wrong) -- a flat contradiction
+  must force abstention
+scoreable: true
+perturbed_text: Downside risk, as used in our portfolio sorts, is measured by the
+  bond's credit rating rather than by any return-based statistic.
+placement: 'Placement: p6, after the second sentence of the clean quote.'
+gold_quote: Downside risk is the 5% VaR of corporate bond return, defined as the second
+  lowest monthly return observation over the past 36 months. The original VaR measure
+  is multiplied by –1 so that a higher VaR indicates higher downside risk.
+gold_page: 6
+transform_id: insert_after_sentence_v1 (page=6, at=1048)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 5 (contradiction); regime answer-changing;
+    PASS: abstain (dual-model disagreement / merge-refused); FAIL: ships EITHER value.'

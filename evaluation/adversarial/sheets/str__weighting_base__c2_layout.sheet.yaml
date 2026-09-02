@@ -1,0 +1,17 @@
+anchor: str
+field: weighting_base
+dotted_path: part2.weighting_base
+class: 2
+class_id: c2_layout
+true_value: market_value
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: Portfolios are value-weighted (using bond market capitalization) with
+  excess returns over the one-month T-bill rate.
+gold_page: 37
+transform_id: layout_crosspage_seam_split_v1 (split@242, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

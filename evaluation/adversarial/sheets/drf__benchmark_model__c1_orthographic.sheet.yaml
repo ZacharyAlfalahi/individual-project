@@ -1,0 +1,17 @@
+anchor: drf
+field: benchmark_model
+dotted_path: part2.benchmark_model
+class: 1
+class_id: c1_orthographic
+true_value: other
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: Model 3 is the ten-factor model that combines the five stock and five
+  bond market factors.
+gold_page: 15
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@5; o->U+043E@1)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

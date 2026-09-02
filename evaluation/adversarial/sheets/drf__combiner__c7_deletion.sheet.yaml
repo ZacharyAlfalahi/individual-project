@@ -1,0 +1,19 @@
+anchor: drf
+field: combiner
+dotted_path: part2.combiner.kind
+class: 7
+class_id: c7_deletion
+true_value: single_leg
+regime: answer_changing
+expected_outcome: abstained_gold_silent
+scoreable: true
+gold_quote: We construct the bond factors in a similar vein to Fama and French (2015)
+  and rely on independent sorts.
+gold_page: 14
+transform_id: deletion_all_l1_copies_v1 (removed=1)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: perturbation_prereg.md §3 class 7 (evidence deletion), T5-PRE-6 restricted
+    to deletion_valid once-stated fields; regime answer-changing; expected ABSTAINED_GOLD_SILENT;
+    any SHIPPED_GOLD_SILENT (fabrication) = FAIL.
+fail_if: shipped_gold_silent (any fabrication of the deleted fact = FAIL)

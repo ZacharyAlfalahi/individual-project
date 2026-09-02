@@ -1,0 +1,18 @@
+anchor: drf
+field: sort_signal
+dotted_path: part2.legs[0].sort_signal.concept_id
+class: 2
+class_id: c2_layout
+true_value: var_5pct
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: Downside risk is the 5% VaR of corporate bond return, defined as the second
+  lowest monthly return observation over the past 36 months. The original VaR measure
+  is multiplied by –1 so that a higher VaR indicates higher downside risk.
+gold_page: 6
+transform_id: layout_crosspage_seam_split_v1 (split@929, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

@@ -1,0 +1,26 @@
+anchor: str
+field: sort_signal
+dotted_path: part2.legs[0].sort_signal.concept_id
+class: 5
+class_id: c5_contradiction
+true_value: prior_1m_excess_return
+regime: answer_changing
+expected_outcome: contradiction_abstain
+pass_set:
+- abstained
+fail_if: ships EITHER value (shipped_correct OR shipped_wrong) -- a flat contradiction
+  must force abstention
+scoreable: true
+perturbed_text: Throughout the paper, str refers to the long-term reversal signal.
+placement: 'Placement: p10, after the key sentence. (drr''s 6 existing "long-term
+  reversal" mentions are the ltrev zoo factor — the referent here is the mnemonic
+  `str` itself, so the conflict is with the key, not with ltrev.)'
+gold_quote: For example, cs denotes credit spread, str denotes short-term reversal,
+  and mom6_1 denotes six-month momentum.
+gold_page: 10
+transform_id: insert_after_sentence_v1 (page=10, at=1595)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 5 (contradiction); regime answer-changing;
+    PASS: abstain (dual-model disagreement / merge-refused); FAIL: ships EITHER value.'

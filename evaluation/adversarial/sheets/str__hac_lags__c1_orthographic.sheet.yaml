@@ -1,0 +1,17 @@
+anchor: str
+field: hac_lags
+dotted_path: part2.hac_lags
+class: 1
+class_id: c1_orthographic
+true_value: floor(T^0.25)
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: 't-statistics (Newey-West, lags = ⌊T 0.25⌋) in parentheses. Sample: 2002-09
+  to 2024-12, T=268.'
+gold_page: 37
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@12; o->U+043E@76)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

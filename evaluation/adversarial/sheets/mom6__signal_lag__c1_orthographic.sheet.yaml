@@ -1,0 +1,18 @@
+anchor: mom6
+field: signal_lag
+dotted_path: part2.signal_lag
+class: 1
+class_id: c1_orthographic
+true_value: 1
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: Following the equity momentum literature, we skip one month between the
+  formation and holding periods to avoid potential biases from bid-ask bounce and
+  short-term price reversal.
+gold_page: 9
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@9; o->U+043E@1)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

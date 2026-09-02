@@ -1,0 +1,30 @@
+anchor: drf
+field: sort_signal
+dotted_path: part2.legs[0].sort_signal.concept_id
+class: 3
+class_id: c3_paraphrase
+true_value: var_5pct
+regime: invariant_degrading
+expected_outcome: paraphrase_correct_or_abstain
+pass_set:
+- shipped_correct
+- abstained_quote_match_failure
+fail_if: ships a different/wrong value or fabricates (shipped_wrong / shipped_gold_silent
+  = FAIL)
+scoreable: true
+perturbed_text: We measure downside risk by the 5% value-at-risk of a bond's returns,
+  taken as the second-smallest monthly return recorded over the preceding 36 months;
+  this quantity is then sign-flipped (multiplied by minus one) so that larger values
+  of the measure correspond to greater downside risk.
+placement: Replaces (p6, both sentences of the quote)
+gold_quote: Downside risk is the 5% VaR of corporate bond return, defined as the second
+  lowest monthly return observation over the past 36 months. The original VaR measure
+  is multiplied by –1 so that a higher VaR indicates higher downside risk.
+gold_page: 6
+transform_id: paraphrase_replace_all_l1_v1 (replaced=1)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 3 (paraphrase; T5-PRE-3 P1 replace-all);
+    regime invariant-but-degrading; PASS: correct extraction OR safe abstain (quote_match_failure);
+    FAIL: a different value or fabrication.'

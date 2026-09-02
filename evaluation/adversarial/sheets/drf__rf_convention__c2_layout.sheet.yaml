@@ -1,0 +1,17 @@
+anchor: drf
+field: rf_convention
+dotted_path: part2.rf_convention
+class: 2
+class_id: c2_layout
+true_value: subtract_rf
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: We denote R i, t as bond i 's excess return, R i,t = r i,t −r f,t, where
+  r f, t is the risk-free rate proxied by the one-month Treasury bill rate.
+gold_page: 5
+transform_id: layout_crosspage_seam_split_v1 (split@4714, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

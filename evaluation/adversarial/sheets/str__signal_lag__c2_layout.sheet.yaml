@@ -1,0 +1,17 @@
+anchor: str
+field: signal_lag
+dotted_path: part2.signal_lag
+class: 2
+class_id: c2_layout
+true_value: 0
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: Portfolio weights ωi,t are computed from signals observed at P end i,t,
+  and returns are the month-end returns rEnd i,t+1.
+gold_page: 15
+transform_id: layout_crosspage_seam_split_v1 (split@480, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

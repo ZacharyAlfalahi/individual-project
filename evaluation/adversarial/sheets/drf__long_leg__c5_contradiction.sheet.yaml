@@ -1,0 +1,26 @@
+anchor: drf
+field: long_leg
+dotted_path: part2.legs[0].long_leg
+class: 5
+class_id: c5_contradiction
+true_value: highest_signal
+regime: answer_changing
+expected_outcome: contradiction_abstain
+pass_set:
+- abstained
+fail_if: ships EITHER value (shipped_correct OR shipped_wrong) -- a flat contradiction
+  must force abstention
+scoreable: true
+perturbed_text: By construction, DRF is long the bonds in the lowest-VaR portfolio
+  and short those in the highest-VaR portfolio.
+placement: 'Placement: p14, after the shared sentence.'
+gold_quote: The downside risk factor, DRF, is the value-weighted av- erage return
+  difference between the highest-VaR portfolio and the lowest-VaR portfolio across
+  the rating portfolios.
+gold_page: 14
+transform_id: insert_after_sentence_v1 (page=14, at=5901)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 5 (contradiction); regime answer-changing;
+    PASS: abstain (dual-model disagreement / merge-refused); FAIL: ships EITHER value.'

@@ -1,0 +1,18 @@
+anchor: mom6
+field: return_label
+dotted_path: part2.return_label
+class: 2
+class_id: c2_layout
+true_value: realisation
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: The overall momentum strategy month-t return is the equally weighted average
+  month-t return of strategies implemented in the prior month and strategies formed
+  up to six months earlier.
+gold_page: 9
+transform_id: layout_crosspage_seam_split_v1 (split@788, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

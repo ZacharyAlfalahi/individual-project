@@ -1,0 +1,18 @@
+anchor: str
+field: strategy_label
+dotted_path: header.strategy_label
+class: 2
+class_id: c2_layout
+true_value: str
+regime: invariant
+expected_outcome: excluded_not_field_extracted
+scoreable: false
+gold_quote: we sort bonds into deciles each month and form value-weighted portfolios
+  (using bond market capitalization) that are long the top decile and short the bottom
+  decile
+gold_page: 17
+transform_id: layout_crosspage_seam_split_v1 (split@381, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

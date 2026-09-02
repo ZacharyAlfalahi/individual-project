@@ -1,0 +1,17 @@
+anchor: str
+field: return_availability_policy
+dotted_path: part2.return_availability_policy
+class: 4
+class_id: c4_distractor
+true_value: require_next_month_return
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: A valid return requires such a price in both months t and t + 1 (bonds
+  without a trade in either window are excluded for that month).
+gold_page: 9
+transform_id: distractor_fixed_decoy_v1 (page=0)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 4 (distractor injection); regime invariant;
+    expected: the correct fact is still extracted.'

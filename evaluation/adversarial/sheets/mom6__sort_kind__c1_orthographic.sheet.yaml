@@ -1,0 +1,17 @@
+anchor: mom6
+field: sort_kind
+dotted_path: part2.legs[0].sort_kind
+class: 1
+class_id: c1_orthographic
+true_value: single
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: each month t, bonds are sorted into decile portfolios, P1 to P10, based
+  on their cumulative returns over months t −6 to t −1 (formation period)
+gold_page: 9
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@4; o->U+043E@6)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

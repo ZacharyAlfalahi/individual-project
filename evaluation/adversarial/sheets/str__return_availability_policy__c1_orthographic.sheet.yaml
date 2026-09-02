@@ -1,0 +1,17 @@
+anchor: str
+field: return_availability_policy
+dotted_path: part2.return_availability_policy
+class: 1
+class_id: c1_orthographic
+true_value: require_next_month_return
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: A valid return requires such a price in both months t and t + 1 (bonds
+  without a trade in either window are excluded for that month).
+gold_page: 9
+transform_id: orth_nbsp_cyrillic_o_v1 (space->U+00A0@1; o->U+043E@41)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 1 (orthographic/encoding); regime
+    invariant; expected: unchanged vs clean gold (SHIPPED_CORRECT preserved).'

@@ -1,0 +1,17 @@
+anchor: str
+field: asset_class
+dotted_path: part1.asset_class
+class: 4
+class_id: c4_distractor
+true_value: corporate_bonds
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: Corporate bond factor research faces a replication crisis. We construct
+  a 'factor zoo' of 108 corporate bond factors
+gold_page: 3
+transform_id: distractor_fixed_decoy_v1 (page=0)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 4 (distractor injection); regime invariant;
+    expected: the correct fact is still extracted.'

@@ -1,0 +1,37 @@
+anchor: drf
+field: long_leg+weighting_scheme
+dotted_path: part2.legs[0].long_leg
+class: 3
+class_id: c3_paraphrase
+true_value:
+  long_leg: highest_signal
+  weighting_scheme: value
+regime: invariant_degrading
+expected_outcome: paraphrase_correct_or_abstain
+pass_set:
+- shipped_correct
+- abstained_quote_match_failure
+fail_if: ships a different/wrong value or fabricates (shipped_wrong / shipped_gold_silent
+  = FAIL)
+scoreable: true
+perturbed_text: DRF, our downside risk factor, is constructed as the return spread
+  between the portfolio of bonds with the greatest VaR and the portfolio with the
+  smallest VaR, computed with value weights and then averaged over the rating groups.
+placement: Replaces (p14, whole shared sentence)
+gold_quote: The downside risk factor, DRF, is the value-weighted av- erage return
+  difference between the highest-VaR portfolio and the lowest-VaR portfolio across
+  the rating portfolios.
+gold_page: 14
+transform_id: paraphrase_replace_all_l1_v1 (replaced=1)
+covers_fields:
+- long_leg
+- weighting_scheme
+dotted_paths:
+- part2.legs[0].long_leg
+- part2.weighting_scheme
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 3 (paraphrase; T5-PRE-3 P1 replace-all);
+    regime invariant-but-degrading; PASS: correct extraction OR safe abstain (quote_match_failure);
+    FAIL: a different value or fabrication.'

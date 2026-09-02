@@ -1,0 +1,27 @@
+anchor: str
+field: signal_lag
+dotted_path: part2.signal_lag
+class: 5
+class_id: c5_contradiction
+true_value: 0
+regime: answer_changing
+expected_outcome: contradiction_abstain
+pass_set:
+- abstained
+fail_if: ships EITHER value (shipped_correct OR shipped_wrong) -- a flat contradiction
+  must force abstention
+scoreable: true
+perturbed_text: In the unadjusted approach, signals are observed one full month before
+  the portfolio formation date.
+placement: 'Placement: p15, after the clean sentence (i.e. between it and the Approach
+  2 sentence). Per P6: targets the **unadjusted** approach explicitly, so it cannot
+  be read as Approach 2''s 1–10 business-day gap.'
+gold_quote: Portfolio weights ωi,t are computed from signals observed at P end i,t,
+  and returns are the month-end returns rEnd i,t+1.
+gold_page: 15
+transform_id: insert_after_sentence_v1 (page=15, at=542)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 5 (contradiction); regime answer-changing;
+    PASS: abstain (dual-model disagreement / merge-refused); FAIL: ships EITHER value.'

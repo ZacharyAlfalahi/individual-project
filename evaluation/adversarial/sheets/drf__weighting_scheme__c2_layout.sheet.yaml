@@ -1,0 +1,18 @@
+anchor: drf
+field: weighting_scheme
+dotted_path: part2.weighting_scheme
+class: 2
+class_id: c2_layout
+true_value: value
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: The downside risk factor, DRF, is the value-weighted av- erage return
+  difference between the highest-VaR portfolio and the lowest-VaR portfolio across
+  the rating portfolios.
+gold_page: 14
+transform_id: layout_crosspage_seam_split_v1 (split@5815, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

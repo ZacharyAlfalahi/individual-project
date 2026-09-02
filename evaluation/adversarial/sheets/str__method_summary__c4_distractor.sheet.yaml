@@ -1,0 +1,26 @@
+anchor: str
+field: method_summary
+dotted_path: part1.method_summary.summary
+class: 4
+class_id: c4_distractor
+true_value: 'Each month bonds are ranked on the short-term reversal signal (str) and
+  sorted into deciles. The factor is long the top decile P10 and short the bottom
+  decile P1, value-weighted by bond market capitalization, with month-end prices feeding
+  both the signal and the next month''s return (the paper''s unadjusted Approach 1).
+  The output is a monthly long-short factor return series, 2002-09 to 2024-12. Locating
+  quotes: (1) header strategy_quote, page 17; (2) "Approach 1 (Unadjusted) uses the
+  month-end price P end i,t for both signal computation and return measurement, which
+  is the standard practice in the literature." page 15; (3) "str denotes short-term
+  reversal" page 10'
+regime: invariant
+expected_outcome: excluded_weaker_rubric
+scoreable: false
+gold_quote: we sort bonds into deciles each month and form value-weighted portfolios
+  (using bond market capitalization) that are long the top decile and short the bottom
+  decile
+gold_page: 17
+transform_id: distractor_fixed_decoy_v1 (page=0)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 4 (distractor injection); regime invariant;
+    expected: the correct fact is still extracted.'

@@ -1,0 +1,25 @@
+anchor: mom6
+field: n_groups
+dotted_path: part2.legs[0].n_groups
+class: 5
+class_id: c5_contradiction
+true_value: 10
+regime: answer_changing
+expected_outcome: contradiction_abstain
+pass_set:
+- abstained
+fail_if: ships EITHER value (shipped_correct OR shipped_wrong) -- a flat contradiction
+  must force abstention
+scoreable: true
+perturbed_text: Each month, the momentum sorts place bonds into five quintile portfolios,
+  Q1 to Q5.
+placement: 'Placement: p9, after the sentence ending "…(formation period)." (**Not**
+  the worksheet §3 example sentence — that framing is reconcilable, per P2.)'
+gold_quote: bonds are sorted into decile portfolios, P1 to P10
+gold_page: 9
+transform_id: insert_after_sentence_v1 (page=9, at=287)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 5 (contradiction); regime answer-changing;
+    PASS: abstain (dual-model disagreement / merge-refused); FAIL: ships EITHER value.'

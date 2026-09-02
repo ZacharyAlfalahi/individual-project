@@ -1,0 +1,17 @@
+anchor: mom6
+field: rf_convention
+dotted_path: part2.rf_convention
+class: 4
+class_id: c4_distractor
+true_value: none
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: the momentum portfolio excess return over the risk-free rate or the momentum
+  strategy return rp,t =RP 10,t −RP 1,t
+gold_page: 12
+transform_id: distractor_fixed_decoy_v1 (page=0)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 4 (distractor injection); regime invariant;
+    expected: the correct fact is still extracted.'

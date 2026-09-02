@@ -1,0 +1,24 @@
+anchor: mom6
+field: holding_period
+dotted_path: part2.holding_period
+class: 5
+class_id: c5_contradiction
+true_value: 6
+regime: answer_changing
+expected_outcome: contradiction_abstain
+pass_set:
+- abstained
+fail_if: ships EITHER value (shipped_correct OR shipped_wrong) -- a flat contradiction
+  must force abstention
+scoreable: true
+perturbed_text: Each portfolio is held for a single month, t +1, and then fully rebalanced.
+placement: 'Placement: p9, after the clean sentence. (The p10 note''s six-month statement
+  remains; flat conflict stands.)'
+gold_quote: The portfolios are held over months t +1 to t +6 (holding period).
+gold_page: 9
+transform_id: insert_after_sentence_v1 (page=9, at=446)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 5 (contradiction); regime answer-changing;
+    PASS: abstain (dual-model disagreement / merge-refused); FAIL: ships EITHER value.'

@@ -1,0 +1,17 @@
+anchor: mom6
+field: long_leg
+dotted_path: part2.legs[0].long_leg
+class: 2
+class_id: c2_layout
+true_value: highest_signal
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: The momentum strategy is long the winner portfolio, P10, and short the
+  loser portfolio, P1.
+gold_page: 9
+transform_id: layout_crosspage_seam_split_v1 (split@328, cross_page=False)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

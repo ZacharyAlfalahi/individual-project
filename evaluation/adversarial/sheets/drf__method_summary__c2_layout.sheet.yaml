@@ -1,0 +1,28 @@
+anchor: drf
+field: method_summary
+dotted_path: part1.method_summary.summary
+class: 2
+class_id: c2_layout
+true_value: 'Each month, all sample bonds are independently sorted into five credit-rating
+  quintiles and five quintiles of downside risk, measured as the 5% VaR (the second
+  lowest monthly return over the past 36 months, ×−1). Within the resulting 5×5 grid,
+  the factor is long the highest-VaR quintile and short the lowest-VaR quintile, value-weighted,
+  averaged across the five rating quintiles. The output is DRF, a monthly long-short
+  downside-risk factor return series (July 2004–December 2016). Locating quotes: (1)
+  construction sentence, page 14 (header strategy_quote); (2) "The downside risk factor,
+  DRF, is the value-weighted av- erage return difference between the highest-VaR portfolio
+  and the lowest-VaR portfolio across the rating portfolios." page 14; (3) "Downside
+  risk is the 5% VaR of corporate bond return, defined as the second lowest monthly
+  return observation over the past 36 months." page 6'
+regime: invariant
+expected_outcome: excluded_weaker_rubric
+scoreable: false
+gold_quote: we form bivariate portfolios by independently sorting bonds into five
+  quintiles based on their credit rating and five quin- tiles based on their downside
+  risk (measured by 5% VaR)
+gold_page: 14
+transform_id: layout_crosspage_seam_split_v1 (split@5631, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

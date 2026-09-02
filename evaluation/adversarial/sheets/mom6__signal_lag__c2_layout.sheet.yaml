@@ -1,0 +1,18 @@
+anchor: mom6
+field: signal_lag
+dotted_path: part2.signal_lag
+class: 2
+class_id: c2_layout
+true_value: 1
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: Following the equity momentum literature, we skip one month between the
+  formation and holding periods to avoid potential biases from bid-ask bounce and
+  short-term price reversal.
+gold_page: 9
+transform_id: layout_crosspage_seam_split_v1 (split@532, cross_page=True)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 2 (layout, cross-page-seam split);
+    regime invariant; expected: unchanged (quote still locatable across the seam).'

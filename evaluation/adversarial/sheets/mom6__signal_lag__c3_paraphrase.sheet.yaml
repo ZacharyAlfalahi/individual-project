@@ -1,0 +1,30 @@
+anchor: mom6
+field: signal_lag
+dotted_path: part2.signal_lag
+class: 3
+class_id: c3_paraphrase
+true_value: 1
+regime: invariant_degrading
+expected_outcome: paraphrase_correct_or_abstain
+pass_set:
+- shipped_correct
+- abstained_quote_match_failure
+fail_if: ships a different/wrong value or fabricates (shipped_wrong / shipped_gold_silent
+  = FAIL)
+scoreable: true
+perturbed_text: As is standard in the equity momentum literature, one calendar month
+  is left out between the end of the ranking window and the start of the holding window,
+  which guards against distortions from bid-ask bounce and from reversal at short
+  horizons.
+placement: Replaces (p9, whole sentence)
+gold_quote: Following the equity momentum literature, we skip one month between the
+  formation and holding periods to avoid potential biases from bid-ask bounce and
+  short-term price reversal.
+gold_page: 9
+transform_id: paraphrase_replace_all_l1_v1 (replaced=1)
+provenance:
+  generator: evaluation/harness/perturb.py
+  source_drafts: evaluation/adversarial/semantic_perturbations.yaml
+  prereg_rule: 'perturbation_prereg.md §3 class 3 (paraphrase; T5-PRE-3 P1 replace-all);
+    regime invariant-but-degrading; PASS: correct extraction OR safe abstain (quote_match_failure);
+    FAIL: a different value or fabrication.'

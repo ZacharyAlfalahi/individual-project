@@ -1,0 +1,35 @@
+# T5 class-7 (evidence deletion) target table — the once-stated fields deletion may target.
+#
+# Provenance: manual adjudication 2026-09-02 ("adjudication complete — all good"), ACCEPTING the
+# deterministic scan's provisional split (evaluation/adversarial/deletion_scan.py ->
+# deletion_candidates.md). deletion_valid == true iff, after deleting all exact-L1 copies of the gold
+# sentence, NO surviving span states the value (scan flag `likely_deletion_valid`). The 57
+# `needs_adjudication` fields are EXCLUDED; their surviving witness spans are recorded in
+# deletion_candidates.md (one-witness-per-exclusion is satisfied by that report). Governed by
+# perturbation_prereg.md T5-PRE-6. The perturber (perturb.py) reads this file; the gold sentence to
+# delete is loaded from each anchor's gold.
+#
+# Amendments require a dated note here + a perturbation_prereg.md §5 entry.
+
+schema: deletion_valid_v1
+adjudicated: '2026-09-02'
+basis: scan_provisional_split_accepted   # deletion_scan.py likely_deletion_valid, accepted
+
+deletion_valid:
+  drf:
+    - field: combiner            # single_leg
+      note: DERIVED field — borrows sort_kind's quote; drf is a 5x5 bivariate sort so its construction
+            is heavily restated. Weakest/structural entry; may be dropped (one word) — flagged 2026-09-02.
+  mom6:
+    - field: signal_lag          # 1  — "we skip one month between the formation and holding periods"
+    - field: strategy_side       # long_short — survivors after delete-all are only "long-term"/"short-term"
+    - field: sort_kind           # single — "univariate/single-sort" appears nowhere else
+  str:
+    - field: return_availability_policy   # require_next_month_return — the "valid return requires t and t+1" sentence
+    - field: return_label        # realisation — the "returns are the month-end returns r_{t+1}" timing sentence
+
+# Everything else across the three anchors (57 STATED fields) is deletion-EXCLUDED: the value is
+# restated elsewhere (e.g. drf n_groups survives in 74 quintile mentions; mom6 weighting in the p9
+# "equally weighted average" neighbour). Class 7 does NOT target them; classes 3/5/6 stress the markers.
+excluded_count: 57
+excluded_witnesses: evaluation/adversarial/deletion_candidates.md   # per-field surviving spans

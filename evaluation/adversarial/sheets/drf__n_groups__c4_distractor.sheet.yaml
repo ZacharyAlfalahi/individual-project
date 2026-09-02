@@ -1,0 +1,16 @@
+anchor: drf
+field: n_groups
+dotted_path: part2.legs[0].n_groups
+class: 4
+class_id: c4_distractor
+true_value: 5
+regime: invariant
+expected_outcome: shipped_correct
+scoreable: true
+gold_quote: five quin- tiles based on their downside risk (measured by 5% VaR)
+gold_page: 14
+transform_id: distractor_fixed_decoy_v1 (page=0)
+provenance:
+  generator: evaluation/harness/perturb.py
+  prereg_rule: 'perturbation_prereg.md §3 class 4 (distractor injection); regime invariant;
+    expected: the correct fact is still extracted.'
