@@ -94,6 +94,8 @@ def build_operational_profile(
     model_calls: int = 0,
     prompt_tokens: int | None = None,
     completion_tokens: int | None = None,
+    cache_creation_tokens: int | None = None,
+    cache_read_tokens: int | None = None,
     wall_clock_seconds: float | None = None,
     retries: int = 0,
     cost_usd: float | None = None,
@@ -106,10 +108,18 @@ def build_operational_profile(
     stored tokens times a cited per-model rate, so it is left ``None`` here rather than
     invented. A token count that the vendor did not return stays ``None`` (unavailable,
     never guessed). ``interventions`` is a list of ``{reason_code, ...}`` records fed by the
-    operator; an empty list means an unattended run."""
+    operator; an empty list means an unattended run.
+
+    Cache-token fields (A-lever, 2026-09-02, additive): on cache-aware vendors
+    ``prompt`` is the UNCACHED remainder only -- total prompt volume per run is
+    ``prompt + cache_creation + cache_read``, and each bucket bills at its own rate
+    (write ~1.25x, read ~0.1x), so the split is required for honest cost derivation."""
     tokens = None
     if prompt_tokens is not None or completion_tokens is not None:
         tokens = {"prompt": prompt_tokens, "completion": completion_tokens}
+        if cache_creation_tokens is not None or cache_read_tokens is not None:
+            tokens["cache_creation"] = cache_creation_tokens
+            tokens["cache_read"] = cache_read_tokens
     return {
         "phase": phase,
         "model_calls": model_calls,

@@ -377,12 +377,43 @@ class _AnthropicBackend:
             temperature=self.temperature,
             messages=[{"role": "user", "content": prompt}],
         )
+        return self._unpack(resp)
+
+    def generate_split(self, prefix: str, suffix: str,
+                       max_output_tokens: int) -> tuple[str, str | None]:
+        """A-lever (2026-09-02): two content blocks with ``cache_control`` on the
+        paper-text prefix, so every same-paper call reads the ~30k-token text from
+        the provider prefix cache (~0.1x on reads; 1.25x on the single write; 5-min
+        TTL refreshed by each read -- our paced calls are seconds apart). The model
+        sees the identical bytes ``prefix + suffix``; only the caching annotation
+        differs from generate()."""
+        self.last_usage = None
+        resp = self._client.messages.create(
+            model=self.model_id,
+            max_tokens=max_output_tokens,
+            temperature=self.temperature,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prefix,
+                     "cache_control": {"type": "ephemeral"}},
+                    {"type": "text", "text": suffix},
+                ],
+            }],
+        )
+        return self._unpack(resp)
+
+    def _unpack(self, resp) -> tuple[str, str | None]:
         text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
         u = getattr(resp, "usage", None)  # WS-8 token side channel (see _GeminiBackend)
         if u is not None:
             self.last_usage = {
                 "prompt": getattr(u, "input_tokens", None),
                 "completion": getattr(u, "output_tokens", None),
+                # A-lever cache accounting: input_tokens is the UNCACHED remainder;
+                # total prompt = input + cache_creation + cache_read.
+                "cache_creation": getattr(u, "cache_creation_input_tokens", None),
+                "cache_read": getattr(u, "cache_read_input_tokens", None),
             }
         return text, getattr(resp, "model", None)
 
@@ -646,6 +677,55 @@ def _constructions_from_parsed(parsed: dict) -> tuple[Construction, ...]:
 
 
 # ---------------------------------------------------------------------------
+# Prompt assembly (2026-09-02 amendment): PAPER TEXT FIRST.
+#
+# The paper text leads the prompt so it forms a stable PREFIX shared by every
+# per-field call on the same paper -- the shape provider prefix-caching bills at
+# ~0.1x on reads. The extraction CONTRACT is unchanged: same frozen instruction
+# templates (their sha256 pins cover the template FILES; this assembly order is
+# client code), same verbatim-quote requirement, same JSON schemas. Instruction-
+# after-document is also the documented long-context best practice. Full prompt
+# bytes remain prefix + suffix -- the disk-cache key and raw-archive record use
+# the joined string, so replay semantics are unchanged.
+# ---------------------------------------------------------------------------
+
+_PAPER_TEXT_BLOCK = (
+    "PAPER TEXT (your ONLY source -- quote verbatim, character-for-character):\n"
+    "<<<\n{paper_text}\n>>>\n\n"
+)
+
+
+def assemble_field_prompt(builder: PromptBuilder, query: FieldQuery,
+                          strategy_label: str, canonical_text) -> tuple[str, str]:
+    """(prefix, suffix) for one per-field call; the full prompt is ``prefix + suffix``.
+    prefix = the paper-text block (paper-stable, cacheable); suffix = the rendered
+    field instruction + the structured-decoding schema (varies per field)."""
+    instruction = builder.render(query, strategy_label)
+    schema = builder.schema_for(query.kind)
+    paper_text = "\n\n".join(canonical_text.pages)
+    prefix = _PAPER_TEXT_BLOCK.format(paper_text=paper_text)
+    suffix = (
+        f"{instruction}\n\n"
+        "Return ONLY a single JSON object (no prose, no code fence) matching "
+        f"this JSON Schema:\n{json.dumps(schema)}"
+    )
+    return prefix, suffix
+
+
+def assemble_enumeration_prompt(builder: PromptBuilder, canonical_text) -> tuple[str, str]:
+    """(prefix, suffix) for the whole-paper enumeration call (same split semantics)."""
+    schema = builder.run_schema("enumeration")
+    paper_text = "\n\n".join(canonical_text.pages)
+    prefix = _PAPER_TEXT_BLOCK.format(paper_text=paper_text)
+    suffix = (
+        f"{builder.run_prompt('enumeration')}\n\n"
+        "Return ONLY a single JSON object (no prose, no code fence) matching "
+        f"this JSON Schema:\n{json.dumps(schema)}"
+    )
+    return prefix, suffix
+
+
+# ---------------------------------------------------------------------------
 # The client.
 # ---------------------------------------------------------------------------
 
@@ -706,6 +786,12 @@ class RealModelClient:
         self.total_prompt_tokens: int = 0
         self.total_completion_tokens: int = 0
         self.total_retries: int = 0
+        # A-lever provider-cache accounting (additive; zero when the vendor
+        # reports no cache usage). prompt tokens above count the UNCACHED
+        # remainder only on cache-aware vendors -- total prompt size per call is
+        # prompt + cache_creation + cache_read.
+        self.total_cache_creation_tokens: int = 0
+        self.total_cache_read_tokens: int = 0
 
     # -- ModelClient.answer --------------------------------------------------
     def answer(self, query: FieldQuery, canonical_text: CanonicalText) -> ModelAnswer:
@@ -722,23 +808,18 @@ class RealModelClient:
         if key in self._cache:
             return self._cache[key]
 
-        instruction = self._builder.render(query, self.current_strategy_label)
-        schema = self._builder.schema_for(query.kind)
-        paper_text = "\n\n".join(canonical_text.pages)
-        prompt = (
-            f"{instruction}\n\n"
-            "PAPER TEXT (your ONLY source -- quote verbatim, character-for-character):\n"
-            f"<<<\n{paper_text}\n>>>\n\n"
-            "Return ONLY a single JSON object (no prose, no code fence) matching "
-            f"this JSON Schema:\n{json.dumps(schema)}"
+        prefix, suffix = assemble_field_prompt(
+            self._builder, query, self.current_strategy_label, canonical_text
         )
+        prompt = prefix + suffix              # full bytes: disk-cache key + archive record
         max_tokens = self._builder.max_tokens_for(query.kind)
 
         replay = self._disk_get(prompt)
         if replay is not None:
             raw_text, version = replay        # zero vendor calls; WS-8 counters untouched
         else:
-            raw_text, version = self._generate_with_retry(prompt, max_tokens, query.field)
+            raw_text, version = self._generate_with_retry((prefix, suffix), max_tokens,
+                                                          query.field)
             self._disk_put(prompt, raw_text, version)
         parsed = _parse_json(raw_text)
         model_id_stamp = version or self.model_id
@@ -765,21 +846,15 @@ class RealModelClient:
         to review via the dual-model agreement gate, never a silent partial spec)."""
         if not isinstance(canonical_text, CanonicalText):
             raise LibrarianSchemaError("RealModelClient.extract_enumeration expects a CanonicalText")
-        paper_text = "\n\n".join(canonical_text.pages)
-        schema = self._builder.run_schema("enumeration")
-        prompt = (
-            f"{self._builder.run_prompt('enumeration')}\n\n"
-            "PAPER TEXT (your ONLY source -- quote verbatim, character-for-character):\n"
-            f"<<<\n{paper_text}\n>>>\n\n"
-            "Return ONLY a single JSON object (no prose, no code fence) matching "
-            f"this JSON Schema:\n{json.dumps(schema)}"
-        )
+        prefix, suffix = assemble_enumeration_prompt(self._builder, canonical_text)
+        prompt = prefix + suffix
         max_tokens = self._builder.run_max_tokens("enumeration")
         replay = self._disk_get(prompt)
         if replay is not None:
             raw_text, _version = replay       # zero vendor calls; WS-8 counters untouched
         else:
-            raw_text, _version = self._generate_with_retry(prompt, max_tokens, "enumeration")
+            raw_text, _version = self._generate_with_retry((prefix, suffix), max_tokens,
+                                                           "enumeration")
             self._disk_put(prompt, raw_text, _version)
         parsed = _parse_json(raw_text)
         if parsed is None:
@@ -832,6 +907,10 @@ class RealModelClient:
             "prompt_tokens": self.total_prompt_tokens,
             "completion_tokens": self.total_completion_tokens,
             "retries": self.total_retries,
+            # A-lever: provider-cache split (0 on cache-unaware vendors). On
+            # cache-aware vendors prompt_tokens is the uncached remainder only.
+            "cache_creation_tokens": self.total_cache_creation_tokens,
+            "cache_read_tokens": self.total_cache_read_tokens,
         }
 
     # -- proactive rate-limit pacing ----------------------------------------
@@ -844,15 +923,25 @@ class RealModelClient:
 
     # -- vendor call with retry ---------------------------------------------
     def _generate_with_retry(
-        self, prompt: str, max_tokens: int, field_label: str
+        self, parts: tuple[str, str], max_tokens: int, field_label: str
     ) -> tuple[str, str | None]:
+        """``parts`` = (prefix, suffix): the paper-text block and the per-field
+        instruction+schema. A backend exposing ``generate_split`` receives the two
+        parts separately (the Anthropic backend marks the prefix cacheable); every
+        other backend gets the joined string via the unchanged ``generate`` --
+        the same hasattr side-channel idiom as WS-8, so stubs/fakes are untouched."""
+        prefix, suffix = parts
+        gen_split = getattr(self._backend, "generate_split", None)
         last_exc: Exception | None = None
         attempts = 0
         for attempt in range(self._max_retries):
             attempts = attempt + 1
             self._pace()
             try:
-                out = self._backend.generate(prompt, max_tokens)
+                if gen_split is not None:
+                    out = gen_split(prefix, suffix, max_tokens)
+                else:
+                    out = self._backend.generate(prefix + suffix, max_tokens)
                 self._last_call_ts = time.monotonic()
                 # WS-8: record the successful call + its retries + vendor tokens (side channel).
                 self.model_calls += 1
@@ -863,6 +952,13 @@ class RealModelClient:
                         self.total_prompt_tokens += u["prompt"]
                     if u.get("completion") is not None:
                         self.total_completion_tokens += u["completion"]
+                    # A-lever: provider cache accounting (Anthropic populates these;
+                    # other vendors leave them absent -> 0). Needed so the manifest
+                    # reports the true cached/uncached split, never an estimate.
+                    if u.get("cache_creation") is not None:
+                        self.total_cache_creation_tokens += u["cache_creation"]
+                    if u.get("cache_read") is not None:
+                        self.total_cache_read_tokens += u["cache_read"]
                 return out
             except Exception as exc:  # vendor SDK exception surface is broad
                 last_exc = exc

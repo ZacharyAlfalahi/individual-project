@@ -16,6 +16,11 @@ Phases (docs/thresholds.yaml -> librarian.model_stack, D33 two-phase policy):
                 verbatim-locating BBW answers. No network, no keys. Proves the
                 assemble -> run_paper -> emit -> validate path end-to-end.
 
+Prompt assembly is PAPER-TEXT-FIRST (2026-09-02 amendment, see
+docs/librarian/registers/prompt_assembly_amendment_2026-09-02.md): the paper text
+leads every live prompt as a provider-cacheable prefix; templates/schemas/contract
+unchanged.
+
 Enumeration is now LIVE (WS-3): each model's ``extract_enumeration(ct)`` returns a
 construction list via the frozen ``enumeration`` run-template (manifest
 ``run_templates``), and ``enumerate_constructions`` runs the D20 dual-model
@@ -653,6 +658,8 @@ def _emit_run_manifest(out_dir, prov, phase, model_a, model_b, *, n_specs, wall_
             model_calls=_sum("model_calls"),
             prompt_tokens=_sum("prompt_tokens") or None,
             completion_tokens=_sum("completion_tokens") or None,
+            cache_creation_tokens=_sum("cache_creation_tokens") or None,
+            cache_read_tokens=_sum("cache_read_tokens") or None,
             wall_clock_seconds=wall_clock_seconds,
             retries=_sum("retries"),
             capability="llm",
