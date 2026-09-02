@@ -1088,8 +1088,9 @@ corpus:
   selection:
     status: frozen                            # frozen 2026-09-01 (T2-SEL-4); tag t2-selection-prereg
     # T2 = the extraction subset (StrategySpec extraction gold; RQ1 generalisation).
-    # Target 3 unseen papers; drops to 2 if the human gold-authoring budget binds.
-    t2_target_count: 3
+    # Target raised 3 -> 5 by T2-SEL-6 (2026-09-02), extending down the frozen 3.5
+    # order (#4 KLZ, #5 Barth et al.); drops to 2 if the gold-authoring budget binds.
+    t2_target_count: 5
     t2_min_count: 2
     # Admission constraints (committed at the T2-SEL-4 freeze; narrative spec §3).
     source_venue_constraint: peer_reviewed_journal_or_arxiv_qfin   # any peer-reviewed journal OR arXiv q-fin preprint; SSRN-only excluded (spec 3.1)

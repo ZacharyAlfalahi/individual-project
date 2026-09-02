@@ -70,7 +70,9 @@ def test_spec_doc_exists():
 
 def test_counts_are_coherent():
     sel = _selection()
-    assert sel["t2_target_count"] == 3
+    # target raised 3 -> 5 by dated amendment T2-SEL-6 (2026-09-02), extending down
+    # the frozen §3.5 order — never a silent edit (spec §6).
+    assert sel["t2_target_count"] == 5
     assert sel["t2_min_count"] == 2
     assert sel["t2_min_count"] <= sel["t2_target_count"]
 

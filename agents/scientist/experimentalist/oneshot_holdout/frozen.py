@@ -28,9 +28,10 @@ from __future__ import annotations
 # corpus.selection (status->frozen, five admission constraints committed, governing_date_rule +
 # search_protocol added); RE-PINNED 2026-09-02 after flipping corpus.selection.search_protocol.executed
 # to true (T2-SEL-5 — the one-round candidate search ran; log in docs/evaluation/
-# t2_candidate_adjudication.md). one-shot holdout's real run
+# t2_candidate_adjudication.md); RE-PINNED 2026-09-02 after raising corpus.selection.t2_target_count
+# 3 -> 5 (T2-SEL-6, extension down the frozen selection order). one-shot holdout's real run
 # has not run, so re-pinning is maintenance, not a provenance break. Any later thresholds change must re-pin.
-FROZEN_THRESHOLDS_SHA256 = "9aa28ae40c3b58f0423a13c93a464cf7db65d6f6d5b6e204dfa20e90ffb64c58"
+FROZEN_THRESHOLDS_SHA256 = "ea6c025d8151205fe93dadcea237cb0849d8030b45f1a1e84345974e976ae661"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library
