@@ -711,7 +711,14 @@ class RealModelClient:
     def answer(self, query: FieldQuery, canonical_text: CanonicalText) -> ModelAnswer:
         if not isinstance(query, FieldQuery):
             raise LibrarianSchemaError("RealModelClient.answer expects a FieldQuery")
-        key = (query.field, query.kind, canonical_text.source_sha256)
+        # The key includes the construction label (2026-09-02 pre-paid-run fix):
+        # the prompt renders per-construction via current_strategy_label, so a
+        # construction-independent key would serve construction 1's answers to
+        # every later construction of a multi-construction paper (dfps = 28),
+        # emitting near-clones. Within one construction the label is constant,
+        # so the signal-filler re-ask pattern still hits.
+        key = (query.field, query.kind, canonical_text.source_sha256,
+               self.current_strategy_label)
         if key in self._cache:
             return self._cache[key]
 

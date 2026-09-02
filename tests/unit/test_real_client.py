@@ -397,3 +397,24 @@ def test_disk_cache_keyed_by_model_id(monkeypatch, builder, tmp_path):
     cb = rc.RealModelClient(model_id="model-b", vendor="stub", api_key="k", builder=builder, cache_dir=cache)
     assert cb.answer(q, ct).raw == "equal"   # its own response, not model-a's
     assert bb.calls == 1                     # distinct key -> real call, no cross-serve
+
+
+def test_cache_is_per_construction_not_per_paper(monkeypatch, builder):
+    """Pre-paid-run fix (2026-09-02): on a multi-construction paper the per-field
+    cache must NOT serve construction 1's answers to construction 2 -- the prompt
+    renders per-construction via current_strategy_label, so the key must too.
+    (dfps carries 28 constructions; a paper-wide key would emit 28 near-clones.)"""
+    text = json.dumps({"field": "weighting_scheme", "answered": True, "value": "value", "quote": "q"})
+    backend = _StubBackend(text)
+    client = _client_with(monkeypatch, builder, backend)
+    q = FieldQuery("weighting_scheme", "enum")
+    ct = _stub_ct()
+
+    client.current_strategy_label = "Construction One"
+    client.answer(q, ct)
+    client.answer(q, ct)                    # intra-construction re-ask: cache serves
+    assert backend.calls == 1
+
+    client.current_strategy_label = "Construction Two"
+    client.answer(q, ct)                    # new construction: must genuinely re-ask
+    assert backend.calls == 2
