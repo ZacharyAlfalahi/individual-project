@@ -26,9 +26,11 @@ from __future__ import annotations
 # after a comment-only edit to a corpus.selection.design_touched_exclusions entry; RE-PINNED 2026-09-01
 # after renaming a cost-scenario key (standing terminology fix); RE-PINNED 2026-09-01 after the T2-SEL-4 freeze of
 # corpus.selection (status->frozen, five admission constraints committed, governing_date_rule +
-# search_protocol added). one-shot holdout's real run
+# search_protocol added); RE-PINNED 2026-09-02 after flipping corpus.selection.search_protocol.executed
+# to true (T2-SEL-5 — the one-round candidate search ran; log in docs/evaluation/
+# t2_candidate_adjudication.md). one-shot holdout's real run
 # has not run, so re-pinning is maintenance, not a provenance break. Any later thresholds change must re-pin.
-FROZEN_THRESHOLDS_SHA256 = "fbb954fc62b188fbbdf2ac4f3246567a118817a55d4a075d80f796b22c6c77e0"
+FROZEN_THRESHOLDS_SHA256 = "9aa28ae40c3b58f0423a13c93a464cf7db65d6f6d5b6e204dfa20e90ffb64c58"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library

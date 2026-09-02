@@ -1105,7 +1105,7 @@ corpus:
       query: '"corporate bond" AND ("cross-section" OR "cross-sectional") AND (factor OR anomaly OR premium)'
       depth_per_source: 100                   # first 100 results per source, engine ranking, execution date
       adjudication_log: docs/evaluation/t2_candidate_adjudication.md  # append-only; created at execution
-      executed: false                         # flips true (with a dated spec §6 entry) once the search runs
+      executed: true                          # executed 2026-09-01/02 (T2-SEL-5); log = docs/evaluation/t2_candidate_adjudication.md
     # Papers TOUCHED during design are INELIGIBLE. Append-only. At minimum every
     # paper with a frozen canonical text (evaluation/canonical_texts/*.frozen.yaml)
     # must appear here — enforced by the consistency test.
