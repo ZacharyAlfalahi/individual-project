@@ -8,8 +8,9 @@ state. Zero generation calls, zero spend, no holdout contact.
 `--execute`: REFUSES unless (1) the scale census artefact exists, (2)
 `corpus.selection.status == 'frozen'`, and (3) the frozen zoo-list sha256 in
 `p2_codegen.zoo_list.frozen_sha256` matches the live zoo-list — the three P2
-gates. Two of the three fail today (no census; sha is TO_SET),
-so `--execute` fails closed.
+gates. Gate (2) PASSES since T2-SEL-4 (2026-09-01: `corpus.selection.status:
+frozen`); (1) and (3) still fail (no census; sha is TO_SET), so
+`--execute` fails closed on those two.
 """
 
 from __future__ import annotations

@@ -50,8 +50,12 @@ def test_client_failure_routes_to_paper_failed_not_crash(tmp_path, monkeypatch, 
 
     assert rc == 4  # typed paper_failed, not a crash
     assert "paper_failed" in capsys.readouterr().out
-    # D31: a client failure emits NO partial spec set.
-    assert list(out.iterdir()) == []
+    # D31: a client failure emits NO partial spec set. The WS-8 run-manifest
+    # SIDECAR is allowed (B4): the calls already made are real spend, recorded
+    # honestly -- it is an operational log, never a result artefact.
+    emitted = {p.name for p in out.iterdir()}
+    assert emitted <= {"run_manifest.json"}
+    assert not any(n.startswith(("spec_", "trace_")) for n in emitted)
 
 
 def test_missing_constructions_seed_does_not_crash(tmp_path):

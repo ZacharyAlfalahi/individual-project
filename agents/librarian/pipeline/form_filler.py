@@ -278,6 +278,7 @@ def _model_trace(ans: ModelAnswer, locator: Locator | None, normalised: object) 
         quote=ans.quote,
         locate_result=locator,
         model_id=ans.model_id,
+        parse_failed=getattr(ans, "parse_failed", False),  # B2: format-failure trace signal
     )
 
 

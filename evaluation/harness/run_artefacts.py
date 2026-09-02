@@ -89,6 +89,11 @@ class RunField:
     shipped_reason: str
     ship_choice: str | None
     not_extracted: bool
+    # B2 (additive, default False for pre-B2 traces): per-model format/schema
+    # failure flags read off the trace's ModelTrace.parse_failed -- a silence
+    # that was a parse failure, not the model reporting genuine paper silence.
+    a_parse_failed: bool = False
+    b_parse_failed: bool = False
 
     @property
     def shipped(self) -> bool:
@@ -123,6 +128,11 @@ class RunField:
             out.add("agree_quote_gate_failed")
         if self.not_extracted:
             out.add("not_extracted")
+        if self.a_parse_failed or self.b_parse_failed:
+            # B2: at least one silence was a FORMAT failure. Incidence-only --
+            # the four §3.6 mechanisms are unchanged; this lets the reader split
+            # the quote/format bucket out of "silence" without re-registering.
+            out.add("parse_failed")
         return frozenset(out)
 
 
@@ -182,10 +192,12 @@ def _read_json(path: Path) -> dict:
 
 
 def _not_extracted_fields(spec_dict: dict) -> set[str]:
-    """Flat field names the run did not ASK about, read off the spec's Evidence
-    notes. The trace header carries no ``field_limit``, so the spec's note is the
-    only signal distinguishing a never-asked field from a genuinely silent paper
-    -- and conflating them would corrupt the §3.6 missed-evidence denominator."""
+    """Flat field names the run did not ASK about, read off the spec's Evidence.
+    Primary signal (B2, 2026-09-02): the registered ``unknown_reason ==
+    "not_extracted"`` tag-reason row. Fallback: the historical ``"not extracted"``
+    note prefix, kept so pre-B2 Phase-D run dirs (which rode ``not_stated`` +
+    note marker) still score identically. Conflating never-asked with genuine
+    paper silence would corrupt the §3.6 missed-evidence denominator."""
     found: set[str] = set()
 
     def walk(node, name=None):
@@ -194,7 +206,8 @@ def _not_extracted_fields(spec_dict: dict) -> set[str]:
             tag = node.get("tag")
             if tag is not None and isinstance(ev, dict) and name:
                 note = ev.get("note") or ""
-                if note.startswith(NOT_EXTRACTED_NOTE_PREFIX):
+                if (ev.get("unknown_reason") == "not_extracted"
+                        or note.startswith(NOT_EXTRACTED_NOTE_PREFIX)):
                     found.add(name)
             for k, v in node.items():
                 walk(v, k)
@@ -260,6 +273,8 @@ def load_run(run_dir: str | Path, *, strategy_index: int = 0,
             final_tag=rec["final_tag"], shipped_reason=rec["final_reason"],
             ship_choice=rec.get("ship_choice"),
             not_extracted=name in skipped,
+            a_parse_failed=bool(a.get("parse_failed", False)),
+            b_parse_failed=bool(b.get("parse_failed", False)),
         )
 
     header = trace.get("header") or {}

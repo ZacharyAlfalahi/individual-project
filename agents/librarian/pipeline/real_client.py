@@ -557,7 +557,11 @@ def _coerce_paper_metric(value: Any) -> dict | None:
 def _answer_from_parsed(field_name: str, kind: str, parsed: dict, model_id: str) -> ModelAnswer:
     """Map a parsed JSON reply to a ``ModelAnswer``, defensively. An ``answered``
     reply with no supporting quote is downgraded to silent -- the D9 gate has
-    nothing to locate, and a value without evidence is worse than abstention."""
+    nothing to locate, and a value without evidence is worse than abstention.
+
+    B2: the downgrade paths (answered:true but an unusable value/quote shape) set
+    ``parse_failed=True`` -- a SCHEMA failure, distinct from the model's own
+    ``answered:false`` (genuine content silence, ``parse_failed=False``)."""
     answered = bool(parsed.get("answered"))
     if not answered:
         return ModelAnswer(field=field_name, answered=False, model_id=model_id)
@@ -566,7 +570,8 @@ def _answer_from_parsed(field_name: str, kind: str, parsed: dict, model_id: str)
         summary = parsed.get("summary")
         quotes = tuple(q for q in (parsed.get("quotes") or []) if isinstance(q, str) and q.strip())
         if not summary or not quotes:
-            return ModelAnswer(field=field_name, answered=False, model_id=model_id)
+            return ModelAnswer(field=field_name, answered=False, model_id=model_id,
+                               parse_failed=True)
         return ModelAnswer(
             field=field_name, answered=True, raw=summary, quotes=quotes, model_id=model_id
         )
@@ -587,9 +592,11 @@ def _answer_from_parsed(field_name: str, kind: str, parsed: dict, model_id: str)
     # all degrade to silent: a value without locatable evidence is worse than
     # abstention (and pollutes the D9 merge/trace with a meaningless token).
     if raw is None or (isinstance(raw, str) and not raw.strip()):
-        return ModelAnswer(field=field_name, answered=False, model_id=model_id)
+        return ModelAnswer(field=field_name, answered=False, model_id=model_id,
+                           parse_failed=True)
     if not (isinstance(quote, str) and quote.strip()):
-        return ModelAnswer(field=field_name, answered=False, model_id=model_id)
+        return ModelAnswer(field=field_name, answered=False, model_id=model_id,
+                           parse_failed=True)
     return ModelAnswer(field=field_name, answered=True, raw=raw, quote=quote, model_id=model_id)
 
 
@@ -662,6 +669,7 @@ class RealModelClient:
         backoff_base: float = 2.0,
         backoff_cap: float = 30.0,
         min_interval_s: float = 0.0,
+        cache_dir: str | Path | None = None,
     ) -> None:
         self.model_id = model_id
         self.vendor = vendor
@@ -669,6 +677,19 @@ class RealModelClient:
         self._backend = make_backend(vendor, model_id, api_key, temperature=temperature)
         self._cache: dict[tuple[str, str, str], ModelAnswer] = {}
         self._archive_path = Path(archive_path) if archive_path is not None else None
+        # Disk replay cache (B1): content-addressed on sha256(model_id, prompt), shared
+        # ACROSS runs (never under a run's out_dir -- the per-run raw archive has a strict
+        # line-count integrity guard, run_artefacts.check_raw). A hit skips the vendor call
+        # entirely, so an interrupted/repeated corpus run never re-pays; the cached raw_text
+        # is re-parsed fresh (format_failures stays correct on replay) and still archived
+        # into THIS run's raw jsonl. Keys include model_id, so the two clients of a pair
+        # can share one directory. Lazy import: consumers of make_backend() alone (auditor
+        # explainer, scientist phase_d) never pull the cache dependency.
+        if cache_dir is not None:
+            from agents.scientist.researcher.cache import ResponseCache  # lazy
+            self._disk_cache = ResponseCache(cache_dir)
+        else:
+            self._disk_cache = None
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._backoff_cap = backoff_cap
@@ -706,12 +727,18 @@ class RealModelClient:
         )
         max_tokens = self._builder.max_tokens_for(query.kind)
 
-        raw_text, version = self._generate_with_retry(prompt, max_tokens, query.field)
+        replay = self._disk_get(prompt)
+        if replay is not None:
+            raw_text, version = replay        # zero vendor calls; WS-8 counters untouched
+        else:
+            raw_text, version = self._generate_with_retry(prompt, max_tokens, query.field)
+            self._disk_put(prompt, raw_text, version)
         parsed = _parse_json(raw_text)
         model_id_stamp = version or self.model_id
         if parsed is None:
             self.format_failures += 1
-            answer = ModelAnswer(field=query.field, answered=False, model_id=model_id_stamp)
+            answer = ModelAnswer(field=query.field, answered=False, model_id=model_id_stamp,
+                                 parse_failed=True)
         else:
             answer = _answer_from_parsed(query.field, query.kind, parsed, model_id_stamp)
 
@@ -741,12 +768,51 @@ class RealModelClient:
             f"this JSON Schema:\n{json.dumps(schema)}"
         )
         max_tokens = self._builder.run_max_tokens("enumeration")
-        raw_text, _version = self._generate_with_retry(prompt, max_tokens, "enumeration")
+        replay = self._disk_get(prompt)
+        if replay is not None:
+            raw_text, _version = replay       # zero vendor calls; WS-8 counters untouched
+        else:
+            raw_text, _version = self._generate_with_retry(prompt, max_tokens, "enumeration")
+            self._disk_put(prompt, raw_text, _version)
         parsed = _parse_json(raw_text)
         if parsed is None:
             self.format_failures += 1
             return ()
         return _constructions_from_parsed(parsed)
+
+    # -- disk replay cache (B1) ----------------------------------------------
+    _CACHE_SEED = 0   # ResponseCache keys on (prompt, model, seed); the Librarian has no seed axis
+
+    def _disk_get(self, prompt: str) -> tuple[str, str | None] | None:
+        """Return the cached (raw_text, returned_version) for this model+prompt, or None.
+        The returned version is replayed so a resumed run stamps the same trace model_ids
+        as the original (no drift between original and replay). A corrupt/foreign cache
+        entry -- outer envelope OR inner payload -- degrades to a MISS (re-fetch)
+        rather than sinking the batch: the same malformed-JSON hardening discipline as
+        the validation-gates reader. NOTE the immutable put never repairs a poisoned
+        entry in place, so a corrupted entry means that ONE call is re-paid on every
+        future run until the cache dir is cleaned -- correct results, bounded waste.
+
+        Key scope note: the key is (model_id, prompt) only -- temperature/decoding are
+        fixed within a phase and model_ids differ across phases, so this is safe; a
+        MANUAL decoding-config change requires a fresh --cache-dir (else it would
+        silently serve stale replays)."""
+        if self._disk_cache is None:
+            return None
+        try:
+            hit = self._disk_cache.get(prompt, self.model_id, self._CACHE_SEED)
+            if hit is None:
+                return None
+            rec = json.loads(hit)
+            return rec["raw_text"], rec["version"]
+        except (json.JSONDecodeError, KeyError, TypeError, OSError):
+            return None
+
+    def _disk_put(self, prompt: str, raw_text: str, version: str | None) -> None:
+        if self._disk_cache is None:
+            return
+        payload = json.dumps({"raw_text": raw_text, "version": version}, ensure_ascii=False)
+        self._disk_cache.put(prompt, self.model_id, self._CACHE_SEED, payload)
 
     # -- mechanical operational usage (WS-8 / §4.7) -------------------------
     def operational_usage(self) -> dict:
@@ -845,13 +911,16 @@ def build_client_pair(
     api_keys: dict[str, str],
     *,
     archive_dir: str | Path | None = None,
+    cache_dir: str | Path | None = None,
 ) -> tuple[RealModelClient, RealModelClient]:
     """Build (model_a, model_b) from a ``librarian.model_stack`` phase block
     (``{model_a: {vendor, model_id, api_key_env}, model_b: {...}}``).
 
     ``api_keys`` maps ``api_key_env`` names to their resolved values (the caller
     reads the environment; this stays testable). ``temperature`` +
-    ``structured_decoding`` come from the enclosing stack block."""
+    ``structured_decoding`` come from the enclosing stack block. ``cache_dir``
+    (when given) enables the shared disk replay cache on both clients -- keys
+    include model_id, so one directory serves the whole pair."""
     temperature = float(stack.get("temperature", 0))
     archive_dir = Path(archive_dir) if archive_dir is not None else None
 
@@ -878,6 +947,7 @@ def build_client_pair(
             archive_path=archive,
             min_interval_s=pace,
             max_retries=retries,
+            cache_dir=cache_dir,
         )
 
     return _one("model_a"), _one("model_b")

@@ -120,3 +120,16 @@ rows:
     required_evidence: [note]
     sole_producer: adapter
     downstream: propagate_unknown
+
+  # not_extracted (B2 amendment, 2026-09-02): the RUN never asked this field
+  # (--limit budget skip; a field with no prose field-type yet). A statement
+  # about THIS RUN, never about the paper -- distinct from not_stated so the
+  # G3 scorer buckets it NOT_ASKED (out of the §3.6 missed-evidence
+  # denominator) by REASON, retiring the "not extracted" note-prefix sniffing
+  # that previously rode not_stated.
+  - tag: UNKNOWN
+    reason: not_extracted
+    namespace: ""
+    required_evidence: [note]
+    sole_producer: librarian
+    downstream: excluded_from_missed_evidence_not_asked

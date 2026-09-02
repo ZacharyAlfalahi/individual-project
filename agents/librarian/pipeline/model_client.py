@@ -104,12 +104,25 @@ class ModelAnswer:
     quote: str | None = None
     quotes: tuple[str, ...] = ()
     model_id: str | None = None
+    # B2: True when this silence is a FORMAT/SCHEMA failure (unparseable JSON, or
+    # answered:true with an unusable value/quote shape) rather than the model
+    # reporting genuine paper silence. Additive, default False; carried into the
+    # per-model trace so the §3.6 gate can separate the quote/format bucket from
+    # genuine silence. Never True on an answered reply.
+    parse_failed: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.field, str) or self.field.strip() == "":
             raise LibrarianSchemaError("ModelAnswer.field must be a non-empty string")
         if not isinstance(self.answered, bool):
             raise LibrarianSchemaError("ModelAnswer.answered must be a bool")
+        if not isinstance(self.parse_failed, bool):
+            raise LibrarianSchemaError("ModelAnswer.parse_failed must be a bool")
+        if self.parse_failed and self.answered:
+            raise LibrarianSchemaError(
+                "ModelAnswer.parse_failed=True contradicts answered=True -- a format "
+                "failure is a kind of silence, never an answer"
+            )
         if isinstance(self.quotes, list):
             object.__setattr__(self, "quotes", tuple(self.quotes))
         if not isinstance(self.quotes, tuple) or any(not isinstance(q, str) for q in self.quotes):
@@ -134,6 +147,7 @@ class ModelAnswer:
             "quote": self.quote,
             "quotes": list(self.quotes),
             "model_id": self.model_id,
+            "parse_failed": self.parse_failed,
         }
 
 
@@ -197,5 +211,6 @@ class FakeModelClient:
                 quote=result.quote,
                 quotes=result.quotes,
                 model_id=self.model_id,
+                parse_failed=result.parse_failed,   # B2: never drop the format signal
             )
         return result

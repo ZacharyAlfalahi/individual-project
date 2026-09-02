@@ -77,7 +77,7 @@ papers:
     expected_fate: refuse_no_strategy
     expected_run_outcome: REVIEW
     enumeration_mode: live
-    expected_sheet: TO_AUTHOR               # evaluation/adversarial/sheets/reject_bkmx.sheet.yaml
+    expected_sheet: evaluation/adversarial/sheets/reject_bkmx.sheet.yaml   # authored 2026-09-02 (T5-PRE-7)
   - handle: DMR
     corpus_fate_handle: null                     # absent from corpus_fate.FATE_TABLE
     pdf: "papers/pdf/DMR (2023).pdf"
@@ -85,10 +85,14 @@ papers:
     expected_fate: refuse_no_strategy
     expected_run_outcome: REVIEW
     enumeration_mode: live
-    expected_sheet: TO_AUTHOR               # evaluation/adversarial/sheets/reject_dmr.sheet.yaml
+    expected_sheet: evaluation/adversarial/sheets/reject_dmr.sheet.yaml    # authored 2026-09-02 (T5-PRE-7)
 
 # Pre-registered count (finalised 2026-09-01): 8 = 2 refuse_asset_class (HXZ, KPJ)
 #   + 6 refuse_no_strategy (HLZ, GKX, GL, BPW, BKMX, DMR).
 # The first 6 are in corpus_fate.FATE_TABLE (answer key pre-authored); BKMX + DMR need hand-authored sheets.
 count_prereg: 8
-status_note: BKMX + DMR expected sheets are TO_AUTHOR; the other 6 are graded off corpus_fate.
+status_note: >
+  BKMX + DMR expected sheets authored 2026-09-02 (T5-PRE-7, materialised from the approved
+  drafts); the other 6 are graded off corpus_fate. All 8 papers are registered in
+  run_librarian PAPERS as reject_<handle> (no gold_enum -> live enumeration), with frozen
+  texts under the gitignored evaluation/adversarial/frozen/ (B6, 2026-09-02).

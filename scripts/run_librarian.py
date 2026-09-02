@@ -171,16 +171,38 @@ PAPERS: dict[str, dict] = {
         "canonical_text": "evaluation/canonical_texts/synth_2026.frozen.yaml",
         "gold_enum": "evaluation/gold_specs/enum_synth_2026.yaml",
     },
+    # T5 Arm B must-refuse papers (evaluation/adversarial/reject_set.yaml, count_prereg 8).
+    # Deliberately NO gold_enum: a gold-less paper falls through to LIVE enumeration even
+    # under --enumeration gold, and enumeration/assembly refusing (exit 2/3) is exactly
+    # the graded behaviour. Frozen texts live under the GITIGNORED
+    # evaluation/adversarial/frozen/ (never canonical_texts/ -- the design-touched
+    # consistency test is scoped there by design), so these entries are runnable only on
+    # a machine that has frozen the local reject PDFs. Never a corpus/RQ1/RQ3 member.
+    "reject_hxz": {"paper_id": "HXZ_REJECT",
+                   "canonical_text": "evaluation/adversarial/frozen/reject_hxz.frozen.yaml"},
+    "reject_kpj": {"paper_id": "KPJ_REJECT",
+                   "canonical_text": "evaluation/adversarial/frozen/reject_kpj.frozen.yaml"},
+    "reject_hlz": {"paper_id": "HLZ_REJECT",
+                   "canonical_text": "evaluation/adversarial/frozen/reject_hlz.frozen.yaml"},
+    "reject_gkx": {"paper_id": "GKX_REJECT",
+                   "canonical_text": "evaluation/adversarial/frozen/reject_gkx.frozen.yaml"},
+    "reject_gl": {"paper_id": "GL_REJECT",
+                  "canonical_text": "evaluation/adversarial/frozen/reject_gl.frozen.yaml"},
+    "reject_bpw": {"paper_id": "BPW_REJECT",
+                   "canonical_text": "evaluation/adversarial/frozen/reject_bpw.frozen.yaml"},
+    "reject_bkmx": {"paper_id": "BKMX_REJECT",
+                    "canonical_text": "evaluation/adversarial/frozen/reject_bkmx.frozen.yaml"},
+    "reject_dmr": {"paper_id": "DMR_REJECT",
+                   "canonical_text": "evaluation/adversarial/frozen/reject_dmr.frozen.yaml"},
 }
 
 
 # A field the run never ASKED about, as opposed to one the paper was silent on.
-# The tag-reason registry has no `not_extracted` row (its five UNKNOWN reasons are
-# all claims about the paper), so these ride `not_stated` and are identified by
-# this note marker -- which the G3 scorer keys on to bucket them NOT_ASKED and
-# keep them OUT of the §3.6 missed-evidence denominator. One constant, so the
-# writer and the reader cannot drift. Registering a real `not_extracted` reason
-# is the cleaner fix and is recorded as follow-up debt.
+# B2 (2026-09-02): `not_extracted` is now a REGISTERED tag-reason row (a statement
+# about THIS RUN, never about the paper), so the G3 scorer buckets these NOT_ASKED
+# by reason -- retiring the earlier note-prefix sniffing that rode `not_stated`.
+# The note keeps the human-readable detail (and the historical prefix, so old
+# Phase-D run dirs still score identically via the reader's fallback).
 NOT_EXTRACTED_NOTE_PREFIX = "not extracted"
 
 
@@ -188,7 +210,7 @@ def _not_extracted(detail: str) -> Inherited:
     """UNKNOWN for a field this run did not ask about (never a claim of silence)."""
     return Inherited(
         None, "UNKNOWN",
-        Evidence(note=f"{NOT_EXTRACTED_NOTE_PREFIX} ({detail})", unknown_reason="not_stated"),
+        Evidence(note=f"{NOT_EXTRACTED_NOTE_PREFIX} ({detail})", unknown_reason="not_extracted"),
     )
 
 
@@ -379,12 +401,15 @@ def _load_dotenv(path: Path) -> None:
 
 
 def build_clients(phase: str, builder: PromptBuilder, out_dir: Path, paper: dict,
-                  min_interval_s: float | None = None):
+                  min_interval_s: float | None = None, cache_dir: Path | None = None):
     """Return (model_a, model_b). ``fake`` = offline scripted; ``dev``/``report`` =
     live vendor clients read from thresholds.yaml + env keys. ``paper`` supplies the
     fake pair's scripted enumeration seed (WS-3); the live pairs enumerate live.
     ``min_interval_s`` (when given) overrides the stack's per-model call pacing -- an
-    operational free-tier rate-limit knob, not a frozen numerical threshold."""
+    operational free-tier rate-limit knob, not a frozen numerical threshold.
+    ``cache_dir`` (when given) enables the shared disk replay cache (B1) so an
+    interrupted or repeated run never re-pays a vendor call -- an operational knob,
+    like pacing, deliberately NOT a thresholds.yaml key."""
     if phase == "fake":
         return _fake_pair(paper)
 
@@ -397,7 +422,8 @@ def build_clients(phase: str, builder: PromptBuilder, out_dir: Path, paper: dict
         block["min_interval_s"] = min_interval_s
     env_names = {block["model_a"]["api_key_env"], block["model_b"]["api_key_env"]}
     api_keys = {name: os.environ.get(name, "") for name in env_names}
-    return build_client_pair(block, builder, api_keys, archive_dir=out_dir / "raw")
+    return build_client_pair(block, builder, api_keys, archive_dir=out_dir / "raw",
+                             cache_dir=cache_dir)
 
 
 def _fake_pair(paper: dict):
@@ -437,6 +463,24 @@ def _canonical_text_hash(ct) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _clear_stale_run_artefacts(out_dir: Path) -> None:
+    """Make a re-run into an existing out_dir IDEMPOTENT. The raw archive is opened in APPEND mode while spec/trace are
+    overwritten, so re-using a populated out_dir would accumulate a second
+    archive line per field and trip the run_artefacts.check_raw integrity guard
+    -- corrupting a paid run's artefacts at scoring time (this exact mismatch
+    already happened once: runs/bbw_full.). A re-run is a NEW counted run (D31/
+    I3), never a silent continuation, so stale artefacts from the previous run
+    are cleared up front; with the disk replay cache the fresh archive is
+    reconstructed at zero vendor cost -- true zero-cost resume."""
+    for pattern in ("spec_*.json", "trace_*.json", "run_manifest.json"):
+        for p in out_dir.glob(pattern):
+            p.unlink()
+    raw = out_dir / "raw"
+    if raw.is_dir():
+        for p in raw.glob("*.jsonl"):
+            p.unlink()
+
+
 def _paper_failed(exc: RealClientError) -> int:
     """Typed exit for a model/transport failure DURING extraction (enumeration or
     per-field) -- e.g. retries exhausted on a 429. It is an infra failure, NOT paper
@@ -467,6 +511,14 @@ def main(argv=None) -> int:
     ap.add_argument("--min-interval-s", type=float, default=None, dest="min_interval_s",
                     help="minimum seconds between calls PER MODEL (rate-limit pacing; overrides the "
                          "stack default). Use on the free tier to avoid 429s.")
+    ap.add_argument("--cache-dir", default="runs/librarian_cache", dest="cache_dir",
+                    help="shared disk replay cache for live vendor calls (B1). A repeated or "
+                         "resumed run replays cached raw responses at zero cost. Default ON; the "
+                         "cache is shared ACROSS runs and keyed by (model_id, prompt).")
+    ap.add_argument("--no-cache", action="store_true",
+                    help="disable the disk replay cache. REQUIRED for any run whose meaning "
+                         "depends on call independence (e.g. contract §3.4 repeats / flip-rate): "
+                         "a cached replay is byte-identical to the original, not a fresh sample.")
     args = ap.parse_args(argv)
 
     paper = PAPERS[args.paper]
@@ -482,7 +534,15 @@ def main(argv=None) -> int:
     silence_table = load_silence_policy_table()
     builder = PromptBuilder.load(registry, manifest)
 
-    model_a, model_b = build_clients(args.phase, builder, out_dir, paper, min_interval_s=args.min_interval_s)
+    cache_dir = None
+    if not args.no_cache and args.cache_dir:
+        cache_dir = (_REPO_ROOT / args.cache_dir) if not Path(args.cache_dir).is_absolute() else Path(args.cache_dir)
+    model_a, model_b = build_clients(args.phase, builder, out_dir, paper,
+                                     min_interval_s=args.min_interval_s, cache_dir=cache_dir)
+    # Clear AFTER the clients build: a missing-key failure (raised in build_clients,
+    # fatal by design) must never wipe a previous run's artefacts first (review
+    # 2026-09-02 footgun note). Nothing writes to out_dir before this point.
+    _clear_stale_run_artefacts(out_dir)
 
     now = datetime.now(timezone.utc).isoformat()
     t_start = time.monotonic()   # WS-8 wall-clock: covers enumeration + per-field extraction
@@ -498,6 +558,13 @@ def main(argv=None) -> int:
         run_id=f"{args.paper}-{args.phase}-{now}",
         timestamp=now,
     )
+
+    def _early_manifest() -> None:
+        """WS-8 on the review/failure exits (B4): the calls already made (enumeration,
+        partial extraction) are real spend and are recorded honestly -- partial usage,
+        zero spec outputs. Closes the 'documented follow-up' on _emit_run_manifest."""
+        _emit_run_manifest(out_dir, prov, args.phase, model_a, model_b,
+                           n_specs=0, wall_clock_seconds=time.monotonic() - t_start)
 
     # Enumeration source. Two modes:
     #  * gold (default): the authored per-paper gold enumeration list IS the agreed
@@ -521,15 +588,18 @@ def main(argv=None) -> int:
         except RealClientError as exc:
             # 429s were observed at THIS enumeration gate on the first live run (WS-3),
             # not only per-field -- same infra-failure semantics as the run_paper catch.
+            _early_manifest()
             return _paper_failed(exc)
         enum = enumerate_constructions(ct, list_a, list_b, paper["paper_id"])
         if not enum.agreed:
             print(f"[run_librarian] REVIEW: enumeration disagreement: {enum.disagreement.detail}")
+            _early_manifest()
             return 2
         if not enum.constructions:
             print("[run_librarian] REVIEW: enumeration produced zero constructions "
                   "(both models empty or unparseable) -- routing to review rather than "
                   "proceeding with an empty spec set")
+            _early_manifest()
             return 2
 
     assembler = make_assembler(model_a, model_b, registry, manifest, field_limit=args.limit)
@@ -548,8 +618,10 @@ def main(argv=None) -> int:
         )
     except AssemblyIncomplete as exc:
         print(f"[run_librarian] REVIEW: {exc}")
+        _early_manifest()
         return 2
     except RealClientError as exc:
+        _early_manifest()
         return _paper_failed(exc)
 
     _write_outputs(result, out_dir)
@@ -562,8 +634,9 @@ def main(argv=None) -> int:
 def _emit_run_manifest(out_dir, prov, phase, model_a, model_b, *, n_specs, wall_clock_seconds):
     """WS-8 (§4.7): the per-run operational log sidecar. Tokens/calls/retries are summed
     across both models from their mechanical counters (a FakeModelClient has none, so the
-    profile degrades to zeros — recorded, never guessed). Emitted on the completion path;
-    the review/failure exits are a documented follow-up."""
+    profile degrades to zeros — recorded, never guessed). Emitted on the completion path
+    AND (B4) on the review/failure exits via _early_manifest -- partial usage there is
+    real spend and is recorded honestly."""
     def _usage(m):
         return m.operational_usage() if hasattr(m, "operational_usage") else {}
     ua, ub = _usage(model_a), _usage(model_b)

@@ -50,13 +50,17 @@ class ModelTrace:
     """One model's contribution to a field: its raw (pre-normalisation) answer,
     the quote it claimed, and whether that quote located (a ``Locator`` or
     ``None``). ``answered=False`` records a model that reported the paper
-    silent."""
+    silent. ``parse_failed=True`` (B2, additive) marks a silence that was a
+    FORMAT/SCHEMA failure rather than the model reporting genuine paper silence
+    -- the distinct trace signal the §3.6 gate reads to keep the quote/format
+    bucket out of the missed-evidence denominator."""
 
     answered: bool
     raw: object = None
     quote: str | None = None
     locate_result: Locator | None = None
     model_id: str | None = None
+    parse_failed: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.answered, bool):
@@ -71,6 +75,7 @@ class ModelTrace:
             "quote": self.quote,
             "locate_result": _locator_to_dict(self.locate_result),
             "model_id": self.model_id,
+            "parse_failed": self.parse_failed,
         }
 
 

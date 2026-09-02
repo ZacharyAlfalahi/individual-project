@@ -279,3 +279,121 @@ def test_paper_metric_unit_menu_matches_the_schema():
     assert set(schema["properties"]["value"]["properties"]["unit"]["enum"]) == set(
         rc._PAPER_METRIC_UNITS
     )
+
+
+# ---------------------------------------------------------------------------
+# Disk replay cache (B1).
+# ---------------------------------------------------------------------------
+
+def _cached_client(monkeypatch, builder, backend, cache_dir, **kwargs) -> rc.RealModelClient:
+    monkeypatch.setitem(rc._BACKENDS, "stub", lambda model_id, api_key, temperature: backend)
+    return rc.RealModelClient(model_id="stub-1", vendor="stub", api_key="k", builder=builder,
+                              cache_dir=cache_dir, **kwargs)
+
+
+def test_disk_cache_replays_across_client_instances(monkeypatch, builder, tmp_path):
+    """A fresh client (new process simulation) pointed at the same cache dir serves
+    from disk: ZERO backend calls, ZERO WS-8 paid-call counters -- a replay is not a
+    paid call -- yet the answer is identical, including the version stamp."""
+    text = json.dumps({"field": "weighting_scheme", "answered": True, "value": "value", "quote": "q"})
+    cache = tmp_path / "cache"
+    q = FieldQuery("weighting_scheme", "enum")
+    ct = _stub_ct()
+
+    b1 = _StubBackend(text, version="stub-v42")
+    c1 = _cached_client(monkeypatch, builder, b1, cache)
+    a1 = c1.answer(q, ct)
+    assert b1.calls == 1 and c1.model_calls == 1
+
+    b2 = _StubBackend("SHOULD NEVER BE RETURNED", version="stub-v99")
+    c2 = _cached_client(monkeypatch, builder, b2, cache)
+    a2 = c2.answer(q, ct)
+    assert b2.calls == 0                     # served from disk
+    assert c2.model_calls == 0               # replay never counts as a paid call
+    assert c2.total_retries == 0
+    assert a2.answered is True and a2.raw == a1.raw
+    assert a2.model_id == "stub-v42"         # version replayed -> no trace model_id drift
+
+
+def test_disk_cache_replay_recomputes_format_failures(monkeypatch, builder, tmp_path):
+    """A cached UNPARSEABLE response must re-increment format_failures on replay
+    (the cache stores raw_text, and parsing runs fresh on every hit)."""
+    cache = tmp_path / "cache"
+    q = FieldQuery("weighting_scheme", "enum")
+    ct = _stub_ct()
+
+    c1 = _cached_client(monkeypatch, builder, _StubBackend("not json"), cache)
+    c1.answer(q, ct)
+    assert c1.format_failures == 1
+
+    b2 = _StubBackend("also not json")
+    c2 = _cached_client(monkeypatch, builder, b2, cache)
+    ans = c2.answer(q, ct)
+    assert b2.calls == 0
+    assert ans.answered is False
+    assert c2.format_failures == 1           # recomputed on replay, not carried as zero
+
+
+def test_disk_cache_replay_still_archives(monkeypatch, builder, tmp_path):
+    """A replayed run's out_dir still gets its raw-archive line -- the archive is a
+    per-run artefact read back downstream (run_artefacts line-count guard, p6a replay)."""
+    text = json.dumps({"field": "weighting_scheme", "answered": True, "value": "value", "quote": "q"})
+    cache = tmp_path / "cache"
+    q = FieldQuery("weighting_scheme", "enum")
+    ct = _stub_ct()
+
+    monkeypatch.setitem(rc._BACKENDS, "stub", lambda model_id, api_key, temperature: _StubBackend(text))
+    c1 = rc.RealModelClient(model_id="stub-1", vendor="stub", api_key="k", builder=builder,
+                            cache_dir=cache, archive_path=tmp_path / "run1" / "raw_a.jsonl")
+    c1.answer(q, ct)
+
+    b2 = _StubBackend("SHOULD NEVER BE RETURNED")
+    monkeypatch.setitem(rc._BACKENDS, "stub", lambda model_id, api_key, temperature: b2)
+    c2 = rc.RealModelClient(model_id="stub-1", vendor="stub", api_key="k", builder=builder,
+                            cache_dir=cache, archive_path=tmp_path / "run2" / "raw_a.jsonl")
+    c2.answer(q, ct)
+    assert b2.calls == 0
+    lines = (tmp_path / "run2" / "raw_a.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1                   # the replay run's archive is intact
+
+
+def test_disk_cache_enumeration_path(monkeypatch, builder, tmp_path):
+    """extract_enumeration() replays from the same cache (whole-paper call)."""
+    payload = json.dumps({"constructions": [
+        {"name": "DRF", "quote": "the 5% VaR appears on this page", "class": "strategy"},
+    ]})
+    cache = tmp_path / "cache"
+    ct = _stub_ct()
+
+    b1 = _StubBackend(payload)
+    c1 = _cached_client(monkeypatch, builder, b1, cache)
+    e1 = c1.extract_enumeration(ct)
+    assert b1.calls == 1 and len(e1) == 1
+
+    b2 = _StubBackend("SHOULD NEVER BE RETURNED")
+    c2 = _cached_client(monkeypatch, builder, b2, cache)
+    e2 = c2.extract_enumeration(ct)
+    assert b2.calls == 0
+    assert c2.model_calls == 0
+    assert [c.name for c in e2] == [c.name for c in e1]
+
+
+def test_disk_cache_keyed_by_model_id(monkeypatch, builder, tmp_path):
+    """Two models sharing one cache dir never serve each other's responses (the key
+    includes model_id -- the pair-sharing safety property)."""
+    text_a = json.dumps({"field": "weighting_scheme", "answered": True, "value": "value", "quote": "q"})
+    text_b = json.dumps({"field": "weighting_scheme", "answered": True, "value": "equal", "quote": "q"})
+    cache = tmp_path / "cache"
+    q = FieldQuery("weighting_scheme", "enum")
+    ct = _stub_ct()
+
+    ba = _StubBackend(text_a)
+    monkeypatch.setitem(rc._BACKENDS, "stub", lambda model_id, api_key, temperature: ba)
+    ca = rc.RealModelClient(model_id="model-a", vendor="stub", api_key="k", builder=builder, cache_dir=cache)
+    assert ca.answer(q, ct).raw == "value"
+
+    bb = _StubBackend(text_b)
+    monkeypatch.setitem(rc._BACKENDS, "stub", lambda model_id, api_key, temperature: bb)
+    cb = rc.RealModelClient(model_id="model-b", vendor="stub", api_key="k", builder=builder, cache_dir=cache)
+    assert cb.answer(q, ct).raw == "equal"   # its own response, not model-a's
+    assert bb.calls == 1                     # distinct key -> real call, no cross-serve

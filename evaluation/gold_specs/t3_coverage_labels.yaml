@@ -1,0 +1,74 @@
+# T3 RQ2 coverage labels -- the machine-readable encoding of the pre-registered
+# CI-5 denominator partition (docs/evaluation/corpus_inventory.md §5, registered
+# 2026-08-19; encoded 2026-09-02, closing CI-5's explicit to-do).
+#
+# One row per STRATEGY construction of the two admitted T3 enumeration golds
+# (enum_bbw_2021.yaml, enum_dfps_2026.yaml), keyed by (paper_id, construction
+# name) -- NEVER by quote (BBW-2021's two stock rows share one quote). The
+# label is the construction's pre-registered expected disposition:
+#
+#   implement -- bond-scope; the FRR denominator (an incorrect refusal here is a
+#                false refusal). 27 rows = BBW-2021 3 + DFPS 24.
+#   refuse    -- named equity single strategies; the FIR / refusal-recall set (an
+#                execution here is a false implementation). 5 rows = BBW-2021
+#                {Stock SR, Stock IR} + DFPS {bev_mev, seas_1_1na, at_me}.
+#   excluded  -- not a paper-enumerable D20 unit (the 153-signal Jensen family:
+#                its members are defined in Jensen et al. 2022, not in DFPS);
+#                in NEITHER denominator. 1 row.
+#
+# Denominator: 32 = 27 + 5 (the excluded row is outside both). The split is NOT
+# a name heuristic -- DFPS "Equity Momentum" is an equity-momentum SIGNAL used
+# to sort bonds (implement), while the three firm-level factors are equity
+# strategies (refuse). Auxiliary (class: auxiliary) constructions are outside
+# the strategy denominator entirely and carry no row here.
+#
+# Consumer: the RQ2 coverage harness (contract §5.2 layered coverage /
+# §5.3 FIR-FRR) -- NOT the P2 codegen census (a different estimand).
+# Guarded by tests/unit/test_t3_coverage_labels.py (bijection with the enum
+# golds' strategy rows + the 27/5/1 count pins).
+
+version: v1
+registered: 2026-08-19   # the CI-5 partition; this file is its mechanical encoding
+encoded: 2026-09-02
+
+papers:
+  BBW_2021:
+    enum_gold: evaluation/gold_specs/enum_bbw_2021.yaml
+    constructions:
+      "Systematic risk (SR) quintile portfolios": implement
+      "Idiosyncratic risk (IR) quintile portfolios": implement
+      "Market-timing strategy": implement
+      "Stock systematic risk (SR) quintile portfolios": refuse
+      "Stock idiosyncratic risk (IR) quintile portfolios": refuse
+
+  DFPS_2026:
+    enum_gold: evaluation/gold_specs/enum_dfps_2026.yaml
+    constructions:
+      "VaR": implement
+      "ES(10%)": implement
+      "Credit Rating": implement
+      "Liquidity": implement
+      "Liquidity-beta": implement
+      "Short Term Reversal": implement
+      "Volatility": implement
+      "Skewness": implement
+      "Kurtosis": implement
+      "Book-to-price": implement
+      "Systematic risk": implement
+      "Momentum": implement
+      "Duration": implement
+      "Long Term Reversal": implement
+      "Vix-beta": implement
+      "Default-beta": implement
+      "Term-beta": implement
+      "Yield to maturity": implement
+      "Credit Spread": implement
+      "Bond Age": implement
+      "Amount Outstanding": implement
+      "Market Value": implement
+      "Equity Momentum": implement
+      "Value": implement
+      "Firm-level factors from 153 equity signals (Jensen et al. 2022)": excluded
+      "Firm-level value factor (VALfirm / bev_mev)": refuse
+      "Firm-level equity momentum factor (EQMOMfirm / seas_1_1na)": refuse
+      "Firm-level leverage factor (LEVfirm / at_me)": refuse
