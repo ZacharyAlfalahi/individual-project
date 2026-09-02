@@ -230,7 +230,21 @@ class AssemblyIncomplete(RuntimeError):
 # The per-construction assembler (the callable run_paper injects).
 # ---------------------------------------------------------------------------
 
-def make_assembler(model_a, model_b, registry, manifest, field_limit=None):
+# Every field name a live run can extract (validates --fields fail-loud: a typo'd
+# allowlist entry must never silently skip the target). Capped fields + the
+# always-run structural/paper_facts names (listing an always-run name is legal).
+_EXTRACTABLE_FIELDS: frozenset = frozenset((
+    *F.COMMON_FIELDS,
+    F.SORT_KIND, F.BUCKETING_METHOD, F.N_GROUPS, F.STRIPE_AGGREGATION,
+    F.CONTROL_MISSING_POLICY, F.LONG_LEG, F.SIGNAL_TRANSFORM, F.CONTROL_N_GROUPS,
+    "control_axis",
+    F.FORMATION_STRUCTURE, F.ASSET_CLASS, F.METHOD_SUMMARY, F.SORT_SIGNAL, F.COMBINER,
+    F.SAMPLE_START, F.SAMPLE_END, F.CLAIMED_HEADLINE_METRIC,
+))
+
+
+def make_assembler(model_a, model_b, registry, manifest, field_limit=None,
+                   field_allowlist=None):
     """Build the ``assemble_strategy(construction, canonical_text, prov)`` closure
     run_paper drives. Fills Part 1 + all 38 Part-2 fields via the live per-field
     dual-model merge; silent fields degrade to UNKNOWN (blank is the safe state).
@@ -239,7 +253,17 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None):
     fields (the 28 common + the leg-inherited fields) are extracted LIVE -- the
     rest degrade to UNKNOWN(not_extracted) with no model call. A cheap smoke that
     still exercises the full live path; None = extract everything. The structural
-    fields (Part 1, sort_signal, combiner) always run."""
+    fields (Part 1, sort_signal, combiner) always run.
+
+    ``field_allowlist`` (set of field names or None -- the C-lever, 2026-09-02):
+    when given, ONLY the named non-structural fields are extracted live; every
+    other capped field degrades to UNKNOWN(not_extracted), exactly the --limit
+    degrade. Built for the T5 targeted-field runs (each perturbation targets one
+    field; the sheets grade that field's row, and untargeted fields bucket
+    NOT_ASKED in scoring). The always-run set (Part 1, method_summary,
+    sort_signal, combiner, paper_facts) is unaffected -- listing one of those
+    names is legal and simply restricts nothing extra. None = the default behaviour,
+    byte-identical."""
 
     def _q(field_name):
         # Stamp template hashes into the trace when the field is bound in the
@@ -247,8 +271,8 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None):
         # control_n_groups (v1.1) is not yet bound in the manifest -- follow-up.
         return manifest.query_for(field_name) if field_name in manifest.field_types else None
 
-    def _skipped():
-        return _not_extracted("smoke --limit")
+    def _skipped(cause: str):
+        return _not_extracted(cause)
 
     def assemble(construction: Construction, canonical_text, prov: RunProvenance):
         # method_summary renders with this construction's name (the Protocol
@@ -261,10 +285,12 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None):
         live = [0]  # count of live per-value extractions (for --limit)
 
         def _capped(name):
-            """Extract one per-value field live, or skip to UNKNOWN once the
-            live budget (field_limit) is spent."""
+            """Extract one per-value field live, or skip to UNKNOWN when the field
+            is outside the allowlist (targeted run) or the live budget is spent."""
+            if field_allowlist is not None and name not in field_allowlist:
+                return _skipped("targeted --fields")
             if field_limit is not None and live[0] >= field_limit:
-                return _skipped()
+                return _skipped("smoke --limit")
             live[0] += 1
             out = fill_field(name, model_a, model_b, canonical_text, query=_q(name))
             records.append(out.trace)
@@ -314,8 +340,12 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None):
                 f"(concept_id tag = {sig.concept_id.tag}); routing to review."
             )
         # control_axis (2nd sort of a double sort; literal field name -- fields.py
-        # has no F.CONTROL_AXIS). Skipped under --limit (single sorts leave it None).
-        if field_limit is None:
+        # has no F.CONTROL_AXIS). Skipped under --limit (single sorts leave it None);
+        # under an allowlist it runs only when explicitly targeted.
+        run_control_axis = field_limit is None and (
+            field_allowlist is None or "control_axis" in field_allowlist
+        )
+        if run_control_axis:
             ctrl = fill_signal_ref("control_axis", model_a, model_b, canonical_text, registry)
             records.append(ctrl.trace)
             records.extend(ctrl.param_traces)
@@ -524,9 +554,34 @@ def main(argv=None) -> int:
                     help="disable the disk replay cache. REQUIRED for any run whose meaning "
                          "depends on call independence (e.g. contract §3.4 repeats / flip-rate): "
                          "a cached replay is byte-identical to the original, not a fresh sample.")
+    ap.add_argument("--fields", default=None,
+                    help="comma-separated field allowlist (C-lever, targeted runs): only the "
+                         "named non-structural fields are extracted live; the rest degrade to "
+                         "UNKNOWN(not_extracted). Structural fields + paper_facts always run. "
+                         "Unknown names fail loud (a typo must never silently skip everything).")
+    # T5 Arm-A variant overrides: run this registered paper's extraction against a
+    # DIFFERENT frozen canonical text (a perturbed variant) without registering the
+    # 257 variants as PAPERS entries. The override paths are recorded in the run
+    # manifest's inputs (hashed), so the exact variant is always attributable.
+    ap.add_argument("--canonical-text", default=None, dest="canonical_text_override",
+                    help="override the paper's frozen canonical text path (T5 perturbed variant).")
+    ap.add_argument("--gold-enum", default=None, dest="gold_enum_override",
+                    help="override the paper's gold enumeration list path.")
     args = ap.parse_args(argv)
 
-    paper = PAPERS[args.paper]
+    paper = dict(PAPERS[args.paper])
+    if args.canonical_text_override:
+        paper["canonical_text"] = args.canonical_text_override
+    if args.gold_enum_override:
+        paper["gold_enum"] = args.gold_enum_override
+
+    field_allowlist = None
+    if args.fields is not None:
+        field_allowlist = {f.strip() for f in args.fields.split(",") if f.strip()}
+        unknown = field_allowlist - _EXTRACTABLE_FIELDS
+        if unknown:
+            ap.error(f"--fields contains unknown field name(s): {sorted(unknown)}. "
+                     f"Extractable: {sorted(_EXTRACTABLE_FIELDS)}")
     out_dir = (_REPO_ROOT / args.out) if not Path(args.out).is_absolute() else Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -569,7 +624,8 @@ def main(argv=None) -> int:
         partial extraction) are real spend and are recorded honestly -- partial usage,
         zero spec outputs. Closes the 'documented follow-up' on _emit_run_manifest."""
         _emit_run_manifest(out_dir, prov, args.phase, model_a, model_b,
-                           n_specs=0, wall_clock_seconds=time.monotonic() - t_start)
+                           n_specs=0, wall_clock_seconds=time.monotonic() - t_start,
+                           inputs=[paper["canonical_text"]])
 
     # Enumeration source. Two modes:
     #  * gold (default): the authored per-paper gold enumeration list IS the agreed
@@ -607,7 +663,8 @@ def main(argv=None) -> int:
             _early_manifest()
             return 2
 
-    assembler = make_assembler(model_a, model_b, registry, manifest, field_limit=args.limit)
+    assembler = make_assembler(model_a, model_b, registry, manifest, field_limit=args.limit,
+                               field_allowlist=field_allowlist)
 
     limit_note = f" limit={args.limit}" if args.limit is not None else ""
     print(f"[run_librarian] paper={args.paper} phase={args.phase}{limit_note} "
@@ -631,12 +688,14 @@ def main(argv=None) -> int:
 
     _write_outputs(result, out_dir)
     _emit_run_manifest(out_dir, prov, args.phase, model_a, model_b,
-                       n_specs=len(result.specs), wall_clock_seconds=time.monotonic() - t_start)
+                       n_specs=len(result.specs), wall_clock_seconds=time.monotonic() - t_start,
+                       inputs=[paper["canonical_text"]])
     _report(result, out_dir, model_a, model_b)
     return 0 if result.specs else 3
 
 
-def _emit_run_manifest(out_dir, prov, phase, model_a, model_b, *, n_specs, wall_clock_seconds):
+def _emit_run_manifest(out_dir, prov, phase, model_a, model_b, *, n_specs,
+                       wall_clock_seconds, inputs=None):
     """WS-8 (§4.7): the per-run operational log sidecar. Tokens/calls/retries are summed
     across both models from their mechanical counters (a FakeModelClient has none, so the
     profile degrades to zeros — recorded, never guessed). Emitted on the completion path
@@ -651,6 +710,7 @@ def _emit_run_manifest(out_dir, prov, phase, model_a, model_b, *, n_specs, wall_
         run_id=prov.run_id,
         driver="run_librarian",
         timestamp=datetime.now(timezone.utc).isoformat(),
+        inputs=list(inputs or []),   # C-lever: the (possibly variant-overridden) canonical text, hashed
         configs=["docs/thresholds.yaml"],
         outputs=[str(out_dir / f"spec_{i}.json") for i in range(n_specs)],
         operational_profile=build_operational_profile(
