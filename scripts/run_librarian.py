@@ -75,9 +75,12 @@ from agents.librarian.pipeline import (  # noqa: E402
     load_prompt_manifest,
     run_paper,
 )
+from agents.librarian.pipeline.form_filler import _field_kind  # noqa: E402
+from agents.librarian.pipeline.model_client import FieldQuery  # noqa: E402
 from agents.librarian.pipeline.real_client import (  # noqa: E402
     PromptBuilder,
     RealClientError,
+    assemble_field_prompt,
     build_client_pair,
 )
 from agents.librarian.registries import load_signal_concept_registry  # noqa: E402
@@ -417,6 +420,62 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None,
         return part1, part2, strategy_label, trace, paper_facts
 
     return assemble
+
+
+def enumerate_field_prompts(builder, manifest, constructions, canonical_text,
+                            field_allowlist=None):
+    """B-lever (2026-09-02): yield every ``(strategy_label, field, prefix, suffix,
+    max_tokens)`` per-field prompt an UNCAPPED live run would issue for these
+    constructions -- the batch-prefetch work list (model-agnostic: the same prompt
+    bytes go to both models of the pair; only the cache key's model_id differs).
+
+    Mirrors ``make_assembler``'s asking pattern exactly (parity-pinned by
+    tests/unit/test_prefetch.py): Part 1 + method_summary, the 28 common fields,
+    sort_signal + control_axis (ad-hoc ``signal_ref`` queries, matching
+    fill_signal_ref -- NOT manifest-bound), the 8 leg fields, combiner, and the
+    3 asked paper_facts -- honouring ``field_allowlist`` the way ``_capped`` does.
+
+    EXCLUDED by design: signal-PARAMETER sub-prompts (which parameters exist
+    depends on the concept the models answer, so they are unenumerable statically
+    -- the live run fills them as normally-counted residual misses) and
+    ``--limit`` runs (a dev smoke; never prefetched). The whole-paper enumeration
+    prompt is separate (``assemble_enumeration_prompt``): only gold-enum-less
+    papers make it."""
+
+    def _query(name):
+        bound = manifest.query_for(name) if name in manifest.field_types else None
+        if bound is not None:
+            return bound
+        # Unbound fallbacks mirror the live callsites exactly: fill_method_summary
+        # defaults to kind="method_summary"; fill_field defaults to _field_kind.
+        kind = "method_summary" if name == F.METHOD_SUMMARY else _field_kind(name)
+        return FieldQuery(field=name, kind=kind)
+
+    def _allowed(name):
+        return field_allowlist is None or name in field_allowlist
+
+    for construction in constructions:
+        label = construction.name
+        names: list[tuple[str, FieldQuery]] = [
+            (F.FORMATION_STRUCTURE, _query(F.FORMATION_STRUCTURE)),
+            (F.ASSET_CLASS, _query(F.ASSET_CLASS)),
+            (F.METHOD_SUMMARY, _query(F.METHOD_SUMMARY)),
+        ]
+        names += [(n, _query(n)) for n in F.COMMON_FIELDS if _allowed(n)]
+        names.append((F.SORT_SIGNAL, FieldQuery(field=F.SORT_SIGNAL, kind="signal_ref")))
+        if _allowed("control_axis"):
+            names.append(("control_axis", FieldQuery(field="control_axis", kind="signal_ref")))
+        names += [(n, _query(n)) for n in (
+            F.SORT_KIND, F.BUCKETING_METHOD, F.N_GROUPS, F.STRIPE_AGGREGATION,
+            F.CONTROL_MISSING_POLICY, F.LONG_LEG, F.SIGNAL_TRANSFORM, F.CONTROL_N_GROUPS,
+        ) if _allowed(n)]
+        names.append((F.COMBINER, _query(F.COMBINER)))
+        names += [(n, _query(n)) for n in
+                  (F.SAMPLE_START, F.SAMPLE_END, F.CLAIMED_HEADLINE_METRIC)]
+
+        for name, query in names:
+            prefix, suffix = assemble_field_prompt(builder, query, label, canonical_text)
+            yield label, name, prefix, suffix, builder.max_tokens_for(query.kind)
 
 
 # ---------------------------------------------------------------------------
