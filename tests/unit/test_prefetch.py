@@ -430,6 +430,36 @@ def test_collect_batch_resumes_and_marks_collected(tmp_path):
     assert pf.open_batch_ids(state) == []             # marked collected
 
 
+def test_resume_survives_unretrievable_batch(tmp_path):
+    """Integrative-review hardening: a corrupt/foreign ledger id must not abort
+    the resume -- it is reported and LEFT OPEN for a later attempt."""
+    r1 = _mk_request("P1", "S1")
+    state = tmp_path / "open_batches.json"
+    state.write_text(json.dumps([{"batch_id": "b_bad", "status": "open", "requests": 1}]),
+                     encoding="utf-8")
+    client = _FakeBatchClient({}, retrieve_error=RuntimeError("no such batch"))
+    outcome = pf.resume_open_batches(["b_bad"], [r1], ResponseCache(tmp_path / "c"),
+                                     client, 0, state)
+    assert outcome["succeeded"] == 0
+    assert pf.open_batch_ids(state) == ["b_bad"]      # still open, retryable later
+
+
+def test_t5_jobs_skip_unextractable_target_like_the_runner(monkeypatch, tmp_path):
+    """Integrative-review hardening: prefetch and run degrade the SAME way on a
+    (future) sheet whose target cannot be asked -- skip that sheet, never abort."""
+    frozen = tmp_path / "v.frozen.yaml"
+    frozen.write_text("status: frozen\n", encoding="utf-8")
+    monkeypatch.setattr(pf.t5x, "arm_a_sheets", lambda: [
+        {"sheet_id": "drf__strategy_label__c9", "anchor": "drf",
+         "field": "strategy_label", "scoreable": True, "frozen": frozen},
+        {"sheet_id": "drf__combiner__c1", "anchor": "drf",
+         "field": "combiner", "scoreable": True, "frozen": frozen},
+    ])
+    jobs = pf.t5_jobs(None, None)
+    assert [j["job_id"] for j in jobs] == ["t5:drf__combiner__c1"]
+    assert jobs[0]["field_allowlist"] == {"combiner"}
+
+
 def test_run_batches_marks_ledger_collected_on_success(tmp_path):
     r1 = _mk_request("P1", "S1")
     client = _FakeBatchClient({r1["custom_id"]: ("succeeded", "{}")})

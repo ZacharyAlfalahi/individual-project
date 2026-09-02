@@ -121,12 +121,20 @@ def t5_jobs(anchor: str | None, limit: int | None) -> list[dict]:
         if limit is not None and n >= limit:
             break
         n += 1
+        # Degrade the same way run_t5_extraction.run_variants does (integrative-
+        # review finding): a sheet whose target cannot be asked is skipped here
+        # (its run records a CRASH there) -- it must not abort the whole prefetch.
+        try:
+            allowlist = set(t5x.fields_arg_for(s["field"]).split(","))
+        except ValueError as exc:
+            print(f"[prefetch] skipping {s['sheet_id']}: {exc}")
+            continue
         paper = PAPERS[t5x.PAPER_KEY_OF_ANCHOR[s["anchor"]]]
         jobs.append({
             "job_id": f"t5:{s['sheet_id']}",
             "canonical_text": s["frozen"],
             "gold_enum": _REPO_ROOT / paper["gold_enum"],
-            "field_allowlist": set(t5x.fields_arg_for(s["field"]).split(",")),
+            "field_allowlist": allowlist,
         })
     return jobs
 
@@ -297,6 +305,27 @@ def collect_batch(batch_id: str, by_id: dict, cache: ResponseCache, client,
     _record_batch(state_path, batch_id, "collected", 0)
 
 
+def resume_open_batches(open_ids: list[str], requests: list[dict],
+                        cache: ResponseCache, client, poll_interval_s: float,
+                        state_path: Path | None) -> dict:
+    """Collect previously-submitted batches (--resume). A batch that cannot be
+    retrieved (corrupt/foreign ledger id, transient failure) is reported and left
+    OPEN for a later resume -- one bad id never aborts the others (integrative-
+    review finding)."""
+    outcome = {"batch_ids": list(open_ids), "succeeded": 0, "errored": 0,
+               "expired": 0, "canceled": 0, "tokens": {}}
+    by_id = {r["custom_id"]: r for r in requests}
+    for bid in open_ids:
+        print(f"[prefetch] resuming open batch {bid}")
+        try:
+            collect_batch(bid, by_id, cache, client, poll_interval_s, outcome,
+                          state_path=state_path)
+        except Exception as exc:  # noqa: BLE001 -- skip-and-continue, ledger stays open
+            print(f"[prefetch] could not collect {bid} "
+                  f"({type(exc).__name__}: {exc}); left open in the ledger")
+    return outcome
+
+
 def run_batches(requests: list[dict], cache: ResponseCache, client,
                 poll_interval_s: float = 30.0, state_path: Path | None = None) -> dict:
     """Submit, poll to ended, write succeeded results into the replay cache.
@@ -408,13 +437,8 @@ def main(argv=None) -> int:
         open_ids = open_batch_ids(state_path)
         if open_ids:
             client = _make_anthropic_client()
-            outcome = {"batch_ids": list(open_ids), "succeeded": 0, "errored": 0,
-                       "expired": 0, "canceled": 0, "tokens": {}}
-            by_id = {r["custom_id"]: r for r in requests}
-            for bid in open_ids:
-                print(f"[prefetch] resuming open batch {bid}")
-                collect_batch(bid, by_id, cache, client, args.poll_interval_s,
-                              outcome, state_path=state_path)
+            outcome = resume_open_batches(open_ids, requests, cache, client,
+                                          args.poll_interval_s, state_path)
             # Whatever the open batches filled is no longer a miss.
             requests = [r for r in requests
                         if cache.get(r["prompt"], r["model_id"], _CACHE_SEED) is None]
