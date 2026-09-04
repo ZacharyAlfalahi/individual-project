@@ -1,5 +1,5 @@
 # Architecture
-Six-agent LLM pipeline for corporate bond factor replication, bias detection, and extension. Two-layer corpus: anchor (BBW + short-term reversal + six-month momentum, n=3, data-matched, fully manual; KPP methodology-exemplar and Duraj-Giesecke showcase sit outside it) + scale (10–20 papers, pipeline + paper-statistics verification).
+Five-agent LLM pipeline for corporate bond factor replication, bias detection, and extension. Two-layer corpus: anchor (BBW + short-term reversal + six-month momentum, n=3, data-matched, fully manual; KPP methodology-exemplar and Duraj-Giesecke showcase sit outside it) + scale (10–20 papers, pipeline + paper-statistics verification).
 Every implementation is validated and verifiable.
 
 ## Research Questions
@@ -20,7 +20,7 @@ Each RQ has a structurally independent validation path — failure in one compon
 /agents/librarian/schema/  — StrategySpec schema (v1.1, built + shipped); JSON field schemas live in /agents/librarian/data/schemas/. Changes to it are deliberate, reviewed migrations
 /docs/thresholds.yaml      — ALL numerical thresholds; never hard-code values in agent code
 /agents/librarian/adapter/transform_table.py — the D25 adapter transform table that licenses INFERRED provenance (each INFERRED value carries a rule_id + the original paper quote). The /docs/librarian/specs/inference_rules.md path is reserved but unused — no such file exists
-/data/holdout/             — READ NEVER during development
+/data/holdout/             — NEVER read during development
 
 ## Agent Hard Constraints
 
