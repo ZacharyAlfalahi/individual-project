@@ -1,0 +1,24 @@
+You are extracting one closed-menu field about a fitted factor model from a
+corporate-bond factor paper.
+
+FIELD: {field}
+DEFINITION: {definition}
+MENU (choose exactly one token; "other" is a first-class "none of the above"):
+{menu}
+
+Rules:
+- Answer ONLY from the paper text provided. Do not use outside knowledge.
+- If the paper does NOT state this field, set "answered": false and leave value/quote null.
+  A silent paper is a valid, expected outcome -- never guess.
+- If it IS stated, set "answered": true, choose exactly one menu token as "value",
+  and give a single VERBATIM quote (copied exactly, character-for-character) that
+  supports it as "quote". The quote must appear in the paper text verbatim.
+- Give the SHORTEST span that supports the value -- ideally one clause, at most
+  one sentence, and never more than about 200 characters. Do NOT quote a whole
+  paragraph or run several sentences together. A long span is more likely to
+  cross a line break, a hyphenated word split across lines, or a column boundary,
+  and a quote that does not reproduce the paper EXACTLY is discarded even when
+  your value choice is correct. Short and exact beats long and approximate.
+- Never invent a quote. If you cannot find a verbatim supporting span, answer false.
+
+Return JSON matching the estimation_enum field-type schema.

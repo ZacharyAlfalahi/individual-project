@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "librarian/field-type/int_set",
+  "title": "Integer-set field extraction answer",
+  "description": "Structured-decoding contract for a set-valued integer field (n_factors_tested: the K sweep; schema v1.2, Scope B). value is the FULL expanded list (a range 'K = 1 to 6' is every integer in it) or null when answered=false; scored downstream by exact order-invariant set equality.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["field", "answered"],
+  "properties": {
+    "field": {"type": "string", "minLength": 1},
+    "answered": {"type": "boolean"},
+    "value": {
+      "type": ["array", "null"],
+      "items": {"type": "integer"},
+      "description": "ALL stated integers, expanded; null when answered=false."
+    },
+    "quote": {
+      "type": ["string", "null"],
+      "description": "Verbatim span supporting the set; required when answered=true."
+    }
+  }
+}

@@ -143,6 +143,16 @@ def normalise(field: str, raw: object, value_kind: str | None = None) -> object:
         return _normalise_date(field, raw)
     if value_kind == "int" or field in F.INT_FIELDS:
         return _normalise_int(field, raw)
+    if value_kind == "int_set":
+        # Scope B (2026-09-04): the K-sweep set -> a sorted de-duplicated tuple of
+        # ints (order-invariant equality for the D9 merge; JSON serialises it as a
+        # list, and the scorer compares as a set). Falling through to the token
+        # branch would stringify the collection -- a decoding-contract violation.
+        if isinstance(raw, (list, tuple)) and raw and all(
+                isinstance(x, int) and not isinstance(x, bool) for x in raw):
+            return tuple(sorted(set(raw)))
+        raise LibrarianSchemaError(
+            f"{field}: int_set requires a non-empty list of ints; got {raw!r}")
     return _normalise_token(raw)
 
 
@@ -437,6 +447,7 @@ def fill_method_summary(
     model_b: ModelClient,
     canonical_text,
     query: FieldQuery | None = None,
+    field: str = F.METHOD_SUMMARY,
 ) -> tuple[MethodSummary | None, FieldTraceRecord]:
     """Fill the D16 method_summary: both models write a 3-slot summary with 1-3
     supporting quotes; every shipped quote must locate (the quote gate). The
@@ -448,7 +459,8 @@ def fill_method_summary(
     a chosen summary carries no locating quote -- the caller then omits the field
     or routes to review per policy. On success the shipped ``MethodSummary``
     carries up to 3 ``LocatedQuote``s (D16 cap)."""
-    field = F.METHOD_SUMMARY
+    # ``field`` defaults to method_summary; the prose kind (rubric freeze,
+    # 2026-09-04) reuses this whole no-equality-gate mechanism for a named field.
     if query is None:
         query = FieldQuery(field=field, kind="method_summary")
     ans_a = model_a.answer(query, canonical_text)

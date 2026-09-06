@@ -45,6 +45,7 @@ from .emission import (
 )
 from .failures import (
     FAILURE_ROUTING,
+    AssemblyIncomplete,
     EnumerationDisagreement,
     LocatorSystematicFailure,
     PartialParse,
@@ -126,6 +127,7 @@ __all__ = [
     "PartialParse",
     "LocatorSystematicFailure",
     "EnumerationDisagreement",
+    "AssemblyIncomplete",
     "FAILURE_ROUTING",
     "route_of",
 ]

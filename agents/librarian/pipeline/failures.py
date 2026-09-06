@@ -1,9 +1,9 @@
 """
 Librarian failure taxonomy (build brief §5.6, D31).
 
-Four typed outcome events, NEVER tags (D24: tags describe values that exist; a
-failure describes a run outcome). Each is a frozen event carried on the run
-record with a fixed ``routing``:
+Five typed outcome events, NEVER tags (D24: tags describe values that exist; a
+failure describes a run outcome). Each is carried on the run record with a
+fixed ``routing``:
 
   * ``UnparseablePdf``            -> ``paper_failed`` (typed, counted)
   * ``PartialParse``             -> ``paper_failed`` (v1-conservative; degrade
@@ -12,6 +12,10 @@ record with a fixed ``routing``:
                                     fell below the calibrated bar)
   * ``EnumerationDisagreement``  -> ``review`` (the two models disagree on the
                                     construction list, D20)
+  * ``AssemblyIncomplete``       -> ``review`` (one construction's sort signal
+                                    failed to resolve; PER-CONSTRUCTION scope --
+                                    the CI-9 amendment, 2026-09-06; the first
+                                    four are paper-level, this one is not)
 
 ``FAILURE_ROUTING`` is the single source of truth for outcome -> route; each event
 exposes its own ``routing`` via that table so a caller cannot mis-route one. The
@@ -30,11 +34,17 @@ REVIEW: str = "review"
 ROUTES: frozenset[str] = frozenset((PAPER_FAILED, REVIEW))
 
 # Outcome event kind -> route. The one authoritative mapping (build brief §5.6).
+# "assembly_incomplete" added by the dated CI-9 amendment (2026-09-06): a
+# PER-CONSTRUCTION review outcome (one construction's sort signal failed to
+# resolve), scoped to that construction only -- the paper's remaining
+# constructions proceed. Before CI-9 the same condition escaped as an uncaught
+# RuntimeError and aborted the whole paper, an unregistered cascade.
 FAILURE_ROUTING: dict[str, str] = {
     "unparseable_pdf": PAPER_FAILED,
     "partial_parse": PAPER_FAILED,
     "locator_systematic_failure": REVIEW,
     "enumeration_disagreement": REVIEW,
+    "assembly_incomplete": REVIEW,
 }
 
 
@@ -163,9 +173,39 @@ class EnumerationDisagreement:
                 "only_model_b": list(self.only_model_b), "routing": self.routing}
 
 
+class AssemblyIncomplete(RuntimeError):
+    """A construction could not be assembled into a valid spec (e.g. its sort
+    signal did not resolve to a registry concept). Surfaced, never silently
+    dropped -- an unresolved sort signal means "cannot build THIS strategy",
+    a review outcome scoped to the one construction, not a blank spec and not
+    a whole-paper abort (CI-9, 2026-09-06). Both an exception (raised by the
+    injected assembler) and a typed run-record event (``run_paper`` catches it
+    per construction and appends it to ``result.events``). Routes to
+    ``review``."""
+
+    kind: str = "assembly_incomplete"
+
+    def __init__(self, detail: str, *, paper_id: str | None = None,
+                 construction_name: str | None = None) -> None:
+        super().__init__(detail)
+        self.detail = str(detail)
+        self.paper_id = paper_id
+        self.construction_name = construction_name
+
+    @property
+    def routing(self) -> str:
+        return FAILURE_ROUTING[self.kind]
+
+    def to_dict(self) -> dict:
+        return {"kind": self.kind, "paper_id": self.paper_id,
+                "construction_name": self.construction_name,
+                "detail": self.detail, "routing": self.routing}
+
+
 # The union of the failure event types, for typing + isinstance sweeps.
 FailureEvent = (
     UnparseablePdf | PartialParse | LocatorSystematicFailure | EnumerationDisagreement
+    | AssemblyIncomplete
 )
 
 
@@ -173,7 +213,8 @@ def route_of(event: object) -> str:
     """The route for a failure event. Raises if ``event`` is not a known failure
     event (a build error -- routing is never guessed)."""
     if not isinstance(
-        event, (UnparseablePdf, PartialParse, LocatorSystematicFailure, EnumerationDisagreement)
+        event, (UnparseablePdf, PartialParse, LocatorSystematicFailure,
+                EnumerationDisagreement, AssemblyIncomplete)
     ):
         raise LibrarianSchemaError(
             f"route_of expects a failure event; got {type(event).__name__}"

@@ -1,0 +1,24 @@
+You are extracting one PROSE field about a fitted factor model from a
+corporate-bond factor paper. This is free text, not a menu: describe the
+paper's MECHANISM in one or two short sentences.
+
+FIELD: {field}
+DEFINITION: {definition}
+
+Rules:
+- Answer ONLY from the paper text provided. Do not use outside knowledge.
+- If the paper does NOT state this field, set "answered": false and leave summary/quotes
+  null/empty. A silent paper is a valid, expected outcome -- never guess.
+- Otherwise set "answered": true, put the mechanism description in "summary", and
+  give 1 to 3 VERBATIM quotes (copied exactly, character-for-character) supporting
+  it in "quotes". Spans from the paper's tables count; tables are part of the text.
+- Give the SHORTEST spans that state the mechanism -- ideally one clause each, at
+  most one sentence, and never more than about 200 characters. Do NOT quote a
+  whole paragraph or run several sentences together. A long span is more likely
+  to cross a line break, a hyphenated word split across lines, or a column
+  boundary, and a quote that does not reproduce the paper EXACTLY is discarded
+  even when your description is correct. Short and exact beats long and
+  approximate.
+- Every quote must appear in the paper text verbatim. Never invent a quote.
+
+Return JSON matching the prose field-type schema.

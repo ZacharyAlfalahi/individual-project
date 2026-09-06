@@ -38,7 +38,12 @@ from ..errors import LibrarianSchemaError
 # YYYY-MM date and the composite {mean, t_stat, unit} claimed headline metric.
 # Matches data/prompts/manifest.yaml templates.
 FIELD_KINDS: frozenset[str] = frozenset(
-    ("enum", "int", "signal_ref", "method_summary", "part1_enum", "date", "paper_metric")
+    ("enum", "int", "signal_ref", "method_summary", "part1_enum", "date", "paper_metric",
+     # Scope B (2026-09-04): fitted-model estimation kinds (forked templates;
+     # never bound to any sort field).
+     "estimation_enum", "int_set",
+     # Rubric freeze (2026-09-04): the declared-weaker prose kind (3 KPP fields).
+     "prose")
 )
 
 

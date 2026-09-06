@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "librarian/field-type/estimation_enum",
+  "title": "Estimation enum field extraction answer",
+  "description": "Structured-decoding contract for a fitted-factor-model enum menu field (schema v1.2 EstimationBlock; Scope B). Same answer shape as the sort enum type; a PHYSICALLY SEPARATE artefact per the isolation principle (a defect here cannot re-stamp the sort enum sha).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["field", "answered"],
+  "properties": {
+    "field": {"type": "string", "minLength": 1},
+    "answered": {"type": "boolean"},
+    "value": {
+      "type": ["string", "null"],
+      "description": "The chosen menu token, or null when answered=false."
+    },
+    "quote": {
+      "type": ["string", "null"],
+      "description": "Verbatim span supporting the value; required when answered=true."
+    }
+  }
+}

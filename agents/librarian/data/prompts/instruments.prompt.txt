@@ -1,0 +1,43 @@
+You are enumerating the INSTRUMENT SET of a fitted factor model described in a
+corporate-bond factor paper: every bond/firm characteristic ("instrument") the
+model uses to instrument its loadings (e.g. the paper's characteristics table).
+
+Instrument identity is a MENU PICK, not a description. For each instrument,
+choose exactly one concept id from the registry below whose DEFINITION the
+paper's characteristic matches. Matching is EXACT and BINARY: a near-miss is a
+miss. If a characteristic matches none of these, pick the escape id
+"unrecognised" for it.
+
+INSTRUMENT CONCEPT REGISTRY (id -- definition -- aliases):
+{registry_menu}
+
+ESCAPE: "unrecognised" -- the paper's characteristic is not one of ours.
+
+Rules:
+- Answer ONLY from the paper text provided. Do not use outside knowledge.
+- List EVERY instrument the paper's model uses -- and only variables the paper
+  feeds into the model. An instrument you are unsure of is better omitted than
+  invented.
+- For each instrument return:
+  * "concept_id": the chosen registry id, or "unrecognised";
+  * "label": the paper's own name for it (verbatim word or phrase);
+  * "quote": a single VERBATIM span (copied exactly, character-for-character)
+    where the paper states this instrument is used. Spans from the paper's
+    tables count; tables are part of the text.
+  * "source_class": one of bond | equity | accounting | macro | other;
+  * "transform": the paper's stated transform of the raw characteristic
+    (verbatim phrase), or null if unstated;
+  * "lag": the paper's stated reporting/availability lag (verbatim phrase),
+    or null if unstated.
+- Picking "unrecognised" REQUIRES the verbatim quote (the paper's words that
+  failed to match) exactly like any other row.
+- Give the SHORTEST span that names the instrument -- ideally one clause or one
+  table cell row, never more than about 200 characters. A long span is more
+  likely to cross a line break, a hyphenated word split across lines, or a
+  column boundary, and a quote that does not reproduce the paper EXACTLY is
+  discarded even when your concept choice is correct. Short and exact beats
+  long and approximate.
+- If the paper describes no fitted-model instrument set, return an empty list.
+- Never invent a quote.
+
+Return JSON matching the instruments schema.

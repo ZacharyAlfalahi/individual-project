@@ -1,0 +1,46 @@
+# Estimation-field {definition} glosses + int RANGE domains (Scope B, 2026-09-04).
+# PHYSICALLY SEPARATE from the frozen sort definitions.yaml/domains, per the
+# isolation principle (a defect or edit here cannot re-stamp anything a sort
+# field depends on). Consumed by PromptBuilder for the 8 ASKED estimation fields
+# (the 3 prose fields are not asked under the registered Scope-B hybrid).
+version: v1
+definitions:
+  model_family: >
+    The fitted latent-factor model family estimated by the paper for corporate
+    bond returns (e.g. instrumented PCA, where factor loadings are instrumented
+    by observable characteristics).
+  estimation_algorithm: >
+    The numerical procedure the paper states it uses to fit the model's
+    parameters (e.g. alternating least squares between factor and loading steps).
+  n_factors_tested: >
+    The SET of factor counts K the paper estimates or tests (the K sweep), as
+    stated in text or table.
+  n_factors_preferred: >
+    The single factor count K the paper prefers, selects, or headlines for its
+    main results.
+  intercept_spec: >
+    Whether the model's alpha (intercept) loading matrix is restricted to zero
+    (the no-alpha null), left unrestricted (nonzero alpha), or both variants are
+    estimated/tested.
+  estimation_mode: >
+    Whether the model is estimated in-sample over the full panel, recursively
+    out-of-sample, or both.
+  oos_split: >
+    The integer the paper states as its out-of-sample split parameter (e.g. the
+    number of initial months/years used before recursive estimation begins).
+  inference_method: >
+    The statistical inference procedure the paper uses for the model's alpha /
+    factor-significance tests (e.g. a wild bootstrap), or none.
+  return_variable: >
+    The return object the model prices, including any stated scaling (e.g.
+    excess returns divided by a risk measure).
+  characteristic_preprocessing: >
+    How the raw characteristics are transformed before entering the model
+    (e.g. a cross-sectional rank transform to a fixed interval).
+  managed_portfolio_construction: >
+    How the model's test portfolios are formed from characteristics and
+    returns (what is combined, and what object comes out).
+domains:
+  n_factors_preferred: {min: 1, max: 50}
+  oos_split: {min: 1, max: 600}
+  n_factors_tested: {min: 1, max: 50}   # per-element bound for the K sweep

@@ -61,6 +61,27 @@ field_types:
     sha256: d93521b2cac2ed63ca9137dd7ff6e1c9b09ce35360961b733cd8987a6ffd2242
 
 # --- field -> field-type (Part 1 + ALREADY_FINAL_PART2 + v1.1 paper_facts) ---
+  # --- Scope B (2026-09-04): fitted-model estimation field-types. FORKED files
+  # per the isolation principle (edits here never re-stamp a sort-field sha);
+  # the resulting prompt-string stratification is the registered never-pooled
+  # KPP reporting shape. Menus render from ESTIMATION_MENUS; definitions/ranges
+  # from the separate estimation_definitions.yaml.
+  estimation_enum:
+    prompt: prompts/estimation_enum.prompt.txt
+    schema: schemas/estimation_enum.schema.json
+    decoding: decoding/estimation_enum.decoding.yaml
+    sha256: 6e0ff284fe25bd551f6feec459e2d4db893c6c6e48ded0fbb6bb61620ff649d1
+  int_set:
+    prompt: prompts/int_set.prompt.txt
+    schema: schemas/int_set.schema.json
+    decoding: decoding/int_set.decoding.yaml
+    sha256: bac25d64881978f3cd53f3d808bb584469cb71f64a9458edd71925aba13038c3
+  prose:
+    prompt: prompts/prose.prompt.txt
+    schema: schemas/prose.schema.json
+    decoding: decoding/prose.decoding.yaml
+    sha256: 863073cad501870079fe1ca136b89798f2237cd47431e6d6714fe9de85a78697
+
 fields:
   # Part 1 (D13) -- method_summary is free text (D16), the two menus are part1_enum.
   formation_structure: part1_enum
@@ -128,7 +149,26 @@ fields:
 # run_template, so the FIELD_KINDS gate does NOT apply. Same freeze discipline as
 # the field-type templates: the loader recomputes the prompt byte-hash and asserts
 # it equals the recorded sha256.
+  # --- Scope B (2026-09-04): the 8 ASKED estimation fields (schema v1.2).
+  # The 3 prose fields are bound to `prose` but registered not-asked (hybrid).
+  model_family: estimation_enum
+  estimation_algorithm: estimation_enum
+  intercept_spec: estimation_enum
+  estimation_mode: estimation_enum
+  inference_method: estimation_enum
+  n_factors_preferred: int
+  oos_split: int
+  n_factors_tested: int_set
+  return_variable: prose
+  characteristic_preprocessing: prose
+  managed_portfolio_construction: prose
+
 run_templates:
+  instruments:
+    prompt: prompts/instruments.prompt.txt
+    schema: schemas/instruments.schema.json
+    decoding: decoding/instruments.decoding.yaml
+    sha256: 5d19f0b543ae74f2153108ed90b9e5820abeeeb583ef1a6f046bccd04f43cc04
   enumeration:
     prompt: prompts/enumeration.prompt.txt
     schema: schemas/enumeration.schema.json

@@ -38,11 +38,12 @@ running the offline unit tests) never requires an SDK to be installed.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -131,6 +132,13 @@ class PromptBuilder:
     _run_templates: dict  # run-template name -> template text (WS-3)
     _run_schemas: dict    # run-template name -> schema dict
     _run_decoding: dict   # run-template name -> decoding dict
+    # Scope B (2026-09-04, additive w/ defaults so existing constructors stand):
+    # the INSTRUMENT registry menu, and the estimation glosses/domains in their
+    # OWN maps (review M1: the shared _definitions/_domains2 stay byte-equal to
+    # the frozen sort sources -- physical separation all the way down).
+    _instrument_menu: str = ""
+    _estimation_definitions: dict = dataclass_field(default_factory=dict)
+    _estimation_domains: dict = dataclass_field(default_factory=dict)
 
     @classmethod
     def load(
@@ -158,6 +166,28 @@ class PromptBuilder:
         with _DOMAINS_PATH.open("r", encoding="utf-8") as fh:
             domains = yaml.safe_load(fh)
         field_defs = load_field_definitions()
+        # Scope B (2026-09-04, review M1 shape): the estimation glosses/ranges
+        # live in a PHYSICALLY SEPARATE file AND separate builder maps -- the
+        # frozen sort _definitions/_domains2 stay byte-equal to their sources.
+        # Names must still be disjoint (a collision is a build error).
+        est_defs: dict = {}
+        est_doms: dict = {}
+        instrument_menu = ""
+        est_path = _DATA_ROOT / "estimation_definitions.yaml"
+        if est_path.exists():
+            est = yaml.safe_load(est_path.read_text(encoding="utf-8")) or {}
+            est_defs = dict(est.get("definitions", {}))
+            est_doms = dict(est.get("domains", {}))
+            clash = (set(est_defs) | set(est_doms)) & (
+                set(field_defs.definitions) | set(domains.get("part2", {})))
+            if clash:
+                raise LibrarianSchemaError(
+                    f"estimation definitions collide with sort fields: {sorted(clash)}")
+        inst_reg_path = _DATA_ROOT / "instrument_concept_registry.yaml"
+        if inst_reg_path.exists():
+            from agents.librarian.registries import load_signal_concept_registry  # lazy
+            instrument_menu = _render_registry_menu(
+                load_signal_concept_registry(path=inst_reg_path))
         return cls(
             manifest=manifest,
             registry=registry,
@@ -170,6 +200,9 @@ class PromptBuilder:
             _run_templates=run_templates,
             _run_schemas=run_schemas,
             _run_decoding=run_decoding,
+            _instrument_menu=instrument_menu,
+            _estimation_definitions=est_defs,
+            _estimation_domains=est_doms,
         )
 
     def _menu_for(self, field_name: str) -> str:
@@ -190,11 +223,13 @@ class PromptBuilder:
         routed field with no authoritative gloss raises rather than falling back to
         an un-frozen ``_humanise`` gloss (rendered prompt content affects
         extraction, so an unstamped definition must never reach a live call)."""
-        definition = self._definitions.get(field_name)
+        definition = (self._definitions.get(field_name)
+                      or self._estimation_definitions.get(field_name))
         if not definition:
             raise LibrarianSchemaError(
                 f"no frozen definition for field {field_name!r} in definitions.yaml "
-                "(a field routed to a {definition} template must have an authoritative gloss)"
+                "or estimation_definitions.yaml (a field routed to a {definition} "
+                "template must have an authoritative gloss)"
             )
         return definition
 
@@ -235,7 +270,8 @@ class PromptBuilder:
                 menu=self._menu_for(query.field),
             )
         if kind == "int":
-            dom = self._domains2.get(query.field, {})
+            dom = (self._domains2.get(query.field)
+                   or self._estimation_domains.get(query.field, {}))
             return tpl.format(
                 field=query.field,
                 definition=self._definition_for(query.field),
@@ -259,7 +295,43 @@ class PromptBuilder:
                 definition=self._definition_for(query.field),
                 strategy_label=strategy_label,
             )
+        if kind == "estimation_enum":
+            # Scope B: menus come from ESTIMATION_MENUS (schema v1.2), never from
+            # the sort domains; the gloss from estimation_definitions.yaml.
+            from agents.librarian.schema.estimation_fields import ESTIMATION_MENUS  # lazy
+            menu = ESTIMATION_MENUS.get(query.field)
+            if menu is None:
+                raise LibrarianSchemaError(
+                    f"field {query.field!r} routed to estimation_enum but has no "
+                    "ESTIMATION_MENUS entry")
+            return tpl.format(
+                field=query.field,
+                definition=self._definition_for(query.field),
+                menu=_render_menu(menu),
+            )
+        if kind == "prose":
+            return tpl.format(field=query.field,
+                              definition=self._definition_for(query.field))
+        if kind == "int_set":
+            dom = self._estimation_domains.get(query.field, {})
+            return tpl.format(
+                field=query.field,
+                definition=self._definition_for(query.field),
+                range=_render_range(dom),
+            )
         raise LibrarianSchemaError(f"RealModelClient cannot render unknown kind {kind!r}")
+
+    def instruments_prompt(self) -> str:
+        """The instruments run-template with the INSTRUMENT registry menu filled
+        (``str.replace``, not ``format`` -- the template body carries no other
+        slots and JSON braces must pass through untouched). Fail-loud when the
+        instrument registry was absent at load."""
+        if not self._instrument_menu:
+            raise LibrarianSchemaError(
+                "instrument registry menu unavailable (instrument_concept_registry.yaml "
+                "absent at PromptBuilder.load)")
+        return self.run_prompt("instruments").replace(
+            "{registry_menu}", self._instrument_menu)
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +354,9 @@ class _GeminiBackend:
     model_id: str
     api_key: str
     temperature: float = 0.0
+    # json_mode forces JSON output (Librarian extraction / Scientist proposals). Codegen (WS-C)
+    # needs FREE TEXT — the model returns a ```python-fenced script — so it passes json_mode=False.
+    json_mode: bool = True
 
     def __post_init__(self) -> None:
         from google import genai  # lazy
@@ -300,7 +375,7 @@ class _GeminiBackend:
                 temperature=self.temperature,
                 top_p=1,
                 max_output_tokens=max_output_tokens,
-                response_mime_type="application/json",
+                response_mime_type="application/json" if self.json_mode else "text/plain",
                 # The pinned Gemini SKU (gemini-3.5-flash) is a THINKING model: with
                 # thinking on, reasoning tokens share the max_output_tokens budget and can
                 # starve/truncate the JSON (empty replies on tight budgets). Extraction is
@@ -325,6 +400,8 @@ class _MistralBackend:
     model_id: str
     api_key: str
     temperature: float = 0.0
+    # See _GeminiBackend.json_mode — codegen (WS-C) passes json_mode=False for free-text output.
+    json_mode: bool = True
 
     def __post_init__(self) -> None:
         try:  # lazy; v1.x exports Mistral at top level
@@ -336,13 +413,15 @@ class _MistralBackend:
 
     def generate(self, prompt: str, max_output_tokens: int) -> tuple[str, str | None]:
         self.last_usage = None
-        resp = self._client.chat.complete(
+        kwargs = dict(
             model=self.model_id,
             messages=[{"role": "user", "content": prompt}],
             temperature=self.temperature,
             max_tokens=max_output_tokens,
-            response_format={"type": "json_object"},
         )
+        if self.json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        resp = self._client.chat.complete(**kwargs)
         content = resp.choices[0].message.content
         # v2.x may return a list of content chunks instead of a plain string.
         if isinstance(content, list):
@@ -363,6 +442,9 @@ class _AnthropicBackend:
     model_id: str
     api_key: str
     temperature: float = 0.0
+    # Anthropic returns free text already (no response_format is set), so json_mode is accepted for a
+    # uniform make_backend signature but is a no-op here — codegen's free-text need is met natively.
+    json_mode: bool = True
 
     def __post_init__(self) -> None:
         import anthropic  # lazy
@@ -425,12 +507,19 @@ _BACKENDS = {
 }
 
 
-def make_backend(vendor: str, model_id: str, api_key: str, temperature: float = 0.0) -> _Backend:
+def make_backend(vendor: str, model_id: str, api_key: str, temperature: float = 0.0,
+                 json_mode: bool = True) -> _Backend:
     if vendor not in _BACKENDS:
         raise LibrarianSchemaError(
             f"unknown model vendor {vendor!r}; known: {sorted(_BACKENDS)}"
         )
-    return _BACKENDS[vendor](model_id=model_id, api_key=api_key, temperature=temperature)
+    # Construct with the historical (model_id, api_key, temperature) signature — test stubs that
+    # monkeypatch _BACKENDS depend on it — then set json_mode as an attribute (the real backends
+    # read self.json_mode in generate(); a stub simply ignores it). json_mode=False = free text
+    # (codegen); True (default) = JSON (Librarian extraction / Scientist proposals).
+    backend = _BACKENDS[vendor](model_id=model_id, api_key=api_key, temperature=temperature)
+    backend.json_mode = json_mode
+    return backend
 
 
 # 4xx client errors that never succeed on retry. 429 (rate limit) and 5xx are
@@ -597,7 +686,8 @@ def _answer_from_parsed(field_name: str, kind: str, parsed: dict, model_id: str)
     if not answered:
         return ModelAnswer(field=field_name, answered=False, model_id=model_id)
 
-    if kind == "method_summary":
+    if kind in ("method_summary", "prose"):
+        # prose (rubric freeze 2026-09-04) shares the summary+quotes answer shape.
         summary = parsed.get("summary")
         quotes = tuple(q for q in (parsed.get("quotes") or []) if isinstance(q, str) and q.strip())
         if not summary or not quotes:
@@ -610,6 +700,16 @@ def _answer_from_parsed(field_name: str, kind: str, parsed: dict, model_id: str)
     quote = parsed.get("quote")
     if kind == "signal_ref":
         raw = parsed.get("concept_id")
+    elif kind == "int_set":
+        # Scope B: the expanded K-sweep list -> a sorted tuple of ints (hashable,
+        # order-invariant; the scorer compares as a set). A malformed element
+        # degrades the whole answer to silent+parse_failed, like any schema miss.
+        v = parsed.get("value")
+        if isinstance(v, list) and v and all(
+                isinstance(x, int) and not isinstance(x, bool) for x in v):
+            raw = tuple(sorted(set(v)))
+        else:
+            raw = None
     elif kind == "int":
         raw = _coerce_int(parsed.get("value"))
     elif kind == "paper_metric":
@@ -694,18 +794,51 @@ _PAPER_TEXT_BLOCK = (
     "<<<\n{paper_text}\n>>>\n\n"
 )
 
+# Construction-scoped field queries (CI-10 candidate, 2026-09-06; built flag-gated,
+# default OFF). Completes the per-construction rendering the 2026-09-02 cache-key
+# fix presupposed: render() consumes the strategy label only for method_summary /
+# paper_metric, so on a multi-construction paper every other field's prompt was
+# byte-identical across constructions (the dfps 28-clone replay). When a caller
+# opts in, this block is inserted at the head of the SUFFIX (client assembly code
+# -- the frozen template FILES are untouched and their sha256 pins stand, the
+# 2026-09-02 precedent). Runs that use it stamp SCOPED_FIELDS_CONTRACT into
+# ``prompt_template_hashes`` so a scoped run's extraction contract is
+# distinguishable in every spec header.
+_SCOPED_CONSTRUCTION_BLOCK = (
+    "CONSTRUCTION UNDER EXTRACTION -- this paper defines multiple constructions; "
+    "every question below asks about THIS one only. Answer for it alone and "
+    "ignore every other construction in the paper:\n"
+    "  name: {label}\n"
+    "{quote_line}"
+    "\n"
+)
+_SCOPED_QUOTE_LINE = "  the paper introduces it as: \"{quote}\"\n"
+SCOPED_FIELDS_CONTRACT = "scoped_fields:v1:" + hashlib.sha256(
+    (_SCOPED_CONSTRUCTION_BLOCK + _SCOPED_QUOTE_LINE).encode("utf-8")
+).hexdigest()
+
 
 def assemble_field_prompt(builder: PromptBuilder, query: FieldQuery,
-                          strategy_label: str, canonical_text) -> tuple[str, str]:
+                          strategy_label: str, canonical_text, *,
+                          strategy_quote: str = "",
+                          scoped: bool = False) -> tuple[str, str]:
     """(prefix, suffix) for one per-field call; the full prompt is ``prefix + suffix``.
     prefix = the paper-text block (paper-stable, cacheable); suffix = the rendered
-    field instruction + the structured-decoding schema (varies per field)."""
+    field instruction + the structured-decoding schema (varies per field).
+    ``scoped=False`` (the default) is byte-identical to the historical assembly;
+    ``scoped=True`` heads the suffix with the construction-context block above."""
     instruction = builder.render(query, strategy_label)
     schema = builder.schema_for(query.kind)
     paper_text = "\n\n".join(canonical_text.pages)
     prefix = _PAPER_TEXT_BLOCK.format(paper_text=paper_text)
+    scoped_block = ""
+    if scoped:
+        quote_line = (_SCOPED_QUOTE_LINE.format(quote=strategy_quote)
+                      if strategy_quote.strip() else "")
+        scoped_block = _SCOPED_CONSTRUCTION_BLOCK.format(
+            label=strategy_label, quote_line=quote_line)
     suffix = (
-        f"{instruction}\n\n"
+        f"{scoped_block}{instruction}\n\n"
         "Return ONLY a single JSON object (no prose, no code fence) matching "
         f"this JSON Schema:\n{json.dumps(schema)}"
     )
@@ -778,6 +911,11 @@ class RealModelClient:
         self._min_interval_s = min_interval_s
         self._last_call_ts: float = 0.0
         self.current_strategy_label: str = "the strategy described in this paper"
+        # Construction-scoped field queries (flag-gated, default OFF -- see
+        # _SCOPED_CONSTRUCTION_BLOCK). The driver sets both per construction,
+        # exactly like current_strategy_label.
+        self.current_strategy_quote: str = ""
+        self.scoped_fields: bool = False
         self.format_failures: int = 0
         # WS-8 (§4.7) mechanical operational counters over this client's lifetime. Captured
         # live so a reportable run's cost is reconstructable from tokens later; see
@@ -797,19 +935,26 @@ class RealModelClient:
     def answer(self, query: FieldQuery, canonical_text: CanonicalText) -> ModelAnswer:
         if not isinstance(query, FieldQuery):
             raise LibrarianSchemaError("RealModelClient.answer expects a FieldQuery")
-        # The key includes the construction label (2026-09-02 pre-paid-run fix):
-        # the prompt renders per-construction via current_strategy_label, so a
-        # construction-independent key would serve construction 1's answers to
-        # every later construction of a multi-construction paper (dfps = 28),
-        # emitting near-clones. Within one construction the label is constant,
-        # so the signal-filler re-ask pattern still hits.
+        # The key includes the construction label (2026-09-02 pre-paid-run fix)
+        # plus the scoped-quote state (CI-10 candidate, 2026-09-06). NOTE the
+        # 2026-09-02 fix was necessary but NOT sufficient: render() consumes the
+        # label only for method_summary/paper_metric, so unscoped multi-
+        # construction prompts are byte-identical anyway and the DISK cache
+        # (keyed on prompt bytes) replays one answer per paper -- the dfps
+        # 28-clone outcome. scoped_fields=True makes every field prompt carry
+        # the construction identity, so both caches key per construction.
+        # Within one construction the label/quote are constant, so the
+        # signal-filler re-ask pattern still hits.
         key = (query.field, query.kind, canonical_text.source_sha256,
-               self.current_strategy_label)
+               self.current_strategy_label, self.current_strategy_quote,
+               self.scoped_fields)
         if key in self._cache:
             return self._cache[key]
 
         prefix, suffix = assemble_field_prompt(
-            self._builder, query, self.current_strategy_label, canonical_text
+            self._builder, query, self.current_strategy_label, canonical_text,
+            strategy_quote=self.current_strategy_quote,
+            scoped=self.scoped_fields,
         )
         prompt = prefix + suffix              # full bytes: disk-cache key + archive record
         max_tokens = self._builder.max_tokens_for(query.kind)
@@ -861,6 +1006,41 @@ class RealModelClient:
             self.format_failures += 1
             return ()
         return _constructions_from_parsed(parsed)
+
+    # -- instruments producer (Scope B, 2026-09-04) --------------------------
+    def extract_instruments(self, canonical_text: CanonicalText) -> list[dict] | None:
+        """ONE whole-paper structured call returning the fitted model's
+        instrument rows (the instruments run-template: concept_id menu-picked
+        against the instrument registry inside the prompt, + label/quote/
+        source_class/transform/lag). Returns the RAW row dicts -- typed
+        InstrumentRef assembly, quote relocation, and the dual-model merge are
+        the assembler's job. Parse failure -> None + format_failures += 1 (the
+        same run-to-completion degrade as enumeration)."""
+        if not isinstance(canonical_text, CanonicalText):
+            raise LibrarianSchemaError(
+                "RealModelClient.extract_instruments expects a CanonicalText")
+        paper_text = "\n\n".join(canonical_text.pages)
+        prefix = _PAPER_TEXT_BLOCK.format(paper_text=paper_text)
+        schema = self._builder.run_schema("instruments")
+        suffix = (
+            f"{self._builder.instruments_prompt()}\n\n"
+            "Return ONLY a single JSON object (no prose, no code fence) matching "
+            f"this JSON Schema:\n{json.dumps(schema)}"
+        )
+        prompt = prefix + suffix
+        max_tokens = self._builder.run_max_tokens("instruments")
+        replay = self._disk_get(prompt)
+        if replay is not None:
+            raw_text, _version = replay
+        else:
+            raw_text, _version = self._generate_with_retry((prefix, suffix), max_tokens,
+                                                           "instruments")
+            self._disk_put(prompt, raw_text, _version)
+        parsed = _parse_json(raw_text)
+        if parsed is None or not isinstance(parsed.get("instruments"), list):
+            self.format_failures += 1
+            return None
+        return [r for r in parsed["instruments"] if isinstance(r, dict)]
 
     # -- disk replay cache (B1) ----------------------------------------------
     _CACHE_SEED = 0   # ResponseCache keys on (prompt, model, seed); the Librarian has no seed axis

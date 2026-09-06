@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "librarian/run-template/instruments",
+  "title": "Instrument-set enumeration answer",
+  "description": "Structured-decoding contract for the instruments whole-paper run-template (Scope B): the fitted model's instrument list. Each row is a MENU PICK against the instrument concept registry (or the quote-mandatory 'unrecognised' escape) plus the paper's own words -- the InstrumentRef inputs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["instruments"],
+  "properties": {
+    "instruments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["concept_id", "label", "quote", "source_class"],
+        "properties": {
+          "concept_id": {"type": "string", "minLength": 1, "description": "Registry id of the matched instrument concept (or 'unrecognised')."},
+          "label": {"type": "string", "minLength": 1, "description": "The paper's own name for the instrument."},
+          "quote": {"type": "string", "minLength": 1, "description": "Verbatim span naming/defining the instrument."},
+          "source_class": {"type": "string", "enum": ["bond", "equity", "accounting", "macro", "other"], "description": "Which data domain the instrument comes from."},
+          "transform": {"type": ["string", "null"], "description": "Any stated transform applied to the raw characteristic (else null)."},
+          "lag": {"type": ["string", "null"], "description": "Any stated reporting/observation lag (else null)."}
+        }
+      }
+    }
+  }
+}

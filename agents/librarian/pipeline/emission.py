@@ -26,12 +26,13 @@ from dataclasses import dataclass, field
 from ..config.canonical_text import CanonicalText
 from ..errors import LibrarianSchemaError, LibrarianValidationError
 from ..schema.strategy_spec import Part1, Part2, SpecHeader, StrategySpec
+from ..validators.estimation_validators import validate_estimation_block
 from ..validators.spec_validators import (
     SignalRegistryLike,
     validate_librarian_spec,
 )
 from ..validators.tag_reason import TagReasonRegistry
-from .failures import EnumerationDisagreement
+from .failures import AssemblyIncomplete, EnumerationDisagreement
 from .lister import Construction, EnumerationResult
 from .trace import ExtractionTrace, TraceRunHeader
 
@@ -98,6 +99,9 @@ def emit_spec_and_trace(
     registry: SignalRegistryLike | None = None,
     tag_reason_registry: TagReasonRegistry | None = None,
     paper_facts=None,
+    estimation=None,
+    instruments=None,
+    instrument_registry: SignalRegistryLike | None = None,
 ) -> tuple[StrategySpec, ExtractionTrace]:
     """Assemble + stamp + validate one spec, fail-closed.
 
@@ -122,11 +126,23 @@ def emit_spec_and_trace(
         standing_substitutions_version=prov.standing_substitutions_version,
         standing_substitutions_hash=prov.standing_substitutions_hash,
     )
-    spec = StrategySpec(header=header, part1=part1, part2=part2, paper_facts=paper_facts)
+    spec = StrategySpec(header=header, part1=part1, part2=part2, paper_facts=paper_facts,
+                        estimation=estimation, instruments=instruments)
 
+    # Scope B (2026-09-04): a fitted-model spec's sort block is the schema STUB
+    # (never scored -- the ratified KPP gold loader builds the identical stub),
+    # so the SORT-registry-aware checks are skipped for it via the validator's
+    # own documented registry=None mode; every other librarian check (tags,
+    # reasons, quotes, locators) still runs. The fitted-model siblings then
+    # validate through their OWN pass (D8 negatives, STATED-has-locator,
+    # instrument-registry membership) -- the same fail-closed emission gate.
+    sort_registry = None if estimation is not None else registry
     violations = validate_librarian_spec(
-        spec, registry=registry, tag_reason_registry=tag_reason_registry
+        spec, registry=sort_registry, tag_reason_registry=tag_reason_registry
     )
+    if estimation is not None or instruments is not None:
+        violations = list(violations) + list(
+            validate_estimation_block(spec, registry=instrument_registry))
     if violations:
         raise LibrarianEmissionError(violations)
     return spec, trace
@@ -174,8 +190,9 @@ def run_paper(
         (routes to review) and return (no specs);
       * else for each STRATEGY construction, call ``assemble_strategy`` to fill
         its parts + trace, and ``emit_spec_and_trace`` to stamp + validate +
-        emit. Emission failures are collected on the run record, never raised
-        past the orchestrator (run-to-completion).
+        emit. Assembly failures (``AssemblyIncomplete``, CI-9) and emission
+        failures are both collected on the run record per construction, never
+        raised past the orchestrator (run-to-completion).
 
     ``assemble_strategy(construction, canonical_text, prov) -> (Part1, Part2,
     strategy_label, ExtractionTrace)`` is injected -- the orchestrator owns the
@@ -192,12 +209,25 @@ def run_paper(
     for construction in enumeration.strategies:
         if not isinstance(construction, Construction):  # defensive
             raise LibrarianSchemaError("enumeration.strategies must yield Constructions")
-        assembled = assemble_strategy(construction, canonical_text, prov)
+        try:
+            assembled = assemble_strategy(construction, canonical_text, prov)
+        except AssemblyIncomplete as exc:
+            # CI-9 (2026-09-06): an unresolved sort signal is a review outcome for
+            # THIS construction only; the paper's remaining constructions proceed.
+            result.events.append(exc)
+            continue
         # Two arities, deliberately: a v1 assembler returns 4 (no paper_facts), a
         # v1.1 one returns 5. Accepting both keeps every existing assembler --
         # including the offline fixtures -- working unchanged, so adding the block
         # cannot perturb a single existing emission (the additive discipline).
-        if len(assembled) == 5:
+        estimation = instruments = instrument_registry = None
+        if len(assembled) == 8:
+            # Scope B (2026-09-04): a fitted-model assembler additionally returns
+            # (estimation, instruments, instrument_registry) -- same additive
+            # arity discipline as the 4->5 paper_facts step.
+            (part1, part2, strategy_label, trace, paper_facts,
+             estimation, instruments, instrument_registry) = assembled
+        elif len(assembled) == 5:
             part1, part2, strategy_label, trace, paper_facts = assembled
         else:
             part1, part2, strategy_label, trace = assembled
@@ -212,6 +242,9 @@ def run_paper(
                 registry=registry,
                 tag_reason_registry=tag_reason_registry,
                 paper_facts=paper_facts,
+                estimation=estimation,
+                instruments=instruments,
+                instrument_registry=instrument_registry,
             )
         except LibrarianEmissionError as exc:
             result.events.append(exc)
@@ -228,5 +261,6 @@ __all__ = [
     "build_trace_header",
     "emit_spec_and_trace",
     "run_paper",
+    "AssemblyIncomplete",
     "EnumerationDisagreement",
 ]
