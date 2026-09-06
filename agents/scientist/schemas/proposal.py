@@ -25,11 +25,19 @@ _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
 class ProposalSource(str, Enum):
-    """The three ablation-ladder rungs (§8.1). One interface, three implementations."""
+    """The three ablation-ladder rungs (§8.1). One interface, three implementations.
+
+    EXHAUSTIVE_CANONICAL is NOT a ladder rung: it labels the exhaustive
+    canonical-mechanism benchmark (a descriptive diagnostic — one frozen-rule
+    `_first_config` implementation per eligible mechanism; see
+    scripts/run_rq4_exhaustive_benchmark.py). No code path branches on this
+    enum's value; it exists so benchmark proposals carry their own provenance
+    instead of borrowing a rung label."""
 
     LLM_RESEARCHER = "llm_researcher"
     RETRIEVAL_ONLY = "retrieval_only"
     RANDOM_ELIGIBLE = "random_eligible"
+    EXHAUSTIVE_CANONICAL = "exhaustive_canonical"
 
 
 class ConfigDelta(BaseModel):
