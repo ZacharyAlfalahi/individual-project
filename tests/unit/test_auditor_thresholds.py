@@ -152,7 +152,7 @@ def test_vartheta_grid_missing_raises(tmp_path):
 
 
 def test_the_real_thresholds_file_is_pre_registered():
-    # The auditor: block is now pre-registered (git tag auditor-prereg-2026-07-22).
+    # The auditor: block is now pre-registered (git tag auditor-prereg).
     # The real file must load a valid support gate, and the whole AuditorConfig must
     # assemble fail-loud-free. (This flipped from the earlier "no block yet" tripwire.)
     gate = load_support_gate()

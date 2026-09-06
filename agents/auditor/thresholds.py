@@ -263,6 +263,49 @@ def load_fdr_q(path: str | Path | None = None) -> float:
 
 
 @dataclass(frozen=True)
+class MtFlagParams:
+    """Check-5 constants (§7.5, additive 2026-09-03): the just-significant |t|
+    band (inclusive bounds), the free-parameter ceiling, and the D5-resolved zoo
+    label file. Informational only — these gate nothing (D7/A7)."""
+
+    t_band: tuple[float, float]
+    max_free_parameters: int
+    zoo_names_path: str
+    strip_trailing_asterisk: bool
+    aliases: dict[str, str]
+
+
+def load_mt_flag_params(path: str | Path | None = None) -> MtFlagParams:
+    block = _auditor_block(path)
+    band = _require(block, ("mt_flag", "t_band"), "§7.5")
+    if not (isinstance(band, (list, tuple)) and len(band) == 2):
+        raise AuditorThresholdError(
+            f"auditor.mt_flag.t_band must be a [lo, hi] pair (§7.5); got {band!r}")
+    lo = _require_number(band[0], "auditor.mt_flag.t_band[0]", "§7.5")
+    hi = _require_number(band[1], "auditor.mt_flag.t_band[1]", "§7.5")
+    max_fp = _require(block, ("mt_flag", "max_free_parameters"), "§7.5")
+    if not isinstance(max_fp, int) or isinstance(max_fp, bool) or max_fp < 0:
+        raise AuditorThresholdError(
+            f"auditor.mt_flag.max_free_parameters must be an int >= 0 (§7.5); got {max_fp!r}")
+    zoo = _require(block, ("mt_flag", "zoo_names"), "§7.5")
+    if not isinstance(zoo, str) or not zoo:
+        raise AuditorThresholdError(
+            f"auditor.mt_flag.zoo_names must be a repo-relative path (§7.5/D5); got {zoo!r}")
+    strip = _require(block, ("mt_flag", "strip_trailing_asterisk"), "§7.5")
+    if not isinstance(strip, bool):
+        raise AuditorThresholdError(
+            f"auditor.mt_flag.strip_trailing_asterisk must be a bool; got {strip!r}")
+    aliases = _require(block, ("mt_flag", "aliases"), "§7.5")
+    if not isinstance(aliases, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in aliases.items()):
+        raise AuditorThresholdError(
+            f"auditor.mt_flag.aliases must be a str->str map; got {aliases!r}")
+    return MtFlagParams(t_band=(lo, hi), max_free_parameters=max_fp, zoo_names_path=zoo,
+                        strip_trailing_asterisk=strip,
+                        aliases={k.casefold(): v for k, v in aliases.items()})
+
+
+@dataclass(frozen=True)
 class BayesParams:
     """Bayesian normal-approximation constants (§7.3-7.4): the weakly-informative
     prior scale and the eigenvalue floor for V̂_boot regularisation."""
