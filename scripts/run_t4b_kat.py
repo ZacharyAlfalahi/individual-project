@@ -655,7 +655,9 @@ def grade_seam_2(run_dir: Path, key: dict) -> SeamResult:
 def grade_seam_3(run_dir: Path, key: dict) -> SeamResult:
     """seam 3 — compile. adapt_spec on the KEY-DERIVED spec: zero refusals, variant
     False, combiner single_leg, binding mom6 BOUND, leg kwargs per seam_3_compile.
-    Adapting the EMITTED spec is NOT_GRADED (no typed-spec deserialiser exists)."""
+    When the run dir carries an emitted spec, it is ALSO loaded typed
+    (spec_loader, 2026-09-04), adapted, and its G2 rulebook byte-compared to the
+    key-derived rulebook; a spec-less run dir grades those checks NOT_GRADED."""
     s = SeamResult("seam_3", "compile (adapt_spec)")
     from agents.librarian.adapter import adapt_spec
 
@@ -689,15 +691,38 @@ def grade_seam_3(run_dir: Path, key: dict) -> SeamResult:
     else:
         s.add("leg.result_present", MISS, "adapt_spec produced no leg config")
 
-    # The EMITTED spec adaptation needs a typed StrategySpec; run_artefacts loads raw
-    # dicts by design (no from_dict). Deferred to the live run.
-    s.not_graded("emitted_spec.adapt",
-                 "needs run_librarian to hand back the typed StrategySpec "
-                 "(no spec deserialiser exists); TODO when --run-dir carries one")
-    # Optional G2 rulebook byte-equality vs the emitted rulebook — same blocker.
-    s.not_graded("rulebook_byte_equal",
-                 "assert_rulebook_byte_equal needs the emitted typed spec's rulebook; "
-                 "TODO alongside emitted_spec.adapt")
+    # Emitted-spec adaptation through the typed deserialiser. When the run emitted
+    # a spec: load it typed, adapt it, and byte-compare its G2 rulebook against the
+    # key-derived rulebook. A run with NO spec (e.g. a Guard-1 emission refusal,
+    # the 2026-09-03 live outcome) stays NOT_GRADED with the reason recorded.
+    spec_path = run_dir / "spec_0.json"
+    if not spec_path.exists():
+        s.not_graded("emitted_spec.adapt",
+                     "no spec_0.json in the run dir (emission refused/absent); "
+                     "nothing to adapt")
+        s.not_graded("rulebook_byte_equal",
+                     "no emitted spec -> no emitted rulebook to byte-compare")
+        return s
+
+    from agents.librarian.pipeline.spec_loader import spec_from_dict
+    from agents.quant.config.quant_config import to_rulebook
+
+    emitted = spec_from_dict(json.loads(spec_path.read_text(encoding="utf-8")))
+    em_result = adapt_spec(emitted)
+    s.eq("emitted_spec.adapt.refused", em_result.refused, False)
+    if (not em_result.refused and em_result.leg_calls
+            and em_result.leg_calls[0].result is not None
+            and result.leg_calls and result.leg_calls[0].result is not None):
+        rb_key = json.dumps(to_rulebook(result.leg_calls[0].result), sort_keys=True)
+        rb_em = json.dumps(to_rulebook(em_result.leg_calls[0].result), sort_keys=True)
+        s.truth("rulebook_byte_equal", rb_em == rb_key,
+                "emitted rulebook == key-derived rulebook (canonical bytes)"
+                if rb_em == rb_key else
+                f"BYTE MISMATCH: emitted {rb_em[:120]}... vs key {rb_key[:120]}...")
+    else:
+        s.not_graded("rulebook_byte_equal",
+                     "emitted spec refused adapt (or produced no leg config); "
+                     "nothing to byte-compare")
     return s
 
 
