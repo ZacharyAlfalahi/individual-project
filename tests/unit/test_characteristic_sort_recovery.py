@@ -27,54 +27,10 @@ from agents.quant.library.characteristic_sort import (
     regress_on_benchmark,
     run_characteristic_sort,
 )
-
-
-# ---------------------------------------------------------------------------
-# DGP helper: bond quality drives next-month return
-# ---------------------------------------------------------------------------
-
-def _build_quality_dgp(
-    n_bonds: int,
-    n_months: int,
-    alpha: float,
-    sigma: float,
-    seed: int,
-) -> tuple[pd.DataFrame, np.ndarray]:
-    """Build a panel where:
-      quality_i ~ U(-1, 1)            (drawn once per bond)
-      score_i,t  = quality_i           (constant across time per bond)
-      ret_i,t    = alpha * quality_i + N(0, sigma^2)  (for t >= 1)
-
-    The engine sees ret_i,(t+1) as `next_ret` at formation month t, so the
-    realised long-short spread at formation t equals:
-       alpha * (mean(top-quintile quality) - mean(bot-quintile quality))
-                 + mean(20 noise) - mean(20 noise)
-    """
-    rng = np.random.default_rng(seed)
-    bonds = [f"B{i:03d}" for i in range(n_bonds)]
-    qualities = rng.uniform(-1.0, 1.0, size=n_bonds)
-    dates = pd.date_range("2010-01-31", periods=n_months, freq="ME")
-
-    rows = []
-    for j, d in enumerate(dates):
-        # At month j=0 the engine never reads `ret` (it would be the
-        # backward-looking return ending at month 0; no preceding formation
-        # month exists). Set to 0 for cleanliness.
-        if j == 0:
-            month_rets = np.zeros(n_bonds)
-        else:
-            month_rets = alpha * qualities + rng.normal(scale=sigma, size=n_bonds)
-        for i, bid in enumerate(bonds):
-            rows.append(
-                {
-                    "cusip": bid,
-                    "date": d,
-                    "ret": float(month_rets[i]),
-                    "size": 100.0,
-                    "score": float(qualities[i]),
-                }
-            )
-    return pd.DataFrame(rows), qualities
+# The DGP is extracted to a shared module so the RQ3 results exporter and this test use ONE
+# source of truth (evaluation/rq3_validation/recovery_dgps.py). Imported under its original name
+# so every call site below is unchanged; this test staying green proves the extraction is verbatim.
+from evaluation.rq3_validation.recovery_dgps import build_quality_dgp as _build_quality_dgp
 
 
 # ---------------------------------------------------------------------------
