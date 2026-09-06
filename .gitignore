@@ -3,7 +3,7 @@
 # code-adjacent config under agents/**/data/ (registries, prompts, transform tables).
 # The licensed-data ban itself is enforced by scripts/check_no_licensed_data.sh
 # (root-anchored ^data/… over parquet/csv/fisd), not by this ignore.
-# See docs/data_governance.md.
+# See docs/data/governance/data_governance.md.
 /data/
 
 # Copyrighted source papers (publisher PDFs) — same class as /data/: held locally,

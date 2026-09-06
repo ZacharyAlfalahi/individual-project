@@ -24,7 +24,7 @@ Each RQ has a structurally independent validation path — failure in one compon
 
 ## Agent Hard Constraints
 
-**Librarian**: dual LLM extraction (stack committed — see D4 / `docs/thresholds.yaml` `librarian.model_stack`). A field is STATED only if both models agree on value AND verbatim quote. No self-reported confidence scores. UNKNOWN is a valid value, not an error.
+**Librarian**: dual LLM extraction (stack committed — `docs/thresholds.yaml` `librarian.model_stack`). A field is STATED only if both models agree on value AND verbatim quote. No self-reported confidence scores. UNKNOWN is a valid value, not an error.
 
 **Quant**: deterministic compilation — StrategySpec → adapter → QuantConfig → audited runner. Routing is deterministic (closed-enum family table + typed refusal); an LLM may appear only as a post-refusal explainer over typed outcomes (designed; NOT yet built — no LLM currently sits anywhere in the Quant path). The 8-iteration cap applies to the Librarian's retrieval loop if and when the contract's §3.6 gate triggers it. Modifications to /agents/quant/library/ require manual review + all regression tests passing.
 
@@ -45,7 +45,3 @@ Applies to the data-matched anchors (BBW, str, momentum) on the uncorrected/as-p
 - All agents: unit tests in /tests/unit/
 - Auditor: synthetic bias injection tests verifying 100% recall for every injected bias type
 - Library modules: unit test on synthetic data with known analytical answer + regression test against paper headline metric (data-matched anchors) or published procedure (KPP)
-
-## Open Decisions
-D4 — RESOLVED (stack committed to `docs/thresholds.yaml` → `librarian.model_stack`; rationale in `docs/librarian/registers/decision-log_librarian.md` D33). Two-phase dual pair: phase_d (free dev, non-reportable) = Gemini 3.1-flash-lite + Mistral-small; phase_f (reported figures, gated on SKU/cost authorization) = Claude Sonnet 4.6 + Gemini 3.5-flash. The earlier "Sonnet 4.6 + GPT-4o" candidate was NOT adopted.
-D5 — OPEN. Dickerson 2026 label availability. If available: Auditor check 5 uses exact name matching against /data/dickerson_zoo/names.csv. If unavailable: check 5 uses t-stat band + free-parameter count only; record outcome in `docs/data/registers/citations_verified.md` (§2 stub — still OPEN).

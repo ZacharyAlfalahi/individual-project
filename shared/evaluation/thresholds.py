@@ -326,7 +326,8 @@ def load_regimes_config(
 # SC-SCI-13 holdout block-bootstrap diagnostic constants (docs/thresholds.yaml
 # `auditor.bootstrap` block). B and B_min are REUSED from the Auditor's bootstrap
 # (single source of truth); only the labelled-diagnostic block-length pair is new.
-# Only the (unbuilt) one-shot holdout caller reads this; unit tests pass literals.
+# Only the one-shot holdout caller (agents/scientist/experimentalist/oneshot_holdout/stage2_evaluate.py,
+# built + wired, not yet executed) reads this; unit tests pass literals.
 # ---------------------------------------------------------------------------
 
 

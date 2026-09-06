@@ -15,8 +15,9 @@ arithmetic; below-floor CIs ship tagged `below_floor`. Every result carries
 PURITY / NO HOLDOUT. Every function here is pure: it takes in-memory pandas Series /
 DataFrames and returns frozen dataclasses. It performs no I/O, reads no config, and never
 names a path. It therefore cannot, by construction, read `/data/holdout/`. The only code
-that would ever load the real holdout panel and call this is the (still unbuilt) one-shot holdout
-frozen-holdout builder (SC-SCI-13 clause 3, "E14, not yet wired"); until then this module
+that would ever load the real holdout panel and call this is the one-shot holdout frozen-holdout
+builder (`agents/scientist/experimentalist/oneshot_holdout/`, built and wired via `stage2_evaluate.py`,
+not yet executed against the real holdout panel); until then this module
 is exercised on synthetic data only. Enforced by tests/unit/test_holdout_bootstrap_inertness.py.
 
 REUSE (wrap, don't move). Block indices from the Auditor's synchronised fixed-block
@@ -294,7 +295,8 @@ def own_alpha_bootstrap(
 
 # ---------------------------------------------------------------------------
 # Holdout-inference wrapper — the FUNCTION form of SC-SCI-13 clause 3.
-# (The one-shot holdout orchestrator that loads the real holdout panel and calls this is unbuilt.)
+# (The one-shot holdout orchestrator that loads the real holdout panel and calls this —
+# agents/scientist/experimentalist/oneshot_holdout/stage2_evaluate.py — is built and wired, not yet executed.)
 # ---------------------------------------------------------------------------
 
 
