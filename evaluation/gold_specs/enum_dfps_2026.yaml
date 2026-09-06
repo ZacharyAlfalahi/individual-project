@@ -38,6 +38,7 @@
 #    the text describes (G.1), not the model-universe count.
 authoring:
   procedure: NO-MODEL-CONSULT
+  status: provisional     # -> verified once the enumeration rows/quotes are checked against the frozen text (Part B)
   method: >
     Hand-enumerated from the FROZEN canonical text only, with ZERO outside knowledge:
     every construction the paper itself builds (D20 ontology), at evaluation-contract
@@ -46,9 +47,7 @@ authoring:
     frozen text (line breaks flattened to single spaces) and is L1-locatable on a
     single page. NO-MODEL-CONSULT here records that no Librarian-pipeline model was
     consulted and no model enumeration output seeded or filtered this list. Drafted
-    2026-08-17 from the frozen text; pending
-    row-by-row verification against the frozen text, on which this file's adoption as
-    the human reference standard depends.
+    2026-08-17 from the frozen text.
   authored: 2026-08-17
   source_text: evaluation/canonical_texts/dfps_2026.frozen.yaml
 

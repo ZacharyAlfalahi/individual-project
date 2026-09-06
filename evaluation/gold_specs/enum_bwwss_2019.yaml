@@ -1,0 +1,82 @@
+# Gold enumeration list -- Bektic, Wenzler, Wegener, Schiereck & Spielmann (2019), T2
+# prospective paper (RQ2 coverage / D20). "Extending Fama-French Factors to Corporate
+# Bond Markets", Journal of Portfolio Management 45(3) (2019) 141-158. T2-SEL-6 queue
+# #7 (re-entered 2026-09-04 via the working-paper text). TEXT VERSION: the July-2017
+# working paper, not the JPM version of record -- see authoring.text_version below.
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+#
+# Scope notes (authoring rules applied; evaluation contract section 5.1 granularity):
+#  * Strategy rows (5): the four single-factor sorts of section 4 (issuer-level decile
+#    sorts on the Fama-French (2015) equity definitions -- Size = equity market
+#    capitalization, smallest decile; Value = BE/ME, top decile; Profitability = operating
+#    profitability OP, top decile; Investment = asset growth Inv, lowest decile), each a
+#    monthly-rebalanced issuer-equal-weighted long-only top-decile portfolio (section
+#    3.2), plus the equal-weighted long-only multi-factor portfolio of Eq. (15) (25% in
+#    each single-factor portfolio; section 5.2 / Table 4). Each sort is run separately in
+#    the U.S. HY, U.S. IG and European IG universes -- universe splits of the same
+#    construction, not separate rows.
+#  * Auxiliary rows (2): the Term factor (constructed as the BAML US Treasuries 1-10
+#    year index minus the 1-month T-bill rate, with a German-government / EURIBOR
+#    analogue for the European universe -- one row) and DEF, the equal-weighted market
+#    benchmark the paper computes per universe as the average excess return of its
+#    deciles ("three benchmarks and therefore three DEF factors" -- one row).
+#  * NOT rows (documented exclusions): MKT, SMB, HML, RMW, CMA (obtained from Kenneth
+#    French, fn 17); the long-short top-minus-bottom decile portfolios of Table 6 /
+#    section 6 (presented as a robustness check of the same sorts, "common in the
+#    academic literature"); the bottom-decile portfolios reported "for completeness"
+#    (Table 2); the after-transaction-cost re-statement (Table 5); the duration-
+#    controlled, market-cap-weighted, subperiod and ex-financials variants (fn 22,
+#    untabulated); the Merton / dividend-discount motivation (section 2; theory, not a
+#    construction).
+#  * Quote artifacts: 'proﬁtable', 'ﬁrms', 'proﬁtability' carry the text's fi ligatures;
+#    copied verbatim (the L1 ladder expands them at match time; do NOT "fix" them).
+authoring:
+  procedure: NO-MODEL-CONSULT
+  status: verified        # 2026-09-06: canonical text promoted to evaluation/canonical_texts/; all quotes L1-locate
+  method: >
+    Hand-enumerated from the frozen L0 parse of the PDF only, with ZERO outside
+    knowledge: every construction the paper itself builds (D20 ontology), at
+    evaluation-contract section 5.1 granularity, parameter grids registered at the
+    paper's featured headline cell. Every quote is copied character-for-character from
+    the parsed text (line breaks flattened to single spaces) and is L1-locatable on a
+    single page. NO-MODEL-CONSULT here records that no Librarian-pipeline model was
+    consulted and no model enumeration output seeded or filtered this list. Drafted
+    2026-09-04 from the parsed text. Promoted 2026-09-06 into
+    evaluation/canonical_texts/ (T2-SEL-7 landed, so it no longer trips the
+    design-touched consistency test tests/unit/test_t2_selection_prereg.py); every
+    quote L1-locates in the promoted text, so status is verified.
+  authored: 2026-09-04
+  source_text: evaluation/canonical_texts/bwwss_2019.frozen.yaml
+  source_pdf: papers/prospective/bektic_wenzler_wegener_2019.pdf
+  source_sha256: dcde02c88f76dfed276a4b08a50404cdf4413ed7b5c4ad85eb6530882793a260
+  parser: pymupdf 1.28.0 (config/canonical_text.yaml recipe, L1/v3 ladder)
+  text_version: >
+    NOT the version of record: the July-2017 working paper (52 pp., "This version: July 2017 / First version: January 2016"); the Journal of Portfolio Management 45(3) 2019 VoR (DOI 10.3905/jpm.2019.45.3.141) was unavailable via Imperial access on 2026-09-04. Quotes bind to THIS text; re-verify if the VoR is substituted.
+
+gold: true
+paper_id: BWWSS_2019
+constructions:
+  - name: 'Size factor portfolio (equity market capitalization, smallest decile)'
+    quote: 'To harvest the size premium in credit markets, we construct the decile portfolio containing the bonds of the smallest 10% of the companies as measured by equity market capitalization and rebalance it on a monthly basis.'
+    class: strategy
+  - name: 'Value factor portfolio (book-to-market BE/ME, top decile)'
+    quote: 'We construct the decile portfolio containing the bonds of the most valuable 10% of the issuers as measured by book-to-market value and rebalance it on a monthly basis.'
+    class: strategy
+  - name: 'Profitability factor portfolio (operating profitability OP, top decile)'
+    quote: 'We construct the decile portfolio containing the bonds of the most proﬁtable 10% of the ﬁrms as measured by operating proﬁtability and rebalance it on a monthly basis.'
+    class: strategy
+  - name: 'Investment factor portfolio (asset growth Inv, lowest decile)'
+    quote: 'We construct the decile portfolio every month which contains the bonds of the 10% of the companies with the lowest investment and rebalance it on a monthly basis.'
+    class: strategy
+  - name: 'Multi-factor portfolio (25% each of Size, Value, OP, Inv)'
+    quote: 'Therefore, we also construct equal-weighted long-only multi-factor portfolios by combining size, value, proﬁtability and investment'
+    class: strategy
+  - name: 'Term factor (TERM)'
+    quote: 'the Term factor is constructed as the total return of the BAML US Treasuries 1-10 year index minus the 1-month T-bill rate'
+    class: auxiliary
+  - name: 'Default factor (DEF; equal-weighted market benchmark)'
+    quote: 'we calculate corporate bond market excess returns by computing the equal-weighted average of excess returns of each decile to ensure comparability. Accordingly, we compute three benchmarks and therefore three DEF factors.'
+    class: auxiliary

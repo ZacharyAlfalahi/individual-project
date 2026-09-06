@@ -1,0 +1,98 @@
+# Gold enumeration list -- Chordia, Goyal, Nozawa, Subrahmanyam & Tong (2017), T2
+# prospective paper (RQ2 coverage / D20). "Are Capital Market Anomalies Common to
+# Equity and Corporate Bond Markets? An Empirical Investigation", Journal of Financial
+# and Quantitative Analysis 52(4) (2017) 1301-1342. T2-SEL-5 #3.
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+#
+# Scope notes (authoring rules applied; evaluation contract section 5.1 granularity):
+#  * Strategy rows (8): the characteristic-sorted bond portfolios the paper forms and
+#    reports in section III.C.4 / Table 10 -- decile sorts with a long-10th / short-1st
+#    decile hedge portfolio (H-L) on REQ26, REQ1, PROF, ASTG, RBD26, RBD1 and LEAMI, and
+#    a two-portfolio sort on RATG (long junk, short IG). PROF and ASTG are sorted at
+#    end-January and held one year; the monthly-sorted variables are held one month
+#    (Table 10 header; note the paper's own inconsistency: the section III.C.4 text
+#    lists RATG among the annual sorts, the Table 10 header among the monthly ones --
+#    recorded, not resolved). Each row's quote is the paper's definition of the sort
+#    variable (Table 2 header, one page) except RATG, whose quote is the Table 10
+#    two-portfolio construction sentence; the sort mechanics are common to all rows.
+#    Equal- and value-weighted returns are both reported (Table 10 Panel A); alphas,
+#    transaction costs and Sharpe ratios use the value-weighted portfolios (Panel B,
+#    Tables 13-14). The IG / junk subsamples are universe splits of the same sorts.
+#  * Auxiliary rows (2): the PROF and ASTG "bond factors" of fn 18, built in-paper
+#    (three portfolios per characteristic, separately for IG and junk, averaged hedge
+#    returns) as extra risk-adjustment controls; results unreported. The two rows share
+#    the one fn-18 sentence that defines both.
+#  * NOT rows (documented exclusions): the equity characteristics used only as
+#    Fama-MacBeth regressors and never sorted into portfolios -- ln(MC), ln(BM), NETISS,
+#    ACCRU, SUE, IVOL -- and the bond-market controls DD, ln(ISZ), ln(MAT), LEV
+#    (variables, not constructions; "we focus only on the more robust ... characteristics",
+#    section III.C.4); the Fama-MacBeth, BCS risk-adjusted, subsample, single-bond-per-
+#    firm and time-variation regressions (Tables 4-9, 11, A2; apparatus / robustness);
+#    the cash-flow-matched synthetic Treasury excess-return construction (section II.B;
+#    return measurement, not a strategy); the risk-adjustment factors (FF5, PSL, TRM/DEF
+#    "obtained from Ibbotson", Lin et al. bond liquidity factors provided by Junbo Wang,
+#    NOISE of Hu et al.) -- external; BPW (a bond-level Roll-measure liquidity variable);
+#    the Table 13 net-of-cost and Table 14 Sharpe-ratio re-statements of the same hedge
+#    portfolios (statistics), including the paper's sign normalisation of hedge returns.
+#  * Quote artifacts: the Table 2 header spans carry the text's own U+2212 minus in
+#    "−dividend" and the en dash in "Lead–lag"; copied verbatim (the L1 ladder unifies
+#    dashes at match time; do NOT "fix" them).
+authoring:
+  procedure: NO-MODEL-CONSULT
+  status: verified        # 2026-09-06: canonical text promoted to evaluation/canonical_texts/; all quotes L1-locate
+  method: >
+    Hand-enumerated from the frozen L0 parse of the PDF only, with ZERO outside
+    knowledge: every construction the paper itself builds (D20 ontology), at
+    evaluation-contract section 5.1 granularity, parameter grids registered at the
+    paper's featured headline cell. Every quote is copied character-for-character from
+    the parsed text (line breaks flattened to single spaces) and is L1-locatable on a
+    single page. NO-MODEL-CONSULT here records that no Librarian-pipeline model was
+    consulted and no model enumeration output seeded or filtered this list. Drafted
+    2026-09-04 from the parsed text. Promoted 2026-09-06 into
+    evaluation/canonical_texts/ (T2-SEL-7 landed, so it no longer trips the
+    design-touched consistency test tests/unit/test_t2_selection_prereg.py); every
+    quote L1-locates in the promoted text, so status is verified.
+  authored: 2026-09-04
+  source_text: evaluation/canonical_texts/cgnst_2017.frozen.yaml
+  source_pdf: papers/prospective/chordia_et_al_2017.pdf
+  source_sha256: b29a09bc5528b1ec41583307abb985fe2d5a5f915ec73cd011bc55eaa13bbbab
+  parser: pymupdf 1.28.0 (config/canonical_text.yaml recipe, L1/v3 ladder)
+  text_version: >
+    version of record (Cambridge University Press; JFQA 52(4), Aug. 2017, 1301-1342; DOI 10.1017/S0022109017000515)
+
+gold: true
+paper_id: CGNST_2017
+constructions:
+  - name: 'Equity momentum (REQ26) decile hedge portfolio'
+    quote: 'Momentum (REQ26) is the cumulative 5-month return on equity, starting from the second month prior to the current month.'
+    class: strategy
+  - name: 'Lagged 1-month equity return (REQ1) decile hedge portfolio'
+    quote: 'Lead–lag (REQ1) is the lagged monthly return on equity.'
+    class: strategy
+  - name: 'Profitability (PROF) decile hedge portfolio'
+    quote: 'Profitability (PROF) is the ratio of equity income (income before extraordinary items −dividend on preferred shares + deferred taxes) to book equity.'
+    class: strategy
+  - name: 'Asset growth (ASTG) decile hedge portfolio'
+    quote: 'Asset growth (ASTG) is the percentage change in total assets.'
+    class: strategy
+  - name: 'Bond momentum (RBD26) decile hedge portfolio'
+    quote: 'RBD26 is the cumulative 5-month return on the bonds, starting from the second month prior to the current month'
+    class: strategy
+  - name: 'Lagged 1-month bond return / reversal (RBD1) decile hedge portfolio'
+    quote: 'RBD1 is the lagged monthly return on bonds'
+    class: strategy
+  - name: 'Equity Amihud illiquidity (LEAMI) decile hedge portfolio'
+    quote: 'LEAMI is the Amihud illiquidity measure'
+    class: strategy
+  - name: 'Credit rating (RATG) two-portfolio hedge (long junk, short IG)'
+    quote: 'Sorts on RATG use only two portfolios: short on IG bonds and long on junk bonds.'
+    class: strategy
+  - name: 'Profitability (PROF) bond factor (fn 18)'
+    quote: 'For each of the characteristics, PROF and ASTG, we form 3 portfolios separately for IG and junk bonds and then take the average of the two hedge portfolio excess returns to construct the bond factor.'
+    class: auxiliary
+  - name: 'Asset growth (ASTG) bond factor (fn 18)'
+    quote: 'For each of the characteristics, PROF and ASTG, we form 3 portfolios separately for IG and junk bonds and then take the average of the two hedge portfolio excess returns to construct the bond factor.'
+    class: auxiliary

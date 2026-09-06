@@ -1,0 +1,96 @@
+# Gold enumeration list -- Houweling & van Zundert (2017), T2 prospective paper
+# (RQ2 coverage / D20). Houweling, P. & van Zundert, J., "Factor Investing in the
+# Corporate Bond Market", Financial Analysts Journal 73(2) (2017). T2-SEL-5 #2.
+# TEXT VERSION: the SSRN manuscript (September 2016), not the FAJ version of record --
+# see authoring.text_version below.
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+#
+# Scope notes (authoring rules applied; evaluation contract section 5.1 granularity):
+#  * Strategy rows (5): the four single-factor characteristic sorts the paper defines in
+#    section 3 with their base-case definitions (Size = issuer's total index market
+#    value, S0; Low-Risk = high rating x short maturity, LR0; Value = percentage
+#    deviation of the market spread from a spread regression on rating dummies,
+#    maturity and 3-month spread change, V0; Momentum = past 6-month excess return with
+#    a 1-month implementation lag, M0), each a top/bottom 10% equally-weighted decile
+#    portfolio, plus the multi-factor portfolio (25% in each single-factor portfolio;
+#    section 2 / Table 3). Each row is ONE signal concept: the paper presents every sort
+#    in two portfolio forms -- long-short top-minus-bottom decile on a 1-month horizon
+#    (Table 2) and long-only top decile on a 12-month overlapping-portfolio horizon
+#    (Table 3, the form the paper calls "more realistic" and uses for the headline
+#    multi-factor alphas) -- and separately for the Investment Grade and High Yield
+#    universes. Form and universe are construction settings of the same sort, not
+#    separate constructions; which form a StrategySpec should target is left to the
+#    StrategySpec stage (flagged), not decided here.
+#  * Grid (D20 grid rule): Momentum formation period {3, 6, 9, 12} months (M1/M0/M2/M3,
+#    Appendix A / Table 7 Panel D) -> one row, headline the 6-month base case M0.
+#  * Auxiliary rows (1): the Term factor, constructed in-paper as the Barclays US
+#    Treasury 7-10 year index total return minus the 1-month T-bill rate (section 2).
+#  * NOT rows (documented exclusions): the corporate bond market (DEF) index excess
+#    returns -- obtained from Barclays, not built; the Fama-French-Carhart equity factors
+#    and the equity factor decile portfolios / MSCI Minimum Volatility series (obtained
+#    from Kenneth French / Bloomberg); the equity multi-factor portfolio of section 5 (an
+#    equal-weight mix of those obtained equity series, comparator apparatus); the four
+#    multi-asset allocation portfolios of Table 6 ("Traditional" etc. -- fixed-weight
+#    cross-asset allocations, weights "arbitrary, and only serves as an example", fn 8;
+#    not corporate-bond cross-sectional constructions); the alternative factor
+#    definitions S1, LR1-LR3, V1-V2 (section 6 / Appendix A -- alternative signals for
+#    the same factor, framed and reported as robustness); the equity-definition
+#    "stock-bond factor spillover" sorts (Table 7 Panel E -- robustness variants in this
+#    paper, although the same sorts are headline constructions in Bektic et al.);
+#    rating-/maturity-/sector-neutral, liquid-subsample, market-value-weighted, quintile
+#    and subperiod variants (section 6; robustness); break-even transaction costs
+#    (statistics).
+#  * Quote artifacts: 'one- month' and 'T- bill' are the text's own line-break hyphen
+#    folds; the curly apostrophe in "issuer's" is the text's own character. All copied
+#    character-for-character; do NOT "fix" them (L1 location depends on them).
+authoring:
+  procedure: NO-MODEL-CONSULT
+  status: verified        # 2026-09-06: canonical text promoted to evaluation/canonical_texts/; all quotes L1-locate
+  method: >
+    Hand-enumerated from the frozen L0 parse of the PDF only, with ZERO outside
+    knowledge: every construction the paper itself builds (D20 ontology), at
+    evaluation-contract section 5.1 granularity, parameter grids registered at the
+    paper's featured headline cell. Every quote is copied character-for-character from
+    the parsed text (line breaks flattened to single spaces) and is L1-locatable on a
+    single page. NO-MODEL-CONSULT here records that no Librarian-pipeline model was
+    consulted and no model enumeration output seeded or filtered this list. Drafted
+    2026-09-04 from the parsed text. Promoted 2026-09-06 into
+    evaluation/canonical_texts/ (T2-SEL-7 landed, so it no longer trips the
+    design-touched consistency test tests/unit/test_t2_selection_prereg.py); every
+    quote L1-locates in the promoted text, so status is verified.
+  authored: 2026-09-04
+  source_text: evaluation/canonical_texts/hvz_2017.frozen.yaml
+  source_pdf: papers/prospective/houweling_vanzundert_2017.pdf
+  source_sha256: 31afa85765ec098057880ee6cf6b4416bfe73d4fec29e5fa99cc38aa3a773a2c
+  parser: pymupdf 1.28.0 (config/canonical_text.yaml recipe, L1/v3 ladder)
+  text_version: >
+    NOT the version of record: SSRN 2516322 manuscript ("This version: September 2016"), title page stamped "Financial Analysts Journal, 2017, Vol. 73, No. 2"; the FAJ 73(2) 2017 VoR (DOI 10.2469/faj.v73.n2.1) was unavailable via Imperial access on 2026-09-04. Quotes bind to THIS text; re-verify if the VoR is substituted.
+
+gold: true
+paper_id: HVZ_2017
+constructions:
+  - name: 'Size factor portfolio (company size, S0)'
+    quote: 'To construct Size decile portfolios, we rank each month all bonds on their issuer’s size. The top (bottom) portfolio contains the bonds of the 10% smallest (largest) companies.'
+    class: strategy
+  - name: 'Low-Risk factor portfolio (rating x maturity, LR0)'
+    quote: 'For the Low-Risk top portfolio, we select high-rated, short-dated bonds, while the bottom portfolio consists of low-rated, long-dated bonds.'
+    class: strategy
+  - name: 'Value factor portfolio (spread-regression deviation, V0)'
+    quote: 'Finally, we rank all bonds on this percentage difference from high to low and select the first (last) 10% bonds for the top (bottom) Value portfolio.'
+    class: strategy
+  - name: 'Momentum factor portfolio (past 6-month excess return, M0)'
+    quote: 'We follow Jostova et al. (2013) by defining Momentum as the past 6-month return using a one- month implementation lag.'
+    class: strategy
+    grid:
+      is_grid: true
+      headline_cell: '6-month formation (M0)'
+      cells_noted: ['3-month formation (M1)', '9-month formation (M2)', '12-month formation (M3)']
+  - name: 'Multi-factor portfolio (25% each of Size, Low-Risk, Value, Momentum)'
+    quote: 'Next to the single-factor portfolios, we also analyze a multi-factor portfolio, which invests 25% in each of the four single-factor portfolios.'
+    class: strategy
+  - name: 'Term factor (TERM)'
+    quote: 'The Term factor is constructed as the total return of the Barclays US Treasury 7-10 year index minus the 1-month T- bill rate from Kenneth French.'
+    class: auxiliary

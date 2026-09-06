@@ -1,0 +1,98 @@
+# Gold enumeration list -- Kim, Li & Zhang (2017), T2 prospective paper (RQ2 coverage /
+# D20). Kim, G.H., Li, H. & Zhang, W., "The CDS-Bond Basis Arbitrage and the Cross
+# Section of Corporate Bond Returns", Journal of Futures Markets 37(8) (2017) 836-861.
+# T2-SEL-6 #4.
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+#
+# Scope notes (authoring rules applied; evaluation contract section 5.1 granularity):
+#  * Strategy rows (1): the paper builds ONE sorted-portfolio construction -- quintile
+#    portfolios of investment-grade bonds sorted on the predicted CDS-Bond basis
+#    (section 4.2, Table III), whose P1-minus-P5 spread is the LMH basis factor
+#    (BASIS) used as the priced factor in sections 4.3-4.4 (Tables IV-V). The sort and
+#    the factor are one construction. Weighting: the text and the Table III note say
+#    value-weighted by market capitalization, while the sentence introducing Table III
+#    says "equal- weighted" -- an internal inconsistency of the paper, recorded here for
+#    the StrategySpec stage, not resolved.
+#  * Grid (D20 grid rule): holding horizon k in {20, 40, 60} trading days, all three
+#    reported in every table ("For robustness tests, we perform all analysis based on
+#    three different holding periods") -> one row, headline k = 20: the introduction
+#    states the headline premium "for twenty-day holding periods" and Table I reports
+#    the twenty-day horizon.
+#  * Auxiliary rows (7): factors the paper itself constructs as controls -- TERM and DEF
+#    (Barclays long-term index return differences, Table I note / fn 7), LIQ (aggregate
+#    bond turnover), AMH (Amihud bond-market liquidity risk factor built "following the
+#    procedures in Lin et al. (2011)", fn 18), PS (Pastor-Stambaugh bond liquidity risk
+#    measure, also constructed per fn 18 and reported as an alternative control in
+#    Tables IV-VII), and two of the three "new risk" proxies the paper says it
+#    constructs (section 4.4): TED (3-month LIBOR minus 3-month T-bill) and FINRET
+#    (value-weighted excess return of SIC-6211 investment-bank equities from CRSP).
+#  * NOT rows (documented exclusions): MKT/SMB/HML (standard Fama-French factors,
+#    cumulated, not built); VIX (an obtained CBOE index, cf. the BBW_2021 treatment of
+#    VIX); the 20 rating x maturity test-asset portfolios (asset-pricing test apparatus,
+#    not a strategy or factor input); the equal- and value-weighted basis INDICES of
+#    Figure 2 (descriptive level indices, not return constructions); the predicted-basis
+#    variable itself and the Bai-Collin-Dufresne model behind it; the Fama-MacBeth
+#    individual-bond regressions (Table II); the speculative-grade re-run (Table VII) and
+#    the crisis subperiod (Table VI) -- universe/subperiod variants of the same
+#    construction; the LIBOR-OIS / LIBOR-REPO / adjusted-Z-spread / asset-swap-spread /
+#    duration-sorted alternatives (fn 20 and section 5.2, untabulated robustness).
+#  * Quote artifacts: 'deﬁned' carries the text's fi ligature; copied verbatim. The
+#    TERM/DEF definition sentences recur in several table notes; the locator binds to
+#    their first occurrence (Table I note).
+authoring:
+  procedure: NO-MODEL-CONSULT
+  status: verified        # 2026-09-06: canonical text promoted to evaluation/canonical_texts/; all quotes L1-locate
+  method: >
+    Hand-enumerated from the frozen L0 parse of the PDF only, with ZERO outside
+    knowledge: every construction the paper itself builds (D20 ontology), at
+    evaluation-contract section 5.1 granularity, parameter grids registered at the
+    paper's featured headline cell. Every quote is copied character-for-character from
+    the parsed text (line breaks flattened to single spaces) and is L1-locatable on a
+    single page. NO-MODEL-CONSULT here records that no Librarian-pipeline model was
+    consulted and no model enumeration output seeded or filtered this list. Drafted
+    2026-09-04 from the parsed text. Promoted 2026-09-06 into
+    evaluation/canonical_texts/ (T2-SEL-7 landed, so it no longer trips the
+    design-touched consistency test tests/unit/test_t2_selection_prereg.py); every
+    quote L1-locates in the promoted text, so status is verified.
+  authored: 2026-09-04
+  source_text: evaluation/canonical_texts/klz_2017.frozen.yaml
+  source_pdf: papers/prospective/kim_li_zhang_2017.pdf
+  source_sha256: 7bd33aa5c3c5bfb4de7f885a6865db8bb8708234e39e44f8aecc70a5d1de93b7
+  parser: pymupdf 1.28.0 (config/canonical_text.yaml recipe, L1/v3 ladder)
+  text_version: >
+    version of record (Wiley; Journal of Futures Markets 37(8), 2017, 836-861; DOI 10.1002/fut.21845). Wiley download watermark stripped by the builder (strip_publisher_watermark_v3).
+
+gold: true
+paper_id: KLZ_2017
+constructions:
+  - name: 'CDS-Bond basis quintile portfolios / LMH basis factor (P1 minus P5)'
+    quote: 'the LMH basis factor, constructed as return differential between the LOW and HIGH basis portfolios formed from all available investment grade bonds'
+    class: strategy
+    grid:
+      is_grid: true
+      headline_cell: 'k = 20 (twenty-day holding period)'
+      cells_noted: ['k = 40 (forty-day holding period)', 'k = 60 (sixty-day holding period)']
+  - name: 'Term factor (TERM)'
+    quote: 'TERM is the difference between the daily return of the Barclays long-term government bond index and the daily T-bill return.'
+    class: auxiliary
+  - name: 'Default factor (DEF)'
+    quote: 'DEF is the daily difference between the return of the Barclays long-term corporate bond index and that of the Barclays long-term government bond index.'
+    class: auxiliary
+  - name: 'Bond market turnover liquidity factor (LIQ)'
+    quote: 'LIQ is the sum of the turnover deﬁned as the total trading volume divided by the total number outstanding for all corporate bonds.'
+    class: auxiliary
+  - name: 'Amihud bond market liquidity risk factor (AMH)'
+    quote: 'We follow the procedures in Lin et al. (2011) to construct the Amihud (2002) liquidity measure for the corporate bond market.'
+    class: auxiliary
+  - name: 'Pastor-Stambaugh bond market liquidity risk factor (PS)'
+    quote: 'we also construct Pastor and Stambaugh (2003) liquidity risk measure (PS) as an alternative liquidity risk measure as shown in Lin et al. (2011).'
+    class: auxiliary
+  - name: 'TED spread (funding liquidity proxy)'
+    quote: 'funding liquidity is proxied by TED spread, which is the difference between three-month uncollateralized LIBOR rate minus three-month T-bill rate.'
+    class: auxiliary
+  - name: 'Investment-bank equity excess return (FINRET, counterparty risk proxy)'
+    quote: 'counterparty risk is proxied by FINRET, which is the value-weighted excess return of all investment bank equities from CRSP with SIC code 6211.'
+    class: auxiliary

@@ -1,0 +1,58 @@
+# Gold enumeration list -- Bektic (2018), T2 prospective paper (RQ2 coverage / D20).
+# Bektic, D., "The low beta anomaly: A corporate bond investor's perspective",
+# Review of Financial Economics 36(4) (2018) 300-306. T2-SEL-6 queue #6.
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+#
+# Scope notes (authoring rules applied; evaluation contract section 5.1 granularity):
+#  * Strategy rows (1): the paper builds ONE construction -- monthly equal-weighted
+#    quintile portfolios of European IG corporate bonds sorted on the issuer's 12-month
+#    equity beta (section 2.2; Table 2 / Figure 1). The paper is explicitly LONG-ONLY
+#    ("I focus on long-only portfolios ... shorting corporate bonds is hard in practice");
+#    no Q1-minus-Q5 spread or factor is formed or reported anywhere, so the row is the
+#    quintile sort itself, with Q1 (lowest beta) as the featured portfolio. A downstream
+#    StrategySpec would have to record the long-only form; flagged for the StrategySpec
+#    stage.
+#  * Auxiliary rows (1): the equal-weighted market benchmark the paper itself forms from
+#    the same universe ("Consequently, the benchmark is equal-weighted as well") and
+#    reports as the "Market" column of Tables 2-3.
+#  * NOT rows (documented exclusions): Table 3 (net-of-transaction-cost re-statement of
+#    the same quintiles; BETC break-even costs) -- a robustness variant, not a new
+#    construction; the beta signal itself (Eq. 1; a variable); alphas/betas/Sharpe
+#    ratios (statistics); Chen-Lesmond-Wei bid-ask estimates (external inputs).
+#  * Quote artifacts: the curly apostrophe in "firm's" is the text's own character,
+#    copied verbatim (the L1 ladder unifies it at match time; do NOT "fix" it).
+authoring:
+  procedure: NO-MODEL-CONSULT
+  status: verified        # 2026-09-06: canonical text promoted to evaluation/canonical_texts/; all quotes L1-locate
+  method: >
+    Hand-enumerated from the frozen L0 parse of the PDF only, with ZERO outside
+    knowledge: every construction the paper itself builds (D20 ontology), at
+    evaluation-contract section 5.1 granularity, parameter grids registered at the
+    paper's featured headline cell. Every quote is copied character-for-character from
+    the parsed text (line breaks flattened to single spaces) and is L1-locatable on a
+    single page. NO-MODEL-CONSULT here records that no Librarian-pipeline model was
+    consulted and no model enumeration output seeded or filtered this list. Drafted
+    2026-09-04 from the parsed text. Promoted 2026-09-06 into
+    evaluation/canonical_texts/ (T2-SEL-7 landed, so it no longer trips the
+    design-touched consistency test tests/unit/test_t2_selection_prereg.py); every
+    quote L1-locates in the promoted text, so status is verified.
+  authored: 2026-09-04
+  source_text: evaluation/canonical_texts/bektic_2018.frozen.yaml
+  source_pdf: papers/prospective/bektic_2018.pdf
+  source_sha256: 826cdf0be8ba97a66faa7a2d3c3fef70bc8ab8c8ef8cb8e7c46b704aedbad3ef
+  parser: pymupdf 1.28.0 (config/canonical_text.yaml recipe, L1/v3 ladder)
+  text_version: >
+    version of record (Wiley; Review of Financial Economics 36(4), 2018, 300-306; DOI 10.1002/rfe.1022)
+
+gold: true
+paper_id: BEKTIC_2018
+constructions:
+  - name: 'Equity-beta quintile portfolios (low-beta credit portfolio, long-only)'
+    quote: 'The quintile beta portfolios are rebalanced on a monthly basis meaning that, every month, issuers of corporate bonds are sorted by firm’s stock beta in the cross-section.'
+    class: strategy
+  - name: 'Equal-weighted market benchmark'
+    quote: 'Consequently, the benchmark is equal-weighted as well.'
+    class: auxiliary
