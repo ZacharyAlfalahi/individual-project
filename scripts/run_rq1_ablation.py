@@ -9,10 +9,10 @@ pricing each discipline's benefit (precision) against its cost (coverage).
 
 No new extraction happens and no model is called: elicitation is held fixed, and
 the grid records only what the disciplines DO to what is allowed to ship, exactly
-as the chapter specifies. Everything evidential is re-derived from the per-run raw
-archives (the p6a replay machinery): `answered`/`value`/`quote` from the archive,
-`located` recomputed against the frozen canonical text, `normalised` through the
-production normaliser.
+as specified. Everything evidential is re-derived from the per-run raw archives 
+(the p6a replay machinery): `answered`/`value`/`quote` from the archive, `located` 
+recomputed against the frozen canonical text, `normalised` through the production 
+normaliser.
 
 Shipping rule per combo (deterministic; single-model arms prefer model_a, then
 model_b -- a fixed order, never a quality judgement):
