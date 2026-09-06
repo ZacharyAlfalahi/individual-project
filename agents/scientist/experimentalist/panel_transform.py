@@ -42,10 +42,13 @@ def apply_row_filter(panel: pd.DataFrame, *, variable: str, form: str) -> pd.Dat
     """Restrict to an EX-ANTE segment (observed at formation). Rating segments use the direct
     membership column; a liquidity tercile uses the cross-sectional rank of `variable` WITHIN each
     formation month (ex-ante — no future, no realised return)."""
-    if form == "restrict_investment_grade":
-        return panel[panel["investment_grade"].astype(bool)].copy()
-    if form == "restrict_high_yield":
-        return panel[~panel["investment_grade"].astype(bool)].copy()
+    if form in ("restrict_investment_grade", "restrict_high_yield"):
+        # investment_grade is 1 (IG) / 0 (HY) / NaN (UNRATED). A NaN is unclassifiable ex-ante, so
+        # it is excluded from BOTH segments (never coerced) — `.astype(bool)` would raise on the
+        # NaN rows the real dev panel carries. `.eq(...).fillna(False)` drops NaN cleanly.
+        ig = panel["investment_grade"]
+        want = 1 if form == "restrict_investment_grade" else 0
+        return panel[ig.eq(want).fillna(False).astype(bool)].copy()
     if form in ("restrict_top_liquidity_tercile", "restrict_bottom_liquidity_tercile"):
         top = "top" in form
 

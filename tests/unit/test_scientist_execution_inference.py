@@ -64,6 +64,20 @@ def test_row_filter_investment_grade_keeps_only_ig():
     assert ig["investment_grade"].all() and len(ig) == 10 * 24        # top half of 20 bonds
 
 
+def test_row_filter_excludes_unrated_nan_rows_from_both_segments():
+    # Tripwire: the REAL dev panel carries NaN investment_grade (unrated bonds); .astype(bool) used
+    # to raise on them. An unrated bond is unclassifiable ex-ante -> excluded from BOTH IG and HY.
+    panel = _panel()
+    panel["investment_grade"] = panel["investment_grade"].astype(float)
+    panel.loc[panel["cusip"] == "B00", "investment_grade"] = np.nan   # one bond becomes unrated
+    ig = apply_row_filter(panel, variable="rating", form="restrict_investment_grade")
+    hy = apply_row_filter(panel, variable="rating", form="restrict_high_yield")
+    assert not ig["investment_grade"].isna().any()                    # no NaN survives either filter
+    assert not hy["investment_grade"].isna().any()
+    assert "B00" not in set(ig["cusip"]) and "B00" not in set(hy["cusip"])   # unrated in NEITHER
+    assert (ig["investment_grade"] == 1).all() and (hy["investment_grade"] == 0).all()
+
+
 def test_row_filter_liquidity_tercile_is_cross_sectional():
     top = apply_row_filter(_panel(), variable="gamma_illiq", form="restrict_top_liquidity_tercile")
     # each formation month keeps ~top third by gamma_illiq (ex-ante cross-sectional rank).
@@ -95,6 +109,18 @@ def test_g1b_empty_transform_is_execution_mismatch():
                                                         "binary_above_historical_median"))
     out, res = execute_g1b(ext, _panel(), _BASE_RULEBOOK, macro=macro, min_history=100)  # no months
     assert not out.passed and out.refusal_code is RefusalCode.EXECUTION_MISMATCH and res is None
+
+
+def test_g1b_month_filter_without_macro_is_missing_input():
+    # A month_filter proposal with NO conditioning series is a harness INPUT gap (MISSING_INPUT),
+    # not an economic EXECUTION_MISMATCH. The RQ4 funnel wiring bug (2026-09-05) left `macro=None`
+    # for all 10 regime-timing proposals, and the old code mislabelled that as EXECUTION_MISMATCH
+    # -- masking a wiring omission as a refusal. The transform never ran, so there is no
+    # realised-vs-declared claim: MISSING_INPUT is the honest code.
+    ext = _ext("month_filter", transform=PanelTransform("month_filter", "baa_aaa_spread", 1,
+                                                        "binary_above_historical_median"))
+    out, res = execute_g1b(ext, _panel(), _BASE_RULEBOOK)   # macro omitted
+    assert not out.passed and out.refusal_code is RefusalCode.MISSING_INPUT and res is None
 
 
 def test_g1b_double_sort_adds_control_and_runs():

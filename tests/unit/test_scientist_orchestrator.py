@@ -117,3 +117,27 @@ def test_joint_bh_runs_and_records_are_complete():
     for r in report.records:
         assert r.booleans.audit_clean and r.measurements.gross is not None
         assert r.measurements.gross.p_bh is not None          # joint BH adjusted-p populated
+
+
+def test_month_filter_proposal_routed_to_its_own_macro_series():
+    # RQ4 funnel wiring-bug regression (2026-09-05): a month_filter (regime-timing) proposal must
+    # be conditioned on ITS OWN variable's series via the `macros` mapping. Present -> it is routed
+    # and reaches execution (never a MISSING_INPUT refusal); absent from `macros` -> MISSING_INPUT
+    # (the driver used to pass a single shared `macro=None`, so EVERY regime proposal was refused).
+    macro = pd.Series(range(len(MONTHS)), index=MONTHS, dtype=float)
+    base_rb = {"score": "score", "groups": 2, "weighting": "equal", "min_bonds": 4,
+               "signal_lag": 0, "nw_lags": 0}
+
+    def _run_mf(pid, macros):
+        return run_experimentalist(
+            CASE, [_proposal(pid, "mech_002", "lagged_binary_regime_interaction_v1",
+                             "baa_aaa_spread", "binary_above_historical_median")],
+            LIB, panel=_panel(), base_rulebook=base_rb, bbw4_factors=_bbw4(), holding_period=1,
+            signal_lookback=1, available_variables=AVAILABLE, macros=macros, m=6,
+            crowding_config=_cfg(), crowding_factors=_crowding_factors(), nw_lags=0)
+
+    present = {r.proposal_id: r for r in _run_mf("mf", {"baa_aaa_spread": macro}).records}["mf"]
+    assert present.refusal_code is not RefusalCode.MISSING_INPUT   # series found + routed
+
+    absent = {r.proposal_id: r for r in _run_mf("mf2", {}).records}["mf2"]
+    assert absent.refusal_code is RefusalCode.MISSING_INPUT        # no series -> honest MISSING_INPUT

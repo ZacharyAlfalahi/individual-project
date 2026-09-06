@@ -4,9 +4,9 @@ receives ONLY the wall allow-list (INVARIANT 1): the context is assembled by `bu
 output is decoded at the ONE boundary (decode_proposal); invalid/duplicate proposals are counted,
 never regenerated (§8.2 / prohibition 6) — the generation loop in sources.py owns that.
 
-The model client is INJECTED (like rung 2's embedder). The real D4 phase_d clients (Gemini
-3.1-flash-lite + Mistral-small) are DEFERRED — `DeferredModelClient` raises until wired, so the
-rung's structure + cache + parsing are built and tested with a stub, gated on model access.
+The model client is injected, as with rung 2's embedder. Live Phase-D clients are provided by
+``phase_d_client.build_phase_d_clients``. ``DeferredModelClient`` remains the fail-closed default
+for callers that do not supply a configured client.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ class ModelClient(Protocol):
 
 
 class DeferredModelClient:
-    """The real D4 phase_d client is not wired yet (needs model access + SKU/cost authorization).
+    """Fail-closed default used when no configured model client is supplied.
     Raises rather than silently returning nothing, so a run cannot falsely claim rung 3 executed."""
     name = "deferred"
 
@@ -47,6 +47,19 @@ def build_prompt(context: dict, m: int) -> str:
         '{"mechanism_ref","template_ref","conditioning_variable","conditioning_lag_months",'
         '"interaction_form","rationale","prediction"}. Never propose a correction or a bias toggle.'
         "\n\nCONTEXT:\n" + json.dumps(context, ensure_ascii=False, sort_keys=True))
+
+
+def _strip_code_fence(text: str) -> str:
+    """Strip a leading/trailing markdown code fence (```json … ```). Models WITHOUT a forced-JSON
+    mode (e.g. Claude — the anthropic backend sets no response_format) tend to wrap the array in a
+    fence; the JSON-mode vendors (Gemini/Mistral) return it bare. Idempotent on unfenced text, so
+    the one decode boundary handles both without regenerating."""
+    s = text.strip()
+    if s.startswith("```"):
+        s = s.split("\n", 1)[1] if "\n" in s else s[3:]      # drop the ```/```json opener line
+        if s.rstrip().endswith("```"):
+            s = s.rstrip()[:-3]
+    return s.strip()
 
 
 def _to_raw(item, *, case, seed, model, prompt_version, library_version, generated_at, i) -> dict:
@@ -89,8 +102,8 @@ class LLMResearcherSource:
             if self.cache:
                 self.cache.put(prompt, model, seed, response)          # persist every seed (R5)
         try:
-            items = json.loads(response)
-        except (json.JSONDecodeError, TypeError):
+            items = json.loads(_strip_code_fence(response))
+        except (json.JSONDecodeError, TypeError, AttributeError):
             return []                                                  # unparseable -> 0 candidates
         if isinstance(items, dict):
             # Some vendors (Mistral's json_object mode) wrap the array in an object; take the first

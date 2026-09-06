@@ -7,8 +7,7 @@ classification, server retry-after parsing) is the Librarian's battle-tested cod
 (`agents/librarian/pipeline/real_client`). The two agents call the IDENTICAL phase_d SKUs, and
 that module is SDK-free to import (its vendor imports are lazy). Those reuses are LAZY-imported
 here (inside the methods that need them), so importing this module — and injecting a fake backend
-in tests — never touches the Librarian or any SDK. A future refactor could lift the shared vendor
-plumbing into `shared/llm/`; noted as minor tech debt, not blocking.
+in tests — never touches the Librarian or any SDK.
 
 NON-REPORTABLE by design. phase_d is the FREE DEV pair (D4/D33). Reportable generative figures
 require phase_f (Claude Sonnet 4.6 + Gemini 3.5-flash) + SKU/cost authorization — a SEPARATE, still-open
@@ -157,3 +156,21 @@ def build_phase_d_clients(
     ms = load_model_stack(path)
     return (_client_from(ms["phase_d"]["model_a"], ms),
             _client_from(ms["phase_d"]["model_b"], ms))
+
+
+def build_phase_f_clients(
+    path: Path = _THRESHOLDS_PATH,
+) -> tuple[PhaseDModelClient, PhaseDModelClient]:
+    """Build the two live phase_f (REPORTED) generative clients (Claude Sonnet 4.6 + Gemini
+    3.5-flash) from scientist.model_stack.phase_f. Same live PhaseDModelClient wrapper; only the SKUs
+    + keys differ. Fail loud if the block or an API key is absent. Reportable generative figures need
+    this pair AND cost authorization (D33) — wiring it does not itself authorise a run."""
+    ms = load_model_stack(path)
+    try:
+        pf = ms["phase_f"]
+        _ = (pf["model_a"], pf["model_b"])
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError(
+            "scientist.model_stack.phase_f.{model_a,model_b} missing from thresholds.yaml — "
+            "the reported generative pair is unconfigured (fail loud, do not default)") from exc
+    return (_client_from(pf["model_a"], ms), _client_from(pf["model_b"], ms))

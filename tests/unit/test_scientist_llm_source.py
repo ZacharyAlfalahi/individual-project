@@ -98,6 +98,15 @@ def test_object_wrapped_array_is_tolerated():
     assert r.n_valid_unique == 1
 
 
+def test_markdown_fenced_array_is_tolerated():
+    # Claude (phase_f model_a) has no forced-JSON mode and wraps the array in a ```json fence;
+    # the decode boundary strips it so the reported generative arm is not degenerate (was: 0 valid).
+    fenced = "```json\n" + json.dumps([_VALID]) + "\n```"
+    r = run_generation(_source(fenced), CASE, ELIG, LIB, seed=0, m=1, model="stub",
+                       prompt_version="v1", generated_at="t")
+    assert r.n_valid_unique == 1
+
+
 # ---- the wall + deferred client -----------------------------------------------------------
 
 def test_prompt_is_magnitude_free():

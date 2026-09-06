@@ -48,6 +48,14 @@ def execute_g1b(compiled, panel: pd.DataFrame, base_rulebook: dict, *, macro=Non
         return GateOutcome("G1b", passed=False, booleans={"execution_verified": False},
                            refusal_code=RefusalCode.EXECUTION_MISMATCH), None
 
+    def missing():
+        # A month_filter proposal with no conditioning series is a HARNESS INPUT gap,
+        # not a procedural execution mismatch: the transform never ran, so there is no
+        # realised-vs-declared claim to make. Mislabelling it EXECUTION_MISMATCH masks a
+        # wiring omission as an economic refusal (the 2026-09-05 RQ4 funnel bug).
+        return GateOutcome("G1b", passed=False, booleans={"execution_verified": False},
+                           refusal_code=RefusalCode.MISSING_INPUT), None
+
     rulebook = dict(base_rulebook)
     mode = compiled.template_mode
     if mode == "double_sort":
@@ -57,7 +65,7 @@ def execute_g1b(compiled, panel: pd.DataFrame, base_rulebook: dict, *, macro=Non
         declared = {"control": compiled.control}
     elif mode == "month_filter":
         if macro is None:
-            return fail()
+            return missing()
         pt = compiled.panel_transform
         run_panel = apply_month_filter(panel, macro, lag=pt.lag_months, form=pt.form,
                                        min_history=min_history)

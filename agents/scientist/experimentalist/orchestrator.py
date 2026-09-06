@@ -34,6 +34,7 @@ from .inference import two_sided_p
 from .robustness import robustness_g4
 from .selector import select_g5
 from .validator import validate_g0
+from ..schemas.outcomes import RefusalCode
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,21 @@ def _info_span(compiled, signal_lookback: int, holding_period: int) -> int:
     return signal_lookback + holding_period + lag
 
 
+def _transform_signature(compiled) -> tuple:
+    """The realised-strategy fingerprint: two proposals with the same signature COMPILE to the
+    identical panel transform / control, so they execute to the IDENTICAL candidate return series.
+    For BH-FDR the unit of analysis is the distinct strategy, not the mechanism rationale, so such
+    proposals must count as ONE hypothesis. equivalence_key (§4) keys on mechanism_ref and so does
+    NOT catch this: three mechanisms proposing the same baa_aaa_spread regime timing are three
+    equivalence-distinct proposals but ONE strategy. Counting them as three inflates the joint
+    BH-FDR family (more 'significant' hypotheses -> a more lenient threshold) and manufactures
+    false survivors. Deduping here controls that, and REMOVING duplicates can only make the family
+    smaller / the test stricter -- it never creates a survivor."""
+    pt = compiled.panel_transform
+    return (compiled.template_mode, compiled.control, compiled.control_groups,
+            pt.variable if pt else None, pt.lag_months if pt else None, pt.form if pt else None)
+
+
 def run_experimentalist(
     case,
     proposals,
@@ -69,7 +85,10 @@ def run_experimentalist(
     holding_period: int,
     signal_lookback: int,
     available_variables,
-    macro=None,
+    macros=None,                      # {conditioning_variable -> pd.Series}; month_filter proposals
+                                      # are routed to macros[panel_transform.variable] (the batch
+                                      # mixes baa_aaa_spread / vix / term_spread). A single shared
+                                      # series would condition every proposal on ONE variable.
     m: int = 6,
     sr_std: float = 0.5,
     q: float = 0.10,
@@ -84,6 +103,7 @@ def run_experimentalist(
 ) -> ExperimentReport:
     reporting_delays = reporting_delays if reporting_delays is not None else load_reporting_delays()
     seen: set = set()
+    seen_transforms: set = set()         # compiled-transform fingerprints (BH-family dedup)
     stored: dict = {}                    # proposal_id -> (Booleans, refusal_code, Measurements)
     audit_clean: list = []               # (proposal, candidate_returns, compiled, g0_bools)
 
@@ -100,7 +120,19 @@ def run_experimentalist(
         if not g1a.passed:
             stored[p.proposal_id] = (_booleans(g0.booleans, compiled=False), g1a.refusal_code, Measurements())
             continue
-        g1b, exec_res = execute_g1b(compiled, panel, base_rulebook, macro=macro)
+        sig = _transform_signature(compiled)
+        if sig in seen_transforms:
+            # Same compiled strategy as an earlier proposal (different mechanism rationale, identical
+            # transform) -> DUPLICATE_PROPOSAL, so the BH-FDR family counts distinct strategies only.
+            stored[p.proposal_id] = (_booleans(g0.booleans, compiled=True),
+                                     RefusalCode.DUPLICATE_PROPOSAL, Measurements())
+            continue
+        seen_transforms.add(sig)
+        macro_series = None
+        if compiled.template_mode == "month_filter" and compiled.panel_transform is not None:
+            # Route to the proposal's OWN conditioning series (None -> MISSING_INPUT downstream).
+            macro_series = (macros or {}).get(compiled.panel_transform.variable)
+        g1b, exec_res = execute_g1b(compiled, panel, base_rulebook, macro=macro_series)
         if not g1b.passed:
             stored[p.proposal_id] = (_booleans(g0.booleans, compiled=True, execution_verified=False),
                                      g1b.refusal_code, Measurements())
