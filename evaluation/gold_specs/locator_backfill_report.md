@@ -143,6 +143,7 @@ no data row below was changed.
 | kpp_2023 | 37 | 2529 | 2590 | VIX beta is the sum of coefficients on current and lagged VIX |
 | kpp_2023 | 16 | 235 | 283 | The sample is January 1999 through December 2020 |
 | kpp_2023 | 12 | 2319 | 2379 | We discard bond-month observations with extreme bond spreads |
+| kpp_2023 | 12 | 2319 | 2456 | We discard bond-month observations with extreme bond spreads (less tha |
 | crf_bbw_2019 | 3 | 1969 | 2137 | These independent sorts also produce three credit risk factors so that |
 | crf_bbw_2019 | 15 | 4844 | 4889 | the newly proposed factors of corporate bonds |
 | crf_bbw_2019 | 14 | 5245 | 5349 | We construct the bond factors in a similar vein to Fama and French (20 |

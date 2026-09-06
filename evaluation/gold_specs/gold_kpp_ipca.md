@@ -69,9 +69,18 @@ return_variable:                 value: bond_excess_return_dts_scaled   tag: STA
 
 characteristic_preprocessing:    value: rank_standardize_to_pm_half   tag: STATED
                                  quote: "we cross-sectionally rank, demean, and scale"   page: 13
+                                 quote2: "Each month, we cross-sectionally rank, demean, and scale the characteris- tics (except the constant) to the [-0.5, 0.5] interval, following KPS."   page: 13
+                                 # quote2 added by errata E1 (2026-09-04): the full sentence STATES the
+                                 # [-0.5, 0.5] interval the rubric's criteria require (kpp_prose_rubric §3.2).
+                                 # Byte-exact at live L1 (hyphen-space break; ASCII minus under D40 v3).
 
 managed_portfolio_construction:  value: characteristic_managed_portfolios   tag: STATED
                                  quote: "characteristic-managed portfolios"   page: 6
+                                 quote2: "PCA to returns on L characteristic-managed portfolios, defined as"   page: 6
+                                 # quote2 added by errata E2 (2026-09-04): the mechanism sentence preceding
+                                 # eq. (4). Eq. (4) itself -- x_{t+1} = Z'_t r_{t+1} / N_{t+1} -- is carried
+                                 # as a REFERENCE, not a quoted span: its L1 rendering collapses subscripts
+                                 # ("Z′ trt+1 Nt+1"), unrecoverable as a verbatim quote (rubric §3.3 finding).
 
 estimation_mode:                 value: both   tag: STATED
                                  quote: "The first out-of-sample test observation is 36 months after the start of our sample"   page: 17
@@ -245,7 +254,13 @@ as_described: {label: "VIX beta", quote: "VIX beta is the sum of coefficients on
 sample_start:            value: 1999-01   quote: "The sample is January 1999 through December 2020"   page: 16
 sample_end:              value: 2020-12   quote: "The sample is January 1999 through December 2020"   page: 16
 universe_filter:         value: "discard bond-month observations with spreads < 50 bps or > 2,000 bps at the beginning of the period; bonds with duration < 0.25 years discarded"
-                         quote: "We discard bond-month observations with extreme bond spreads"   page: 12
+                         quote: "We discard bond-month observations with extreme bond spreads (less than 50 bps or greater than 2,000 bps at the beginning of the period)."   page: 12
+                         quote2: "bonds with duration less than 0.25 years"   page: 13
+                         # E3 (2026-09-04): quote EXTENDED to the full sentence -- the previous prefix
+                         # stated no threshold, so the rubric's §3.4(b) certification bound on kinds
+                         # alone. E4: the duration clause is on p.13 (the "We also discard" sentence
+                         # breaks across the page seam with a table interposed; no single span reaches
+                         # all three clauses -- the §2.6 per-clause quote cap is load-bearing here).
                          # Paper prints 50 bps (p12); the engine kpp_ipca.yaml uses 20 (build spec flags 50 as a
                          # text error). The gold records the paper (see dissection §5).
 claimed_headline_metric: value: {mean: 51.0, t_stat: 0.0, unit: oos_panel_r2_pct}
@@ -276,3 +291,21 @@ claimed_headline_metric: value: {mean: 51.0, t_stat: 0.0, unit: oos_panel_r2_pct
 **Non-pooling.** This gold's field-accuracy is reported as a SEPARATE fitted-model sub-metric
 (contract v1.3 / D42), physically isolated from the sort G3 number (`ANCHOR_SET = str/drf/mom6`). See
 `docs/evaluation/evaluation_contract_v1.md` §(v1.3) and `docs/librarian/registers/decision-log_librarian.md` D42.
+
+---
+
+## Errata register (append-only; gold_errata_protocol.md §3)
+
+| date | id | field(s) | change | class | evidence | verification |
+|---|---|---|---|---|---|---|
+| 2026-09-04 | E1 | `characteristic_preprocessing` | quote2 added: the full p.13 sentence stating the [-0.5, 0.5] interval | evidence ADDITION for rubric criteria (D34 new-artefact authoring; NOT an errata-§1 wrong citation — the prior quote was correct, merely partial) | byte-exact at live L1, `locate_quote` p.13 | `load_gold_spec('kpp')` clean; all prose-field quotes re-located this date |
+| 2026-09-04 | E2 | `managed_portfolio_construction` | quote2 added: the p.6 mechanism sentence; eq. (4) carried as REFERENCE (L1-unrecoverable) | same class as E1 | byte-exact, p.6 | same |
+| 2026-09-04 | E3 | `universe_filter` | quote EXTENDED to the full p.12 sentence (thresholds now stated: 50 bps / 2,000 bps) | evidence EXTENSION (prior prefix stated no threshold; §3.4(b) certification would have bound on kinds alone) | byte-exact, p.12, span 2319:2456 | same |
+| 2026-09-04 | E4 | `universe_filter` | quote2 added: the p.13 duration clause (0.25 years) | evidence ADDITION (the source sentence breaks across the p.12/13 seam with a table interposed; per-clause quotes per rubric §2.6) | byte-exact, p.13 | same |
+
+All four transcribe verified byte-exact spans (findings of 2026-09-04);
+graded-outcome window confirmed OPEN at authoring (no prose cell adjudicated yet —
+protocol §1 sequencing satisfied). The paper-vs-engine 50-vs-20 bps divergence is
+NOT a gold matter: the gold records the paper's printed 50; the engine's [20, 2000]
+follows the reference code — formalised as a contract-§6 authorisation record, not
+a gold edit (protocol §1 bright line).

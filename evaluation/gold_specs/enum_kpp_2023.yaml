@@ -1,0 +1,24 @@
+# Gold enumeration list -- KPP (2023), the fitted-model paper (Scope B).
+#
+# Shape consumed by lister.load_gold_list: top-level `gold: true`, `paper_id`, and a
+# `constructions` list of {name, quote, class, grid?}. The `authoring` block below is
+# metadata (load_gold_list ignores unknown top-level keys) recording provenance.
+authoring:
+  procedure: MECHANICAL-TRANSCRIPTION
+  method: >
+    Single-construction list transcribed 2026-09-04 from the RATIFIED KPP gold
+    (gold_kpp_ipca.md): name = its header strategy_label; quote = its Part-1
+    formation_structure locating quote (page 2), already certified there as an
+    exact substring of the frozen text. No model consulted; no new judgement
+    (the crf/lrf transcription precedent). Registered for the Scope-B hybrid
+    run (docs/evaluation/rq1_referents_registration_draft_2026-09-02.md, §4
+    decision of 2026-09-04).
+  authored: 2026-09-04
+  source_text: evaluation/canonical_texts/kpp_2023.frozen.yaml
+
+gold: true
+paper_id: KPP_2023
+constructions:
+  - name: IPCA
+    quote: 'a new conditional factor model for individual corporate bond returns'
+    class: strategy

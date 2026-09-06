@@ -159,14 +159,17 @@ def test_constructions_from_parsed_hostile_json_never_raises():
 # --- gold recipes load (WS-3 deliverable) -----------------------------------
 
 @pytest.mark.parametrize(
-    "fname,paper_id,name",
+    "fname,paper_id,names",
     [
-        ("enum_bbw_2019.yaml", "BBW_2019", "Downside Risk Factor (DRF)"),
-        ("enum_jnps_2013.yaml", "JNPS_2013", "Six-Month Momentum (mom6)"),
-        ("enum_drr_2026.yaml", "DRR_2026", "Short-Term Reversal (str)"),
+        # BBW carries three strategy rows since the 2026-09-03 instructed
+        # extension (CRF + LRF transcribed from their ratified golds -- see the
+        # file's authoring amendment).
+        ("enum_bbw_2019.yaml", "BBW_2019", {"Downside Risk Factor (DRF)", "CRF", "LRF"}),
+        ("enum_jnps_2013.yaml", "JNPS_2013", {"Six-Month Momentum (mom6)"}),
+        ("enum_drr_2026.yaml", "DRR_2026", {"Short-Term Reversal (str)"}),
     ],
 )
-def test_gold_enumeration_recipes_load(fname, paper_id, name):
+def test_gold_enumeration_recipes_load(fname, paper_id, names):
     res = load_gold_list(_GOLD_DIR / fname)
     assert res.agreed and res.paper_id == paper_id
-    assert {c.name for c in res.strategies} == {name}
+    assert {c.name for c in res.strategies} == names

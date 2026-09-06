@@ -59,7 +59,7 @@ STATED locators as binding.
    construction earns ≈ +0.95%/mo momentum on the corr dev panel vs DRR's −0.99 raw reversal — is a
    raw/LIB result owned by the §8 bias-toggle decomposition, not a
    gold or leg issue. `BBW_anchor_implementation_spec.md` §5.1 was corrected to the winners−losers
-   construction in `b52ee71` (2026-07-13); only the §12.1 str −0.696 row stays banner-flagged STALE
+   construction (2026-07-13); only the §12.1 str −0.696 row stays banner-flagged STALE
    pending its re-run/re-emit.
 4. **mom6 trim operation:** JNPS say "eliminated" (truncate) at the full-sample 99.5th percentile;
    engine adjudicated a winsorise/clip repair from DRR's FilterClass. The gold records the paper;

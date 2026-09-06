@@ -12,10 +12,24 @@ authoring:
     model was consulted in authoring this list -- it is a human reference standard.
   authored: 2026-08-10
   source_text: evaluation/canonical_texts/bbw_2019.frozen.yaml
+  amendment_2026-09-03: >
+    Dated amendment adding CRF to the four-anchor RQ1 headline and LRF as the
+    negative-control row. The rows below are mechanical transcriptions: their names
+    and quotes are copied verbatim from the verified gold artefacts
+    gold_crf_bbw_2019.md and gold_lrf_bbw_2019.md, whose strategy_label and
+    strategy_quote header values are certified as exact substrings of
+    normalise(page, L1) for the same frozen text. No model output or additional
+    interpretive judgement was used.
 
 gold: true
 paper_id: BBW_2019
 constructions:
   - name: Downside Risk Factor (DRF)
     quote: 'downside risk factor (DRF)'
+    class: strategy
+  - name: CRF
+    quote: 'These independent sorts also produce three credit risk factors so that the final credit risk factor (CRF) is defined as the average of the three factors of credit risk.'
+    class: strategy
+  - name: LRF
+    quote: 'Liquidity risk factor ( LRF ) is con- structed by independently sorting corporate bonds into 5 × 5 quintiles based on illiquidity and credit rating. LRF is the value-weighted aver- age return difference between the highest-illiquidity portfolio minus the lowest-illiquidity portfolio within each rating portfolio.'
     class: strategy
