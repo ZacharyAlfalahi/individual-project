@@ -29,11 +29,19 @@ from __future__ import annotations
 # search_protocol added); RE-PINNED 2026-09-02 after flipping corpus.selection.search_protocol.executed
 # to true (T2-SEL-5 — the one-round candidate search ran; log in docs/evaluation/
 # t2_candidate_adjudication.md); RE-PINNED 2026-09-02 after raising corpus.selection.t2_target_count
-# 3 -> 5 (T2-SEL-6, extension down the frozen selection order); RE-PINNED 2026-09-06 after adding
-# corpus.selection.t2_selected_papers (T2-SEL-7 — the selected T2 set, so the consistency guard can
-# distinguish post-selection processing from design contact). one-shot holdout's real run
+# 3 -> 5 (T2-SEL-6, extension down the frozen selection order); RE-PINNED 2026-09-05 after adding
+# the p1_codegen.budget block (WS-C P1 live-run: runtime enforcement of the contract §3/§9 sub-cap);
+# RE-PINNED 2026-09-05 after setting p2_codegen.zoo_list.frozen_sha256 to the candidate scale
+# zoo-list hash (WS-C P2 census freeze); RE-PINNED 2026-09-05 after adding
+# scientist.model_stack.phase_f (WS-D RQ4 funnel: the reported generative pair, build_phase_f_clients);
+# RE-PINNED 2026-09-06 after the ratification of p2_codegen.zoo_list.frozen_sha256 (comment
+# CANDIDATE -> RATIFIED; the hash value 74e46547… is unchanged — only its status); RE-PINNED
+# 2026-09-06 after adding corpus.selection.t2_selected_papers (T2-SEL-7 — the selected T2 set, so
+# the consistency guard can distinguish post-selection processing from design contact); RE-PINNED
+# 2026-09-06 after merging the two registers (T2-SEL-7 + the P1/P2/phase_f blocks + the
+# bbw_2019_masked exclusion entry). one-shot holdout's real run
 # has not run, so re-pinning is maintenance, not a provenance break. Any later thresholds change must re-pin.
-FROZEN_THRESHOLDS_SHA256 = "782406beffc9fc0f5ef6c76d8b90c0d4390ac7fc42cb4cc0b94f5ae0d8b1540f"
+FROZEN_THRESHOLDS_SHA256 = "55e9402f265e89dd46f8e970f69884cf3f954b49d0107cecc6e8680d748a0ec9"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library
