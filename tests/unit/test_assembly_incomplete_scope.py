@@ -119,3 +119,24 @@ def test_driver_keeps_exit_3_for_zero_specs_without_events(monkeypatch, tmp_path
     rc = run_librarian.main(["--paper", "bbw", "--phase", "fake", "--out", str(out)])
     assert rc == 3
     assert not (out / "events.json").exists()
+
+
+def test_emission_refusals_carry_construction_attribution():
+    """CI-10 follow-up: a Guard-1 style emission refusal event is stamped with
+    its owning construction (the scoped runs surfaced nameless events)."""
+    from agents.quant.config import Evidence, Inherited
+    from agents.librarian.pipeline.emission import LibrarianEmissionError
+
+    from _librarian_fixtures import build_part1, build_part2
+    from test_trace_emission import _trace as _mk_trace
+
+    def bad_assembler(construction_arg, canonical_text, prov):
+        design = Inherited("par", "DESIGN", Evidence(note="config decision"))
+        return (build_part1(), build_part2(weighting_base=design),
+                stated(construction_arg.name), _mk_trace())
+
+    result = run_paper(frozen_stub(), _enum("VaR"), bad_assembler, provenance())
+    assert result.specs == []
+    ev = result.events[0]
+    assert isinstance(ev, LibrarianEmissionError)
+    assert ev.construction_name == "VaR"
