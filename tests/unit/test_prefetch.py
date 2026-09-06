@@ -89,18 +89,21 @@ def test_enumerator_covers_every_live_vendor_call_byte_exactly(
                                  builder=builder)
 
     ct = load_canonical_text(_BBW_CT)
-    enum = load_gold_list(_BBW_ENUM)
+    # First construction only: single-construction byte parity without a disk
+    # cache (label-free prompts repeat across constructions, so the multi-
+    # construction property needs the disk cache -- its own test below).
+    constructions = load_gold_list(_BBW_ENUM).constructions[:1]
     assemble = make_assembler(model_a, model_b, registry, manifest)
     prov = RunProvenance(paper_id="BBW_2019", registry_version="t", registry_hash="t",
                          silence_table_version="t", canonical_text_hash="t",
                          model_a_id="stub-a", model_b_id="stub-b")
-    for construction in enum.constructions:
+    for construction in constructions:
         assemble(construction, ct, prov)
 
     enumerated = {
         (prefix + suffix, max_tokens)
         for _label, _field, prefix, suffix, max_tokens in enumerate_field_prompts(
-            builder, manifest, enum.constructions, ct)
+            builder, manifest, constructions, ct)
     }
     for back in (back_a, back_b):
         assert set(back.seen) == enumerated
@@ -162,19 +165,19 @@ def test_allowlist_byte_parity_with_targeted_live_run(
 
     allow = {"long_leg", "weighting_scheme"}
     ct = load_canonical_text(_BBW_CT)
-    enum = load_gold_list(_BBW_ENUM)
+    constructions = load_gold_list(_BBW_ENUM).constructions[:1]   # see parity test note
     assemble = make_assembler(model_a, model_b, registry, manifest,
                               field_allowlist=allow)
     prov = RunProvenance(paper_id="BBW_2019", registry_version="t", registry_hash="t",
                          silence_table_version="t", canonical_text_hash="t",
                          model_a_id="stub-a", model_b_id="stub-b")
-    for construction in enum.constructions:
+    for construction in constructions:
         assemble(construction, ct, prov)
 
     enumerated = {
         (prefix + suffix, max_tokens)
         for _l, _f, prefix, suffix, max_tokens in enumerate_field_prompts(
-            builder, manifest, enum.constructions, ct, field_allowlist=allow)
+            builder, manifest, constructions, ct, field_allowlist=allow)
     }
     for back in (back_a, back_b):
         assert set(back.seen) == enumerated
@@ -261,17 +264,22 @@ def test_build_plan_dedup_vendor_split_and_hits(tmp_path):
     plan = pf.build_plan([_bbw_job(), _bbw_job()], _models(), cache)
     c = plan["counts"]
     n = c["unique_requests"]
-    assert n > 30                                     # the full per-construction set
-    assert c["misses_batchable"] == 2 * n             # duplicate job collapses
-    assert c["misses_live_only"] == 2 * n             # gemini: never batched
+    slots_per_model = c["prompts"] // 2               # 2 models share the prompt set
+    assert n > 30
+    # Every slot is a miss (empty cache); the batchable/live split is exact, and
+    # dedup collapses BOTH the duplicate job AND the cross-construction repeats
+    # of label-free prompts (BBW carries 3 constructions since 2026-09-03).
+    assert c["misses_batchable"] == slots_per_model
+    assert c["misses_live_only"] == slots_per_model
+    assert n < slots_per_model                        # collapse happened
     assert c["hits"] == 0
     assert all(r["model_id"] == "claude-x" for r in plan["requests"])
 
-    # Pre-seed ONE anthropic entry -> both duplicate jobs hit it.
+    # Pre-seed ONE anthropic entry -> every slot carrying that prompt hits.
     r0 = plan["requests"][0]
     cache.put(r0["prompt"], "claude-x", pf._CACHE_SEED, "seeded")
     plan2 = pf.build_plan([_bbw_job(), _bbw_job()], _models(), cache)
-    assert plan2["counts"]["hits"] == 2
+    assert plan2["counts"]["hits"] >= 2               # at least once per duplicate job
     assert plan2["counts"]["unique_requests"] == n - 1
 
 

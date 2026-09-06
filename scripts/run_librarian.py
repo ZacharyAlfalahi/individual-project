@@ -16,8 +16,7 @@ Phases (docs/thresholds.yaml -> librarian.model_stack, D33 two-phase policy):
                 verbatim-locating BBW answers. No network, no keys. Proves the
                 assemble -> run_paper -> emit -> validate path end-to-end.
 
-Prompt assembly is PAPER-TEXT-FIRST (2026-09-02 amendment, see
-docs/librarian/registers/prompt_assembly_amendment_2026-09-02.md): the paper text
+Prompt assembly is PAPER-TEXT-FIRST (2026-09-02 amendment): the paper text
 leads every live prompt as a provider-cacheable prefix; templates/schemas/contract
 unchanged.
 
@@ -61,6 +60,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 from agents.librarian.config import load_canonical_text  # noqa: E402
 from agents.librarian.pipeline import (  # noqa: E402
+    AssemblyIncomplete,
     Construction,
     ExtractionTrace,
     FakeModelClient,
@@ -78,6 +78,7 @@ from agents.librarian.pipeline import (  # noqa: E402
 from agents.librarian.pipeline.form_filler import _field_kind  # noqa: E402
 from agents.librarian.pipeline.model_client import FieldQuery  # noqa: E402
 from agents.librarian.pipeline.real_client import (  # noqa: E402
+    SCOPED_FIELDS_CONTRACT,
     PromptBuilder,
     RealClientError,
     assemble_field_prompt,
@@ -97,6 +98,13 @@ from agents.librarian.schema import (  # noqa: E402
     PaperFacts,
     Part1,
     Part2,
+)
+from agents.librarian.schema import estimation_fields as EF  # noqa: E402
+from agents.librarian.schema.signal_ref import DescribedSignal, LocatedQuote, SignalRef  # noqa: E402
+from agents.librarian.schema.strategy_spec import (  # noqa: E402
+    EstimationBlock,
+    InstrumentRef,
+    InstrumentSet,
 )
 from agents.librarian.schema import fields as F  # noqa: E402
 from agents.librarian.validators import load_tag_reason_registry  # noqa: E402
@@ -170,6 +178,43 @@ PAPERS: dict[str, dict] = {
         "canonical_text": "evaluation/canonical_texts/dfps_2026.frozen.yaml",
         "gold_enum": "evaluation/gold_specs/enum_dfps_2026.yaml",
     },
+    # Scope B (2026-09-04, registered hybrid): the fitted-model paper. family=
+    # "estimation" routes to make_estimation_assembler (8 asked fields; 3 prose
+    # registered not-asked; instruments run-template).
+    "kpp": {
+        "paper_id": "KPP_2023",
+        "canonical_text": "evaluation/canonical_texts/kpp_2023.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_kpp_2023.yaml",
+        "family": "estimation",
+    },
+    # T2 prospective set (registered 2026-09-04; hand-authored enum golds, quotes
+    # 33/33 located against the frozen texts at registration). One-shot,
+    # publish-as-found (T2-SEL discipline).
+    "hvz": {
+        "paper_id": "HVZ_2017",
+        "canonical_text": "evaluation/canonical_texts/hvz_2017.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_hvz_2017.yaml",
+    },
+    "cgnst": {
+        "paper_id": "CGNST_2017",
+        "canonical_text": "evaluation/canonical_texts/cgnst_2017.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_cgnst_2017.yaml",
+    },
+    "klz": {
+        "paper_id": "KLZ_2017",
+        "canonical_text": "evaluation/canonical_texts/klz_2017.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_klz_2017.yaml",
+    },
+    "bektic": {
+        "paper_id": "BEKTIC_2018",
+        "canonical_text": "evaluation/canonical_texts/bektic_2018.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_bektic_2018.yaml",
+    },
+    "bwwss": {
+        "paper_id": "BWWSS_2019",
+        "canonical_text": "evaluation/canonical_texts/bwwss_2019.frozen.yaml",
+        "gold_enum": "evaluation/gold_specs/enum_bwwss_2019.yaml",
+    },
     # T4(b) synthetic evaluation instrument (end-to-end known-answer test). Registered mode
     # is gold-enum (a single SBM construction); the planted answer key lives at
     # evaluation/synthetic/planted_key_synth_2026.yaml. Not a scale-layer corpus paper and
@@ -222,11 +267,11 @@ def _not_extracted(detail: str) -> Inherited:
     )
 
 
-class AssemblyIncomplete(RuntimeError):
-    """A construction could not be assembled into a valid spec (e.g. its sort
-    signal did not resolve to a registry concept). Surfaced, never silently
-    dropped -- an unresolved sort signal means "cannot build this strategy",
-    a review outcome, not a blank spec."""
+# AssemblyIncomplete now lives in agents/librarian/pipeline/failures.py (CI-9,
+# 2026-09-06): run_paper catches it PER CONSTRUCTION and records a typed review
+# event, so one unresolved sort signal no longer aborts the paper's remaining
+# constructions. Imported above; re-exported here so existing importers
+# (tests, tooling) keep working.
 
 
 # ---------------------------------------------------------------------------
@@ -280,9 +325,13 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None,
     def assemble(construction: Construction, canonical_text, prov: RunProvenance):
         # method_summary renders with this construction's name (the Protocol
         # carries no construction context) -- set it on any client that supports it.
+        # The enumeration quote rides beside it for scoped-field runs (CI-10
+        # candidate): inert unless the client's scoped_fields flag is on.
         for m in (model_a, model_b):
             if hasattr(m, "current_strategy_label"):
                 m.current_strategy_label = construction.name
+            if hasattr(m, "current_strategy_quote"):
+                m.current_strategy_quote = construction.quote
 
         records = []
         live = [0]  # count of live per-value extractions (for --limit)
@@ -340,7 +389,9 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None,
         if sig.signal_ref is None:
             raise AssemblyIncomplete(
                 f"{construction.name!r}: sort_signal did not resolve to a registry concept "
-                f"(concept_id tag = {sig.concept_id.tag}); routing to review."
+                f"(concept_id tag = {sig.concept_id.tag}); routing to review.",
+                paper_id=prov.paper_id,
+                construction_name=construction.name,
             )
         # control_axis (2nd sort of a double sort; literal field name -- fields.py
         # has no F.CONTROL_AXIS). Skipped under --limit (single sorts leave it None);
@@ -476,6 +527,226 @@ def enumerate_field_prompts(builder, manifest, constructions, canonical_text,
         for name, query in names:
             prefix, suffix = assemble_field_prompt(builder, query, label, canonical_text)
             yield label, name, prefix, suffix, builder.max_tokens_for(query.kind)
+
+
+# ---------------------------------------------------------------------------
+# Scope B (2026-09-04): the fitted-model (estimated_factor_model) assembler.
+# ---------------------------------------------------------------------------
+
+def _merge_instruments(rows_a, rows_b, canonical_text):
+    """The D9 EXTENSION for the whole-paper instruments call (documented
+    convention, Scope B): ship an InstrumentRef only where BOTH models list the
+    same registry concept_id AND a quote locates (model_a's span first, else
+    model_b's) -- agreement + the quote gate, exactly the per-field discipline
+    lifted to rows. The metadata dials ship STATED only on cross-model
+    agreement (casefolded); otherwise UNKNOWN(not_stated) with the disagreement
+    noted. Rows in only ONE list, and 'unrecognised' rows (identity cannot be
+    equated across models), are counted in the returned note -- dropped
+    conservatively, never shipped.
+
+    Returns (InstrumentSet | None, note). None = zero shipped rows (a legal
+    spec: ``instruments`` is an optional sibling)."""
+    rows_a, rows_b = rows_a or [], rows_b or []
+
+    def _index(rows):
+        # Review m4: on duplicate concept_ids within ONE model's list, prefer the
+        # FIRST row whose quote locates (an arbitrary last-wins could discard the
+        # only locatable span); fall back to the first occurrence.
+        out: dict[str, dict] = {}
+        for r in rows:
+            cid = r.get("concept_id")
+            if not cid or cid == "unrecognised":
+                continue
+            if cid not in out:
+                out[cid] = r
+            else:
+                held, cand = out[cid].get("quote"), r.get("quote")
+                held_loc = (isinstance(held, str) and held.strip()
+                            and canonical_text.locate(held) is not None)
+                cand_loc = (isinstance(cand, str) and cand.strip()
+                            and canonical_text.locate(cand) is not None)
+                if cand_loc and not held_loc:
+                    out[cid] = r
+        return out
+
+    by_id_a = _index(rows_a)
+    by_id_b = _index(rows_b)
+    n_unrec = sum(1 for r in rows_a + rows_b if r.get("concept_id") == "unrecognised")
+    shipped, dropped = [], []
+    for cid in sorted(set(by_id_a) & set(by_id_b)):
+        ra, rb = by_id_a[cid], by_id_b[cid]
+        quote = loc = None
+        for cand in (ra.get("quote"), rb.get("quote")):
+            if isinstance(cand, str) and cand.strip():
+                loc = canonical_text.locate(cand)
+                if loc is not None:
+                    quote = cand
+                    break
+        if quote is None:
+            dropped.append(f"{cid}(quote gate)")
+            continue
+        ev = Evidence(quote=quote, locator=loc)
+
+        def dial(field_name):
+            # Provenance note (review m5): the STATED evidence reuses the
+            # instrument-PRESENCE span -- both models agreed on the dial value,
+            # and D7 requires a locator, not proof-of-value; the imprecision is
+            # accepted and documented here.
+            va, vb = ra.get(field_name), rb.get(field_name)
+            if (isinstance(va, str) and isinstance(vb, str)
+                    and va.strip().casefold() == vb.strip().casefold() and va.strip()):
+                return Inherited(va.strip(), "STATED", ev)
+            return Inherited(None, "UNKNOWN", Evidence(
+                note=f"{field_name}: models disagreed or silent for {cid}",
+                unknown_reason="not_stated"))
+
+        # Review m3: a hostile/hallucinated non-str label must degrade, never crash.
+        raw_label = ra.get("label") if isinstance(ra.get("label"), str) else (
+            rb.get("label") if isinstance(rb.get("label"), str) else cid)
+        label = (raw_label or cid).strip() or cid
+        shipped.append(InstrumentRef(
+            concept_id=Inherited(cid, "STATED", ev),
+            source_class=dial("source_class"),
+            transform=dial("transform"),
+            lag=dial("lag"),
+            as_described=DescribedSignal(label=label, quotes=(
+                LocatedQuote(text=quote, page=loc.page,
+                             char_start=loc.char_start, char_end=loc.char_end),)),
+        ))
+    note = (f"instruments merge: a={len(rows_a)} b={len(rows_b)} "
+            f"shipped={len(shipped)} agreed-but-dropped={dropped} "
+            f"unrecognised-rows={n_unrec} (conservative: agreement + quote gate)")
+    return (InstrumentSet(instruments=tuple(shipped)) if shipped else None), note
+
+
+def make_estimation_assembler(model_a, model_b, manifest, instrument_registry):
+    """The Scope-B analogue of ``make_assembler`` for the
+    ``estimated_factor_model`` family (registered per-paper route, D-hybrid
+    2026-09-04): Part 1 as usual; a stub all-UNKNOWN Part 2 (the schema's
+    documented pattern -- sort-block fields are structurally inapplicable);
+    the 8 ASKED estimation fields through the ordinary dual-model fill; the 3
+    prose fields registered UNKNOWN(not_extracted); the instrument set via the
+    whole-paper run-template on both models + the D9-extension merge."""
+
+    def _q(name):
+        return manifest.query_for(name) if name in manifest.field_types else None
+
+    _stub_note = "fitted-model family: sort-block field structurally inapplicable (Scope B)"
+
+    def assemble(construction, canonical_text, prov):
+        for m in (model_a, model_b):
+            if hasattr(m, "current_strategy_label"):
+                m.current_strategy_label = construction.name
+            if hasattr(m, "current_strategy_quote"):
+                m.current_strategy_quote = construction.quote
+        records = []
+
+        loc = canonical_text.locate(construction.quote)
+        if loc is not None:
+            strategy_label = Inherited(construction.name, "STATED",
+                                       Evidence(quote=construction.quote, locator=loc))
+        else:
+            strategy_label = Inherited(construction.name, "UNKNOWN", Evidence(
+                note="strategy-name quote did not locate",
+                unknown_reason="quote_match_failure"))
+
+        fs = fill_field(F.FORMATION_STRUCTURE, model_a, model_b, canonical_text,
+                        query=_q(F.FORMATION_STRUCTURE))
+        ac = fill_field(F.ASSET_CLASS, model_a, model_b, canonical_text,
+                        query=_q(F.ASSET_CLASS))
+        method_summary, ms_trace = fill_method_summary(
+            model_a, model_b, canonical_text, query=_q(F.METHOD_SUMMARY))
+        records += [fs.trace, ac.trace, ms_trace]
+        if method_summary is None:
+            method_summary = MethodSummary(summary=Inherited(
+                None, "UNKNOWN",
+                Evidence(note="method_summary: no locating summary",
+                         unknown_reason="not_stated")), quotes=())
+        part1 = Part1(formation_structure=fs.value, asset_class=ac.value,
+                      method_summary=method_summary)
+
+        stub = _not_extracted(_stub_note)
+        stub_leg = Leg(
+            sort_signal=SignalRef(
+                concept_id=Inherited(None, "UNKNOWN",
+                                     Evidence(note=_stub_note,
+                                              unknown_reason="not_extracted")),
+                as_described=DescribedSignal(label="not applicable (fitted-model family)"),
+                parameters={}),
+            control_axis=None,
+            **{n: _not_extracted(_stub_note) for n in (
+                F.SORT_KIND, F.BUCKETING_METHOD, F.N_GROUPS, F.STRIPE_AGGREGATION,
+                F.CONTROL_MISSING_POLICY, F.LONG_LEG, F.SIGNAL_TRANSFORM,
+                F.CONTROL_N_GROUPS)},
+        )
+        part2 = Part2(**{n: _not_extracted(_stub_note) for n in F.COMMON_FIELDS},
+                      legs=(stub_leg,), combiner=Combiner(kind=stub))
+
+        est_vals = {}
+        for name in EF.ESTIMATION_FIELDS:
+            if name in EF.ESTIMATION_PROSE_FIELDS:
+                # Rubric FROZEN 2026-09-04 (kpp_prose_rubric §4 PR-2): the prose
+                # fields are ASKED via the method_summary mechanism (no equality
+                # gate -- earliest-locating-quote ship; quote gate per rubric
+                # §2.6). Graded only by the rubric, never headline (D34).
+                ms, ms_trace = fill_method_summary(
+                    model_a, model_b, canonical_text, query=_q(name), field=name)
+                records.append(ms_trace)
+                if ms is not None:
+                    est_vals[name] = ms.summary
+                else:
+                    est_vals[name] = Inherited(
+                        None, "UNKNOWN",
+                        Evidence(note=f"{name}: no model produced a located prose answer",
+                                 unknown_reason="not_stated"))
+                continue
+            vk = ("int_set" if name == EF.N_FACTORS_TESTED
+                  else "int" if name in EF.ESTIMATION_INT_FIELDS else None)
+            out = fill_field(name, model_a, model_b, canonical_text,
+                             query=_q(name), value_kind=vk)
+            records.append(out.trace)
+            val = out.value
+            if name == EF.N_FACTORS_TESTED and isinstance(val.value, tuple):
+                # JSON-native boundary (review n7): the D9 merge compares sorted
+                # tuples; the SPEC ships the list so to_dict output is
+                # representation-stable against a JSON round trip.
+                val = Inherited(list(val.value), val.tag, val.evidence)
+            est_vals[name] = val
+        estimation = EstimationBlock(**est_vals)
+
+        rows_a = (model_a.extract_instruments(canonical_text)
+                  if hasattr(model_a, "extract_instruments") else None)
+        rows_b = (model_b.extract_instruments(canonical_text)
+                  if hasattr(model_b, "extract_instruments") else None)
+        instruments, inst_note = _merge_instruments(rows_a, rows_b, canonical_text)
+        print(f"[run_librarian] {inst_note}")
+
+        pf_start = fill_field(F.SAMPLE_START, model_a, model_b, canonical_text,
+                              query=_q(F.SAMPLE_START))
+        pf_end = fill_field(F.SAMPLE_END, model_a, model_b, canonical_text,
+                            query=_q(F.SAMPLE_END))
+        pf_metric = fill_field(F.CLAIMED_HEADLINE_METRIC, model_a, model_b,
+                               canonical_text, query=_q(F.CLAIMED_HEADLINE_METRIC),
+                               value_kind="paper_metric")
+        records += [pf_start.trace, pf_end.trace, pf_metric.trace]
+        paper_facts = PaperFacts(
+            sample_start=pf_start.value, sample_end=pf_end.value,
+            universe_filter=_not_extracted("universe_filter: no prose field-type yet"),
+            claimed_headline_metric=pf_metric.value)
+
+        header = TraceRunHeader(
+            paper_id=prov.paper_id, strategy_label=construction.name,
+            registry_version=prov.registry_version, registry_hash=prov.registry_hash,
+            silence_table_version=prov.silence_table_version,
+            canonical_text_hash=prov.canonical_text_hash,
+            model_a_id=prov.model_a_id, model_b_id=prov.model_b_id,
+            run_id=prov.run_id, timestamp=prov.timestamp,
+            prompt_template_hashes=prov.prompt_template_hashes)
+        trace = ExtractionTrace(header=header, records=tuple(records))
+        return (part1, part2, strategy_label, trace, paper_facts,
+                estimation, instruments, instrument_registry)
+
+    return assemble
 
 
 # ---------------------------------------------------------------------------
@@ -624,6 +895,13 @@ def main(argv=None) -> int:
     # manifest's inputs (hashed), so the exact variant is always attributable.
     ap.add_argument("--canonical-text", default=None, dest="canonical_text_override",
                     help="override the paper's frozen canonical text path (T5 perturbed variant).")
+    ap.add_argument("--scoped-fields", action="store_true", dest="scoped_fields",
+                    help="construction-scoped field queries (CI-10 candidate): every "
+                         "per-field prompt carries this construction's name + enum "
+                         "quote, so a multi-construction paper's fields resolve per "
+                         "construction instead of paper-level. Default OFF = the "
+                         "historical byte-identical assembly. Scoped runs stamp "
+                         "SCOPED_FIELDS_CONTRACT into prompt_template_hashes.")
     ap.add_argument("--gold-enum", default=None, dest="gold_enum_override",
                     help="override the paper's gold enumeration list path.")
     args = ap.parse_args(argv)
@@ -658,6 +936,13 @@ def main(argv=None) -> int:
         cache_dir = (_REPO_ROOT / args.cache_dir) if not Path(args.cache_dir).is_absolute() else Path(args.cache_dir)
     model_a, model_b = build_clients(args.phase, builder, out_dir, paper,
                                      min_interval_s=args.min_interval_s, cache_dir=cache_dir)
+    if args.scoped_fields:
+        # CI-10 candidate: construction-scoped field prompts. Attribute-set like
+        # current_strategy_label; a client without the seam (FakeModelClient)
+        # simply ignores the flag -- the fake path has no prompt assembly.
+        for m in (model_a, model_b):
+            if hasattr(m, "scoped_fields"):
+                m.scoped_fields = True
     # Clear AFTER the clients build: a missing-key failure (raised in build_clients,
     # fatal by design) must never wipe a previous run's artefacts first (review
     # 2026-09-02 footgun note). Nothing writes to out_dir before this point.
@@ -673,7 +958,14 @@ def main(argv=None) -> int:
         canonical_text_hash=_canonical_text_hash(ct),
         model_a_id=model_a.model_id,
         model_b_id=model_b.model_id,
-        prompt_template_hashes=manifest.combined_prompt_hash,
+        prompt_template_hashes=(
+            # A scoped run's extraction contract differs (the construction-context
+            # block heads every field suffix), so its header stamp must differ:
+            # append the block's own versioned hash. Unscoped runs keep the
+            # historical stamp byte-identical.
+            manifest.combined_prompt_hash + ";" + SCOPED_FIELDS_CONTRACT
+            if args.scoped_fields else manifest.combined_prompt_hash
+        ),
         run_id=f"{args.paper}-{args.phase}-{now}",
         timestamp=now,
     )
@@ -722,8 +1014,18 @@ def main(argv=None) -> int:
             _early_manifest()
             return 2
 
-    assembler = make_assembler(model_a, model_b, registry, manifest, field_limit=args.limit,
-                               field_allowlist=field_allowlist)
+    if paper.get("family") == "estimation":
+        # Scope B (2026-09-04): the fitted-model route is a REGISTERED per-paper
+        # mode (KPP is the registered estimated_factor_model paper), never an
+        # extraction-dependent branch. --limit/--fields do not apply here.
+        instrument_registry = load_signal_concept_registry(
+            path=Path("agents/librarian/data/instrument_concept_registry.yaml"))
+        assembler = make_estimation_assembler(model_a, model_b, manifest,
+                                              instrument_registry)
+    else:
+        assembler = make_assembler(model_a, model_b, registry, manifest,
+                                   field_limit=args.limit,
+                                   field_allowlist=field_allowlist)
 
     limit_note = f" limit={args.limit}" if args.limit is not None else ""
     print(f"[run_librarian] paper={args.paper} phase={args.phase}{limit_note} "
@@ -738,6 +1040,9 @@ def main(argv=None) -> int:
             tag_reason_registry=tag_reason,
         )
     except AssemblyIncomplete as exc:
+        # Safety net only: since CI-9 (2026-09-06) run_paper catches assembly
+        # failures per construction, so this fires only if one escapes outside
+        # the construction loop. Fail-closed as before: review exit.
         print(f"[run_librarian] REVIEW: {exc}")
         _early_manifest()
         return 2
@@ -750,7 +1055,14 @@ def main(argv=None) -> int:
                        n_specs=len(result.specs), wall_clock_seconds=time.monotonic() - t_start,
                        inputs=[paper["canonical_text"]])
     _report(result, out_dir, model_a, model_b)
-    return 0 if result.specs else 3
+    if result.specs:
+        return 0
+    # Zero specs: if every construction fell to a typed assembly review, the
+    # paper-level outcome is review (exit 2, matching the pre-CI-9 semantics for
+    # this condition); otherwise the established zero-specs exit (3).
+    if any(getattr(ev, "kind", None) == "assembly_incomplete" for ev in result.events):
+        return 2
+    return 3
 
 
 def _emit_run_manifest(out_dir, prov, phase, model_a, model_b, *, n_specs,
@@ -793,6 +1105,18 @@ def _write_outputs(result, out_dir: Path) -> None:
         )
         (out_dir / f"trace_{i}.json").write_text(
             json.dumps(trace.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    if result.events:
+        # CI-9: persist the typed run-record events (assembly reviews, emission
+        # refusals) so per-construction outcomes are consumable downstream (the
+        # coverage layer), not just printed. Additive -- no existing reader.
+        def _ev(ev):
+            if hasattr(ev, "to_dict"):
+                return ev.to_dict()
+            return {"kind": type(ev).__name__, "detail": str(ev)}
+        (out_dir / "events.json").write_text(
+            json.dumps([_ev(ev) for ev in result.events], indent=2, ensure_ascii=False),
+            encoding="utf-8",
         )
 
 

@@ -54,6 +54,8 @@ SETS: dict[str, tuple[str, ...]] = {
     "anchors": ("bbw", "jnps", "drr"),
     "corpus": ("bbw2021", "dfps"),        # T3 scale layer (RQ2 coverage denominator)
     "synth": ("synth",),                  # T4(b) instrument -- never a corpus member
+    # T2 prospective set (2026-09-04): one-shot, publish-as-found.
+    "prospective": ("hvz", "cgnst", "klz", "bektic", "bwwss"),
 }
 
 # PAPERS key -> T5 reject-set handle (evaluation/adversarial/reject_set.yaml

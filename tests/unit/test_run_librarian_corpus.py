@@ -179,7 +179,9 @@ def test_rerun_into_same_out_dir_is_idempotent(tmp_path):
     assert run_librarian.main(["--paper", "bbw", "--phase", "fake", "--out", str(out)]) == 0
 
     specs = sorted(p.name for p in out.glob("spec_*.json"))
-    assert specs == ["spec_0.json"]                 # no accumulation
+    # BBW emits 3 specs since the 2026-09-03 enum extension (DRF+CRF+LRF); the
+    # invariant under test is NO ACCUMULATION across re-runs (3, never 6).
+    assert specs == ["spec_0.json", "spec_1.json", "spec_2.json"]
     art = load_run(out, check_raw=True)             # integrity guard passes
     assert art.fields
     # (Spec bytes are NOT asserted identical: a re-run is a NEW counted run and
