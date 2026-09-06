@@ -30,12 +30,13 @@ import yaml
 from agents.scientist.researcher.cache import ResponseCache
 from evaluation.codegen import runner
 from evaluation.codegen.census import CensusResult
+from evaluation.codegen.live_client import BudgetExceededError
 from evaluation.codegen.p2_selector import ArmSelection
 from evaluation.codegen.runner import (
     BlockedModelClient,
     ModelClient,
     extract_code,
-    load_phase_f_models,
+    load_models,
     prompt_sha256,
 )
 from evaluation.codegen.sandbox import SandboxResult, SandboxSpec, run_sandboxed
@@ -119,6 +120,7 @@ def run_p2_driver(
     *,
     dry_run: bool,
     census_available: bool = False,
+    phase: str = "reported",
     client_factory=None,
     cache_root: Path | None = None,
     thresholds_path: Path | None = None,
@@ -133,7 +135,7 @@ def run_p2_driver(
     ``corpus.selection.status == 'frozen'``, the loop stops after rendering and
     hashing prompts — ZERO generation calls. Number assembly (agreement /
     divergence) is a downstream ``p2_metrics`` step over the produced series."""
-    models = load_phase_f_models(thresholds_path)
+    models = load_models(phase, thresholds_path)
     status = corpus_selection_status(thresholds_path)
     gated = bool(census_available and status == FROZEN_STATUS)
 
@@ -149,6 +151,7 @@ def run_p2_driver(
         "below_floor": selection.below_floor,
         "prompt_sha256": {},
         "runs": [],
+        "generation_errors": [],
     }
 
     prompts: dict[str, str] = {}
@@ -178,7 +181,22 @@ def run_p2_driver(
         prompt = prompts[pid]
         for model in models:
             client = factory(model)
-            response = _generate_from_prompt(prompt, model["model_id"], client, cache)
+            # Infrastructure failure (vendor rate-limit exhaustion) is a typed generation_error,
+            # never a silent drop and never an abort of the whole coverage loop; a budget breach
+            # still HALTS. Mirrors evaluation/codegen/ablation.run_scored_ablation.
+            try:
+                response = _generate_from_prompt(prompt, model["model_id"], client, cache)
+            except BudgetExceededError:
+                raise
+            except Exception as exc:
+                out["generation_errors"].append({
+                    "paper_id": pid, "model_id": model["model_id"],
+                    "error": f"{type(exc).__name__}: {exc}"[:300]})
+                out["runs"].append({
+                    "paper_id": pid, "model_id": model["model_id"],
+                    "code_extracted": False, "sandbox_status": "generation_error",
+                    "sandbox_reason": f"{type(exc).__name__}"})
+                continue
             code = extract_code(response)
             record: dict = {
                 "paper_id": pid,

@@ -67,14 +67,31 @@ class BlockedModelClient:
         )
 
 
-def load_phase_f_models(thresholds_path: Path | None = None) -> list[dict]:
-    """The Phase-F pair, read from thresholds at runtime — never hardcoded."""
+# Codegen phase -> thresholds model_stack key. `dev` is the FREE pair (Gemini
+# 3.1-flash-lite + Mistral-small), NON-reportable — a plumbing smoke test; `reported`
+# is the paid Phase-F pair (Claude Sonnet 4.6 + Gemini 3.5-flash). The contract (§3)
+# binds reportable figures to phase_f; a dev run is stamped non-reportable.
+_PHASE_KEYS = {"dev": "phase_d", "reported": "phase_f"}
+
+
+def load_models(phase: str, thresholds_path: Path | None = None) -> list[dict]:
+    """The model pair for a codegen phase, read from thresholds at runtime — never
+    hardcoded. `phase` is 'dev' (free, non-reportable) or 'reported' (paid Phase-F)."""
+    key = _PHASE_KEYS.get(phase)
+    if key is None:
+        raise ValueError(f"unknown codegen phase {phase!r}; expected one of {sorted(_PHASE_KEYS)}")
     doc = yaml.safe_load((thresholds_path or _THRESHOLDS).read_text(encoding="utf-8"))
     try:
-        stack = doc["librarian"]["model_stack"]["phase_f"]
+        stack = doc["librarian"]["model_stack"][key]
     except (KeyError, TypeError) as exc:
-        raise KeyError("thresholds.yaml has no librarian.model_stack.phase_f block") from exc
+        raise KeyError(f"thresholds.yaml has no librarian.model_stack.{key} block") from exc
     return [dict(stack["model_a"]), dict(stack["model_b"])]
+
+
+def load_phase_f_models(thresholds_path: Path | None = None) -> list[dict]:
+    """The Phase-F (reported) pair — a thin alias for `load_models('reported')`,
+    kept for the existing call sites (the P2 driver, the CLI, the tests)."""
+    return load_models("reported", thresholds_path)
 
 
 def _redact(node: object) -> object:

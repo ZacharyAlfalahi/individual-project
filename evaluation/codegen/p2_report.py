@@ -47,7 +47,7 @@ def _blockquote(text: str) -> str:
 def _fmt(x, nd: int = 4) -> str:
     if isinstance(x, bool):
         return str(x)
-    if isinstance(x, (int,)):
+    if isinstance(x, int):
         return str(x)
     try:
         f = float(x)
@@ -169,7 +169,15 @@ def render_report(
         out.append("")
         if taxonomy is not None:
             out.extend(_taxonomy_section(taxonomy))
+        else:
+            # §6(a): the taxonomy strata are arm × divergence-magnitude; with divergence
+            # suppressed the sampler is empty BY CONSTRUCTION, not pending a run.
+            out.append("## Failure taxonomy (pre-registered stratified sample)")
             out.append("")
+            out.append("_Empty by construction: the strata are `arm × divergence_magnitude`, "
+                       "and divergence is suppressed below floor — there are no strata to "
+                       "sample. This is a pre-registered outcome, not a missing run._")
+        out.append("")
         _append_provenance(out, meta)
         return "\n".join(out)
 

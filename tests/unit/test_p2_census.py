@@ -7,6 +7,7 @@ import pytest
 
 from agents.librarian import corpus_fate as cf
 from evaluation.codegen.census import (
+    ELIGIBILITY_EXCLUSION_REASONS,
     CensusInput,
     CensusMember,
     CensusResult,
@@ -136,3 +137,26 @@ def test_fate_table_covers_every_member():
     assert {row["paper_id"] for row in table} == {"r", "c", "x"}
     dispo = {row["paper_id"]: row["disposition"] for row in table}
     assert dispo == {"r": "refused", "c": "compilable", "x": "eligibility_excluded"}
+
+
+# --- closed eligibility-exclusion vocabulary -----------------------------------
+
+def test_the_closeout_reason_is_in_the_closed_vocabulary():
+    # the P2 coverage-boundary close-out relies on this exact reason
+    assert "extraction_review_exit_no_spec" in ELIGIBILITY_EXCLUSION_REASONS
+
+
+@pytest.mark.parametrize("reason", sorted(ELIGIBILITY_EXCLUSION_REASONS))
+def test_every_closed_reason_is_accepted(reason):
+    inp = CensusInput("p", None, False, exclusion_reason=reason)
+    assert inp.exclusion_reason == reason
+    m = CensusMember("p", False, False, None, False, None, exclusion_reason=reason)
+    assert m.disposition == "eligibility_excluded"
+
+
+def test_an_off_vocabulary_reason_is_a_build_error():
+    with pytest.raises(P2CensusError, match="ELIGIBILITY_EXCLUSION_REASONS"):
+        CensusInput("p", None, False, exclusion_reason="totally_made_up")
+    with pytest.raises(P2CensusError, match="ELIGIBILITY_EXCLUSION_REASONS"):
+        CensusMember("p", False, False, None, False, None,
+                     exclusion_reason="totally_made_up")

@@ -37,6 +37,25 @@ from dataclasses import dataclass
 from agents.librarian.corpus_fate import REFUSAL_FATES
 
 
+#: The closed vocabulary of eligibility-exclusion reasons. An eligibility
+#: exclusion (``text_quality_ok=False``) MUST carry one of these — an unvalidated
+#: free string is how a silent drop gets reintroduced later (the same discipline
+#: as ``REFUSAL_FATES`` for refusals). Two families:
+#:   * text acquisition / quality failures (the general eligibility bar), and
+#:   * extraction-outcome exclusions (a reportable run produced no usable spec for
+#:     the member) — ``extraction_review_exit_no_spec`` is the one used by the P2
+#:     coverage-boundary close-out (a Phase-F run that exited to review with zero
+#:     specs; the schema forbids partial emission, so the member has no spec to
+#:     generate from and is a COUNTED exclusion, never a silent drop).
+ELIGIBILITY_EXCLUSION_REASONS = frozenset({
+    "text_acquisition_failed",         # text could not be acquired
+    "text_quality_below_bar",          # text acquired but below the quality bar
+    "extraction_review_exit_no_spec",  # a reportable run exited to review with zero specs
+    "extraction_not_attempted",        # no reportable extraction run exists for the member
+    "spec_unmatched_to_member",        # a spec exists but no gold construction matches byte-exactly
+})
+
+
 class P2CensusError(ValueError):
     """A census input or router decision is malformed — a build error surfaced
     loudly (never a silent drop or a coerced fate)."""
@@ -72,6 +91,11 @@ class CensusInput:
                 raise P2CensusError(
                     f"{self.paper_id!r}: text_quality_ok is False, so a non-empty typed "
                     "exclusion_reason is required — eligibility exclusions are COUNTED, never silent"
+                )
+            if self.exclusion_reason not in ELIGIBILITY_EXCLUSION_REASONS:
+                raise P2CensusError(
+                    f"{self.paper_id!r}: exclusion_reason {self.exclusion_reason!r} is not one of "
+                    f"the closed ELIGIBILITY_EXCLUSION_REASONS {sorted(ELIGIBILITY_EXCLUSION_REASONS)}"
                 )
 
 
@@ -142,6 +166,11 @@ class CensusMember:
             if not isinstance(self.exclusion_reason, str) or self.exclusion_reason.strip() == "":
                 raise P2CensusError(
                     f"{self.paper_id!r}: an eligibility exclusion requires a non-empty typed reason"
+                )
+            if self.exclusion_reason not in ELIGIBILITY_EXCLUSION_REASONS:
+                raise P2CensusError(
+                    f"{self.paper_id!r}: exclusion_reason {self.exclusion_reason!r} is not one of "
+                    f"the closed ELIGIBILITY_EXCLUSION_REASONS {sorted(ELIGIBILITY_EXCLUSION_REASONS)}"
                 )
             return
         if self.exclusion_reason is not None:
