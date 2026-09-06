@@ -25,7 +25,7 @@ def test_committed_registry_loads_and_seeds_from_22july():
     assert m.dominant_bias == "lab_trim" and m.expected_sign == -1
     assert m.magnitude_mode == "band" and m.expected_magnitude_range == (0.0, 0.003)
     assert m.is_locked and m.is_confirmatory
-    # drf: locked but SIGN-ONLY (citation resolution ed32122)
+    # drf: locked but SIGN-ONLY
     d = reg["drf"]
     assert d.dominant_bias == "meas_err" and d.expected_sign == -1
     assert d.magnitude_mode == "sign_only" and d.expected_magnitude_range is None

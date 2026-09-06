@@ -39,7 +39,7 @@ def _make_repo(tmp_path: Path) -> Path:
             "saturated_bases": {"doe_effects": {t: 0.0 for t in _TOGGLES}},
         },
     )
-    _write(ad / "run_log.json", {"git_commit": "45313b2", "auditor_prereg_tag": "tag-1"})
+    _write(ad / "run_log.json", {"git_commit": "1111111", "auditor_prereg_tag": "tag-1"})
     return tmp_path
 
 

@@ -16,8 +16,8 @@ import pytest
 from shared.reporting.resolve import PointerResolutionError, resolve_json_pointer
 
 _REPO = Path(__file__).resolve().parents[2]
-_CORE = _REPO / "results/auditor/run_45313b2/drf_core.json"
-_QRES = _REPO / "results/quant/run_aafcf13/drf.json"
+_CORE = _REPO / "results/auditor/drf/drf_core.json"
+_QRES = _REPO / "results/quant/drf/drf.json"
 
 
 @pytest.mark.skipif(not _CORE.exists(), reason="committed audit-core artefact absent")

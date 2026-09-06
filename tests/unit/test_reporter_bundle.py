@@ -55,7 +55,7 @@ def _repo(tmp_path: Path, *, audit_scope="COMPLETE", with_refusal=False, model_i
     )
     files["audit_run_log"] = _write(
         tmp_path / "results/auditor/run_y/run_log.json",
-        {"git_commit": "45313b2", "auditor_prereg_tag": "auditor-prereg-2026-07-22"},
+        {"git_commit": "1111111", "auditor_prereg_tag": "auditor-prereg"},
     )
     if with_refusal:
         files["config_refusal"] = _write(
@@ -156,9 +156,9 @@ def test_git_stamp_normalisation_never_fabricates_full(tmp_path):
     assert b.upstream_stamps.quant.source_form == "full+short"
     # Auditor carried a short-only SHA under git_commit — full must stay None (never invented).
     assert b.upstream_stamps.audit.full is None
-    assert b.upstream_stamps.audit.short == "45313b2"
+    assert b.upstream_stamps.audit.short == "1111111"
     assert b.upstream_stamps.audit.source_form == "short"
-    assert b.upstream_stamps.auditor_prereg_tag == "auditor-prereg-2026-07-22"
+    assert b.upstream_stamps.auditor_prereg_tag == "auditor-prereg"
 
 
 def test_declared_stage_overrides_derived(tmp_path):

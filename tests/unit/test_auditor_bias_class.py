@@ -26,7 +26,7 @@ from agents.auditor.schemas.toggle import (
     data_quality_toggles,
 )
 
-_FIXture_DIR = Path("results/auditor/run_45313b2")
+_FIXture_DIR = Path("results/auditor/drf")
 _ANCHORS = ("drf", "mom6", "str")
 
 

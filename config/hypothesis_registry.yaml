@@ -9,9 +9,9 @@
 # t-stats, anchor verdicts); it does NOT block row counts, invariants, synthetic
 # fixtures, execution diagnostics, or PILOT/exploratory outputs.
 #
-# SEEDED from the 22-July registration (auditor_design.md §13.2, commit b855632,
-# git-tag auditor-prereg-2026-07-22) — the IMMUTABLE authority (D9/D16), NOT the
-# August proposal. Directions/bands carry the §13.2 basis; str is pilot (D-A33).
+# SEEDED from the 22-July registration (auditor_design.md §13.2, tag
+# auditor-prereg) — the IMMUTABLE authority (D9/D16), NOT the August proposal.
+# Directions/bands carry the §13.2 basis; str is pilot (D-A33).
 #
 # APPEND-ONLY: an edit to an existing row requires a NEW dated entry with
 # justification, never in-place mutation. Bands are UNSIGNED, ascending, DECIMAL
@@ -28,7 +28,7 @@
 # tests/unit/test_rq3_requires_gold.py.
 
 version: v1
-seeded_from: "auditor_design.md §13.2 (commit b855632, tag auditor-prereg-2026-07-22)"
+seeded_from: "auditor_design.md §13.2 (tag auditor-prereg)"
 
 factors:
   str:
@@ -38,7 +38,7 @@ factors:
     is_locked: false              # D-A33: str is pilot, EXCLUDED from the confirmatory FDR family
     status: pilot
     source: "§13.2: DRR correlated errors-in-variables (Appendix B); pilot −0.80→−0.21, t=−3.34"
-    registered_commit: b855632
+    registered_commit: auditor-prereg
 
   mom6:
     dominant_bias: lab_trim
@@ -47,26 +47,25 @@ factors:
     is_locked: true
     status: locked
     source: "§13.2: DRR Table 3 mom6_1 (Jostova et al., RFS), significance depends on ex-post filtering at the 99.50th pct"
-    registered_commit: b855632
+    registered_commit: auditor-prereg
 
   drf:
     dominant_bias: meas_err
     expected_sign: -1
-    magnitude: sign_only          # CITATION-CORRECTED (drf_citation_resolution_2026-08-11.md, commit ed32122):
-                                  # the 22-July "15–90 bp/mo" basis is a mis-cited LIB range, not a DRR meas_err
-                                  # magnitude for drf; DRR's DRF-specific critique (DMR 2023 p4-5) is a look-ahead
-                                  # lead error (a non-lattice lead_lag defect). No external meas_err band → sign-only.
+    magnitude: sign_only          # sign-only: no external magnitude band for drf. The DRF-specific
+                                  # critique (DMR 2023 p4-5) is a look-ahead lead error (a non-lattice
+                                  # lead_lag defect), not a magnitude.
     is_locked: true
     status: locked
-    source: "§13.2 (meas_err, sign −1); magnitude removed per DMR 2023 citation resolution (commit ed32122)"
-    registered_commit: b855632
+    source: "§13.2 (meas_err, sign −1); sign-only, no external magnitude band (DMR 2023)"
+    registered_commit: auditor-prereg
 
   traded_liquidity:
     dominant_bias: none           # negative control (§10.3)
     expected_sign: 0              # ≈0 — small gaps throughout (specificity test)
     # SPECIFICITY-GATE ADDED (2026-08-22, D20 §4.5 defect remediation; §13.3 recorded
-    # revision — a motivated methodology change, not a silent mutation; mirrors the drf
-    # citation-correction precedent above). `near_zero` carried NO falsifiable threshold,
+    # revision — a motivated methodology change, not a silent mutation). `near_zero`
+    # carried NO falsifiable threshold,
     # so the control could not fail. Replaced with `separated`: the corrected-vs-uncorrected
     # bootstrap interval must lie within ±vartheta (the pre-registered materiality floor,
     # auditor.practical_significance.vartheta = 0.001), with the absolute gap reported.
@@ -76,4 +75,4 @@ factors:
     is_locked: true
     status: negative_control
     source: "§13.2: traded-liquidity negative control, small gaps throughout (§10.3)"
-    registered_commit: b855632
+    registered_commit: auditor-prereg

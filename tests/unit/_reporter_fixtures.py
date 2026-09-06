@@ -40,8 +40,8 @@ def _fixture_model_ids(phase: str) -> str:
     a phase-F fixture derives REPORTABLE and a phase-D fixture NON_REPORTABLE_PHASE_D."""
     return ",".join(sorted(_PHASE_F_IDS if phase == "F" else _PHASE_D_IDS))
 
-DRF_CORE = _REPO / "results/auditor/run_45313b2/drf_core.json"
-DRF_QUANT = _REPO / "results/quant/run_aafcf13/drf.json"
+DRF_CORE = _REPO / "results/auditor/drf/drf_core.json"
+DRF_QUANT = _REPO / "results/quant/drf/drf.json"
 
 # A synthetic StrategySpec.to_dict()-shaped doc with paper_facts (real specs are not always in
 # a checkout). Shape matches the pointers the renderer authors.
@@ -115,8 +115,8 @@ def make_bundle(
         artefacts=artefacts,
         upstream_stamps=UpstreamStamps(
             quant=GitStamp(full="a" * 40, short="aaaaaaa", source_form="full+short"),
-            audit=GitStamp(full=None, short="45313b2", source_form="short"),
-            auditor_prereg_tag="auditor-prereg-2026-07-22",
+            audit=GitStamp(full=None, short="1111111", source_form="short"),
+            auditor_prereg_tag="auditor-prereg",
         ),
         code_version=CodeVersion(full="reporterfullsha", short="reporter"),
         join_rationale=join,

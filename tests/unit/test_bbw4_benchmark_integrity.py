@@ -13,7 +13,7 @@ to a builder that moved any component would make **every RQ4 alpha wrong** — a
 failure reaching further than the P1 oracle.
 
 The frozen expected levels are read from Workstream-D's committed descriptive run
-(``results/quant/descriptive/run_12cd6ae/anchor_descriptive.json``, the
+(``results/quant/descriptive/anchors/anchor_descriptive.json``, the
 corr / total_return means), a separately-committed artefact that a builder
 rebuild does not regenerate — so a drifted rebuild of the parquet fails against
 it here. Skips gracefully when the factor parquets or the committed run are absent
@@ -33,7 +33,7 @@ _FACTORS = _REPO_ROOT / "data" / "development" / "factors"
 _BBW = _FACTORS / "bbw_factors.parquet"
 _MKTB = _FACTORS / "mktb.parquet"
 _DESCRIPTIVE = (
-    _REPO_ROOT / "results" / "quant" / "descriptive" / "run_12cd6ae" / "anchor_descriptive.json"
+    _REPO_ROOT / "results" / "quant" / "descriptive" / "anchors" / "anchor_descriptive.json"
 )
 
 # Tight tolerance in %/mo. The committed parquet reproduces the committed

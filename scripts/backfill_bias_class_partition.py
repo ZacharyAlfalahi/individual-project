@@ -36,7 +36,7 @@ if str(REPO_ROOT) not in sys.path:
 from agents.auditor.checks.algebra import bias_class_partition  # noqa: E402
 from agents.auditor.schemas.decomposition import label_to_subset  # noqa: E402
 
-_DEFAULT_DIR = Path("results/auditor/run_45313b2")
+_DEFAULT_DIR = Path("results/auditor/drf")
 
 
 def _partition_dict(core: dict) -> dict:

@@ -12,7 +12,7 @@ is parked on the DSR pre-registration approval, O-A4). Two independent checks:
   (b) the DSR gate — `load_anchor_dsr` / `load_dsr_for_anchors` REFUSE fail-loud when
       `auditor.dsr` is absent (a thresholds file without the block). A partial block
       (anchor or field missing) is likewise refused. The committed `docs/thresholds.yaml`
-      now carries the RATIFIED block (648f406), so the default-path load succeeds — the
+      now carries the RATIFIED block, so the default-path load succeeds — the
       refusals are pinned on synthetic thresholds files.
 """
 
@@ -167,9 +167,9 @@ def test_dsr_gate_refuses_via_load_dsr_for_anchors(tmp_path):
 
 
 def test_dsr_gate_loads_the_real_committed_thresholds_now_ratified():
-    # The load-bearing proof: `auditor.dsr` was RATIFIED + committed (648f406,
-    # tag confirmatory-rerun-2026-08-11), so against the ACTUAL committed
-    # docs/thresholds.yaml (default path) the gate now LOADS rather than refuses.
+    # The load-bearing proof: `auditor.dsr` was RATIFIED + committed (tag confirmatory-rerun), so against the
+    # ACTUAL committed docs/thresholds.yaml (default path) the gate now LOADS rather
+    # than refuses.
     # The three synthetic-path refusal tests above still pin the fail-loud behaviour
     # when the block / an anchor / a field is absent.
     dsr = load_dsr_for_anchors(("str", "drf", "mom6"))

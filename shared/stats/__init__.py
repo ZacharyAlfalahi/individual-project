@@ -1,6 +1,6 @@
 """shared/stats — R1: WRAP, DON'T MOVE.
 
-Re-export the Auditor's frozen, pre-registered statistics (tag `auditor-prereg-2026-07-22`)
+Re-export the Auditor's frozen, pre-registered statistics (tag `auditor-prereg`)
 UNCHANGED, so the Scientist reuses one implementation and one convention. Only CPCV is net-new
 (see cpcv.py). Zero edits under agents/auditor/ — that is the whole point of wrap-not-move: the
 Auditor suite stays trivially green.

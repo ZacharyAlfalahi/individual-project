@@ -53,7 +53,7 @@ from agents.librarian.registries.standing_substitutions import (  # noqa: E402
 )
 
 # The pre-registration tag stamped on every core AuditCore (README §14; thresholds:auditor).
-AUDITOR_PREREG_TAG = "auditor-prereg-2026-07-22"
+AUDITOR_PREREG_TAG = "auditor-prereg"
 ANCHORS = ("str", "drf", "mom6")
 
 # The two CORE-SYNC-1 coordinates in the saturated DOE basis.
