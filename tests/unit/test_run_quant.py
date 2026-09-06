@@ -28,14 +28,20 @@ import run_quant
 from agents.librarian.adapter.adapt import adapt_spec
 from agents.quant.library.run_config import corrected
 from evaluation.gold_specs.gold_loader import load_gold_spec
+from pathlib import Path
 
 ANCHORS = ("str", "drf", "mom6")
+
+# The dev panel is licensed-derived and not shipped (see README); skip when it is absent.
+_DEV_PANEL = Path(__file__).resolve().parents[2] / "data" / "development" / "monthly_panel_total_return.parquet"
 
 
 # One real dev-panel materialisation shared across the (a) tests (the view() is the
 # expensive step). Module-scoped so it is paid once. Reads data/development/ only.
 @pytest.fixture(scope="module")
 def dev_inputs():
+    if not _DEV_PANEL.exists():
+        pytest.skip("requires the licensed dev panel (data/development/) — not shipped; see README")
     panel, subs = run_quant.load_inputs(corrected())
     return panel, subs
 

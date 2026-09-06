@@ -82,6 +82,8 @@ def _mom6_overlap_panel():
     )
     from agents.quant.library.views import view
 
+    if not (DEV / "monthly_panel_total_return.parquet").exists():
+        pytest.skip("requires the licensed dev panel (data/development/) — not shipped; see README")
     maximal = pd.read_parquet(DEV / "monthly_panel_total_return.parquet")
     mom6_signal = pd.read_parquet(DEV / "signals" / "mom6.parquet")
     vcfg = RunConfig(
