@@ -36,19 +36,38 @@ def _as_int_set(v: object) -> tuple[frozenset | None, str | None]:
         return None, f"not a set of ints: {v!r} ({exc})"
 
 
-def compare_estimation_value(name: str, gold_value: object, run_value: object) -> CompareOutcome:
+def compare_estimation_value(name: str, gold_value: object, run_value: object,
+                             *, rubric_judgement: bool | None = None) -> CompareOutcome:
     """Compare one estimation field's gold value to a run value, dispatching on the
     field's type. Both values are the shipped (``Inherited.value``) tokens; None
-    handling (gold-silent / run-abstained) is the scoring layer's job, not here."""
+    handling (gold-silent / run-abstained) is the scoring layer's job, not here.
+
+    ``rubric_judgement`` (kpp_prose_rubric.md §2.2):
+    a rubric adjudication of a SHIPPED prose answer -- when supplied, the prose
+    branch returns ``COMPARABLE`` + that bool (the two judged rows of the §2.2
+    table). ``None`` (the default, and the only legal value for non-prose kinds)
+    keeps the ``NO_POLICY`` channel: abstained / never-asked / not-yet-adjudicated
+    rows are coverage information, NEVER read as "not equal" (the CompareOutcome
+    docstring's guarantee; D37 conv. 3)."""
     ftype = ESTIMATION_FIELD_TYPES.get(name)
     if ftype is None:
         return CompareOutcome(None, Comparability.NO_POLICY, note=f"{name!r} is not an estimation field")
 
     if ftype == "prose":
+        if rubric_judgement is not None:
+            return CompareOutcome(
+                bool(rubric_judgement), Comparability.COMPARABLE,
+                note="rubric adjudication (kpp_prose_rubric.md; "
+                     "declared-weaker class, never headline)",
+            )
         return CompareOutcome(
             None, Comparability.NO_POLICY,
-            note="prose estimation field: declared-weaker rubric (no rubric authored)",
+            note="prose estimation field: declared-weaker rubric (not adjudicated)",
         )
+    if rubric_judgement is not None:
+        raise ValueError(
+            f"rubric_judgement supplied for non-prose field {name!r} -- the rubric "
+            "adjudicates prose only (kpp_prose_rubric.md §0)")
 
     if ftype == "enum":
         g = str(gold_value).strip()

@@ -316,3 +316,47 @@ def test_g3_not_asked_is_in_coverage_but_out_of_missed_evidence():
     assert len(shipped) == 4 and len(headline) == 44        # coverage 4/44
     # NOT_ASKED never counts as missed evidence
     assert all(not r.is_missed_evidence for r in s.rows if r.outcome is Outcome.NOT_ASKED)
+
+
+# --- multi-construction archive integrity (2026-09-03) -----------------------
+
+_BBW4 = _ROOT / "runs" / "bbw_4anchor_report"
+_needs_bbw4 = pytest.mark.skipif(
+    not (_BBW4 / "trace_2.json").exists(),
+    reason="extended 3-construction BBW run absent (runs/ is gitignored)",
+)
+
+
+@_needs_bbw4
+def test_multi_construction_archive_sums_across_traces():
+    """A legitimate multi-construction dir (extended BBW enum: DRF+CRF+LRF) holds
+    every construction's calls in ONE archive; the integrity guard must compare
+    against the SUM of all traces, not the single loaded trace (2026-09-03 fix:
+    the old per-trace comparison false-positived on exactly this layout)."""
+    for i in range(3):
+        load_run(_BBW4, strategy_index=i)              # must not raise
+
+
+@_needs_bbw4
+def test_multi_construction_double_write_still_refused(tmp_path):
+    """The guard's real target -- a dir written twice -- still trips at 2x the sum."""
+    import shutil
+
+    d = tmp_path / "bbw4"
+    shutil.copytree(_BBW4, d)
+    for p in (d / "raw").glob("raw_model_*.jsonl"):
+        p.write_text(p.read_text() * 2, encoding="utf-8")
+    with pytest.raises(ArtefactIntegrityError):
+        load_run(d, strategy_index=0)
+
+
+@_needs_bbw4
+def test_stray_trace_named_file_does_not_join_the_sum(tmp_path):
+    """Review hardening (2026-09-04): only int-suffixed traces enter the
+    integrity sum -- a stray trace_backup.json must not mask a double-write."""
+    import shutil
+
+    d = tmp_path / "bbw4"
+    shutil.copytree(_BBW4, d)
+    (d / "trace_backup.json").write_text('{"records": [1, 2, 3]}', encoding="utf-8")
+    load_run(d, strategy_index=0)                      # must not raise

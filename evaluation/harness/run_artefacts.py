@@ -242,13 +242,27 @@ def load_run(run_dir: str | Path, *, strategy_index: int = 0,
             with p.open("r", encoding="utf-8") as fh:
                 raw_counts[p.name] = sum(1 for _ in fh)
     if check_raw and raw_counts:
-        bad = {k: v for k, v in raw_counts.items() if v != len(records)}
+        # The archive holds EVERY construction's calls while each trace holds one
+        # construction's records, so the expected line count is the SUM over all
+        # traces in the dir (2026-09-03: a multi-construction run -- e.g. the
+        # extended BBW enum's 3 strategies -- is legitimate, not a double-write;
+        # a re-written dir still trips this at 2x the sum).
+        expected = 0
+        for tp in sorted(run_dir.glob("trace_*.json")):
+            # Int-suffixed traces only (review hardening, 2026-09-04): a stray
+            # trace-named file (trace_backup.json) must not fold into the sum.
+            if not tp.stem.removeprefix("trace_").isdigit():
+                continue
+            t = trace if tp.name == f"trace_{strategy_index}.json" else _read_json(tp)
+            expected += len(t.get("records") or [])
+        bad = {k: v for k, v in raw_counts.items() if v != expected}
         if bad:
             raise ArtefactIntegrityError(
-                f"{run_dir}: raw archive does not correspond to the trace "
-                f"({len(records)} records vs {bad}). _archive appends while the spec is "
-                "overwritten, so this directory was almost certainly written more than once; "
-                "scoring it would mix calls from different runs."
+                f"{run_dir}: raw archive does not correspond to the traces "
+                f"({expected} records summed over trace_*.json vs {bad}). _archive "
+                "appends while the spec is overwritten, so this directory was almost "
+                "certainly written more than once; scoring it would mix calls from "
+                "different runs."
             )
 
     skipped = _not_extracted_fields(spec)

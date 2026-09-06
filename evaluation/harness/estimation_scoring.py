@@ -74,7 +74,13 @@ def _is_stated(inh) -> bool:
     return getattr(inh, "tag", None) == "STATED"
 
 
-def _score_estimation(gold_spec, run_spec) -> list[ScoredCell]:
+def _score_estimation(gold_spec, run_spec,
+                      rubric_judgements=None) -> list[ScoredCell]:
+    """``rubric_judgements`` (kpp_prose_rubric.md §2.2; None until the rubric is
+    IN FORCE): {prose field -> bool rubric adjudication}. A judgement applies ONLY
+    to a SHIPPED prose answer; abstained / never-asked prose rows keep their
+    coverage channel regardless (D37 conv. 3 -- never read as WRONG)."""
+    judgements = rubric_judgements or {}
     cells: list[ScoredCell] = []
     for name in ESTIMATION_FIELDS:
         ftype = ESTIMATION_FIELD_TYPES[name]
@@ -83,7 +89,14 @@ def _score_estimation(gold_spec, run_spec) -> list[ScoredCell]:
         r = getattr(run_spec.estimation, name) if run_spec.estimation is not None else None
 
         if ftype == "prose":
-            cells.append(ScoredCell(cell, name, Outcome.EXCLUDED_PROSE))
+            if name in judgements and r is not None and _is_stated(r):
+                outcome = compare_estimation_value(
+                    name, g.value, r.value, rubric_judgement=judgements[name])
+                cells.append(ScoredCell(
+                    cell, name,
+                    Outcome.CORRECT if outcome.equal else Outcome.WRONG))
+            else:
+                cells.append(ScoredCell(cell, name, Outcome.EXCLUDED_PROSE))
             continue
         if not _is_stated(g):
             cells.append(ScoredCell(cell, name, Outcome.GOLD_SILENT))
@@ -131,12 +144,13 @@ def _score_instruments(gold_spec, run_spec) -> tuple[list[ScoredCell], int, int,
     return cells, len(gold_ins), len(run_ins), len(pairing.matches)
 
 
-def score_kpp(gold_spec, run_spec) -> KppScore:
+def score_kpp(gold_spec, run_spec, rubric_judgements=None) -> KppScore:
     """Score a KPP run spec against the KPP gold spec. Both must carry an
-    ``estimation`` block and an ``instruments`` set."""
+    ``estimation`` block and an ``instruments`` set. ``rubric_judgements`` is the
+    the prose adjudication map (kpp_prose_rubric.md; None until in force)."""
     if gold_spec.estimation is None or gold_spec.instruments is None:
         raise ValueError("score_kpp: gold_spec must carry estimation + instruments (a KPP spec)")
-    cells = _score_estimation(gold_spec, run_spec)
+    cells = _score_estimation(gold_spec, run_spec, rubric_judgements=rubric_judgements)
     ins_cells, n_gold, n_run, n_matched = _score_instruments(gold_spec, run_spec)
     cells += ins_cells
     return KppScore(
