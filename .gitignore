@@ -64,5 +64,9 @@ tasks/
 runs/
 
 # one-shot holdout rehearsal run artefacts (local; the gated real-run marker oneshot_marker.jsonl is committed at the real run)
-results/scientist/oneshot_rehearsal_quarantine/
 agents/scientist/experimentalist/oneshot_holdout/markers/oneshot_rehearsal_marker.jsonl
+
+# results/ — runtime outputs are NOT tracked. Every agent writes its run artefacts
+# under results/; none of it belongs in history. A broad `git add` therefore never
+# sweeps run outputs into the repo.
+results/
