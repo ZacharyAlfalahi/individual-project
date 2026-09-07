@@ -43,7 +43,7 @@ from __future__ import annotations
 # librarian.relocator_diagnostic (the locator-diagnostic bar registration: qr1 accept_bar null by
 # construction, qr2 accept_bar 0.90). one-shot holdout's real run
 # has not run, so re-pinning is maintenance, not a provenance break. Any later thresholds change must re-pin.
-FROZEN_THRESHOLDS_SHA256 = "c2cb3b306116d6bac60ec5126ce325e89dd3acc7dc673cc288ee80cded2675ca"
+FROZEN_THRESHOLDS_SHA256 = "ce855a029e41a78e4e14e0e8b748661d091dc76d7c083db1df2c0aa9b60da800"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library

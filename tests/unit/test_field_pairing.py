@@ -90,7 +90,7 @@ def test_crf_pair_fields_order_invariant_by_control_axis():
 def test_crf_pair_fields_non_contiguous_run_indices():
     """Run leg indices need not be 0..n-1: a match POSITION must translate back to
     the ACTUAL legs[{idx}] record. With naive position-as-index this silently pairs
-    gold's REV leg against the run's gamma leg (the reviewer's landmine)."""
+    gold's REV leg against the run's gamma leg (the mis-pairing this test guards against)."""
     spec = load_gold_spec("crf")   # gold: var_5pct, bpw_gamma, prior_1m_excess_return
     fields = {}
     for j, ctrl in {0: "bpw_gamma", 2: "prior_1m_excess_return", 5: "var_5pct"}.items():

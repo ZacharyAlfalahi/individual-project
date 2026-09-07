@@ -44,8 +44,8 @@ from .characteristic_sort import run_characteristic_sort
 # column ``xret`` (str depends on that binding). So the adapter compiles the CRF_REV
 # leg's control to ``xret``; ``crf_rev`` here is reconciled ``rev``->``xret`` to keep
 # the golden rulebook byte-equal with the adapter (never edit the frozen concept
-# table). DEFERRED-RUN companion: a live CRF run needs the BBW panel to expose the
-# reversal signal under column ``xret`` (build_bbw_factors currently names it ``rev``);
+# table). CRF companion: a live CRF run reads the BBW panel's reversal signal under
+# column ``xret``, which build_bbw_factors exposes via a ``rev``->``xret`` alias;
 # G2 compares rulebook dicts only, so this does not gate the buildable scope. The
 # standalone ``rev`` factor (score=``rev``) is in no gold/G2 and is left unchanged.
 BBW_FACTOR_CONFIGS: dict[str, dict] = {

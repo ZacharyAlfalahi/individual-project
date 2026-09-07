@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-"""System-level integration arms: a clean-variant integration null and an integrated known-error 
-positive control. Both reuse existing (tested) machinery; no module is modified. Deterministic, 
+"""System-level integration arms: a clean-variant integration null and an integrated known-error
+positive control. Both reuse existing (tested) machinery; no module is modified. Deterministic,
 dev/synthetic only (no data/holdout/, no LLM).
 
 Arm A -- clean-variant integration null: the zero-injection synthetic scenario is run through the
@@ -9,11 +9,11 @@ Arm A -- clean-variant integration null: the zero-injection synthetic scenario i
   within +/-vartheta and every bootstrap CI covers zero. It is the direct counterpart of the T4b
   planted-survivorship positive.
 
-Arm B -- integrated known-error positive control: the BBW factors are built LIVE through the Quant 
-  executor (view -> run_bbw_factor) on the dev panel, the documented DRR lead/lag defect is injected, 
-  and the pre-registered gate grades the live output. This differs from the component-level control 
-  (`run_leadlag_gate.py`), which grades a committed parquet. NOTE: it is a Quant->Auditor integration, 
-  NOT the full Librarian->Quant->Auditor path -- BBW factors are driven by hardcoded rulebooks, not a 
+Arm B -- integrated known-error positive control: the BBW factors are built LIVE through the Quant
+  executor (view -> run_bbw_factor) on the dev panel, the documented DRR lead/lag defect is injected,
+  and the pre-registered gate grades the live output. This differs from the component-level control
+  (`run_leadlag_gate.py`), which grades a committed parquet. NOTE: it is a Quant->Auditor integration,
+  NOT the full Librarian->Quant->Auditor path -- BBW factors are driven by hardcoded rulebooks, not a
   Librarian extraction (documented limitation).
 
     ./.venv/bin/python scripts/run_integration_arms.py [--replicates 200]

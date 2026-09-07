@@ -1,5 +1,5 @@
-"""System-level integration arms: the clean-variant integration null must manufacture no 
-effect on clean data, and the integrated known-error positive control must reproduce the 
+"""System-level integration arms: the clean-variant integration null must manufacture no
+effect on clean data, and the integrated known-error positive control must reproduce the
 documented lead/lag defect on LIVE Quant->Auditor output and restore it. Deterministic, $0,
 dev/synthetic only (no data/holdout/).
 """

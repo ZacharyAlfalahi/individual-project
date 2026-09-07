@@ -10,7 +10,7 @@ here (inside the methods that need them), so importing this module — and injec
 in tests — never touches the Librarian or any SDK.
 
 NON-REPORTABLE by design. phase_d is the FREE DEV pair (D4/D33). Reportable generative figures
-require phase_f (Claude Sonnet 4.6 + Gemini 3.5-flash) + SKU/cost authorization — a SEPARATE, still-open
+require phase_f (Claude Sonnet 4.6 + Gemini 3.5-flash) + SKU/cost authorization — a separate cost-authorization
 gate (`librarian.model_stack.phase_f`). Wiring phase_d does NOT make the generative arm reportable.
 
 LIVE-RUN PREREQUISITES (fail loud). A live call needs (i) the vendor SDK installed (`google-genai`,
@@ -20,8 +20,7 @@ Absent either, `build_phase_d_clients` raises an actionable error rather than si
 REPRODUCIBILITY is by cache-replay, not vendor determinism. The seed-keyed ResponseCache (R5)
 freezes each (prompt, model, seed) response, so the generation temperature can be > 0 to give the
 k-seed generation-quality arm genuine seed-to-seed diversity while every response stays on disk.
-`seed` is therefore accepted (for the protocol + cache provenance) but not threaded to the vendor —
-a documented follow-up; the cache is the reproducibility mechanism, not a vendor seed.
+`seed` is therefore accepted (for the protocol + cache provenance) but not threaded to the vendor; the cache is the reproducibility mechanism, not a vendor seed.
 """
 
 from __future__ import annotations

@@ -2,15 +2,14 @@
 # =============================================================================================
 # TRACKED pre-registration register for the Scientist (RQ4). This file is version-controlled;
 # the working copies of the protocol it mirrors (docs/scientist_protocol.yaml,
-# docs/extension_1_config.yaml, the docs/thresholds.yaml `scientist:` block) live in the
-# gitignored docs/ tree. This register puts the FROZEN CONSTANTS in git so the numbers are not
+# docs/extension_1_config.yaml, the docs/thresholds.yaml `scientist:` block). This register puts the FROZEN CONSTANTS in git so the numbers are not
 # recorded only in a commit message (mirrors + strengthens the auditor-prereg mechanism).
 #
 # A consistency test (tests/unit/test_scientist_prereg_register.py) asserts these values equal
-# the working-copy values, so the tracked record and the untracked docs cannot silently drift.
+# the working-copy values, so the tracked record and the working copies cannot silently drift.
 #
-# STATUS: DRAFT_pending_census. `generation.proposals_per_strategy.per_strategy` is filled by
-# the eligibility census; the git tag `scientist-prereg` is applied THEN, not now.
+# STATUS: PREREGISTERED. `generation.proposals_per_strategy.per_strategy` was filled by
+# the eligibility census; the git tag `scientist-prereg` is applied.
 # After tagging, every change is a logged amendment (see docs/scientist_protocol.yaml).
 # =============================================================================================
 

@@ -1236,7 +1236,7 @@ corpus:
     # Downstream artefact depth by layer (project decision).
     t2_gold_depth: extraction_only            # StrategySpec extraction gold; downstream observed/profiled, not oracle-graded
     scale_gold_depth: enumeration_only        # paper-only NO-MODEL-CONSULT factor list (RQ2 coverage)
-    gold_authoring: human_no_model_consult    # no automated agent authors any gold (2026-08-17 corpus-scaling decision)
+    gold_authoring: human_no_model_consult    # golds are transcribed by hand, without model assistance (2026-08-17 corpus-scaling decision)
     rq3_eligible: false                        # scale/T2 strategies NEVER enter the RQ3 census (D-A59)
 
 # ---------------------------------------------------------------------------

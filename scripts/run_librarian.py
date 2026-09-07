@@ -972,7 +972,7 @@ def main(argv=None) -> int:
     def _early_manifest() -> None:
         """WS-8 on the review/failure exits (B4): the calls already made (enumeration,
         partial extraction) are real spend and are recorded honestly -- partial usage,
-        zero spec outputs. Closes the 'documented follow-up' on _emit_run_manifest."""
+        zero spec outputs. Exercises _emit_run_manifest on the zero-spec path."""
         _emit_run_manifest(out_dir, prov, args.phase, model_a, model_b,
                            n_specs=0, wall_clock_seconds=time.monotonic() - t_start,
                            inputs=[paper["canonical_text"]])
