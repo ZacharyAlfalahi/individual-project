@@ -1,0 +1,26 @@
+name: tests
+
+# Runs the full validation suite (unit + synthetic) on every push/PR, against a
+# clean clone — the suite is the repository's core evidence, so it belongs in CI.
+# Needs no API keys and no licensed data: the tests run on synthetic fixtures, and
+# every data-dependent test skip-guards when the (gitignored) licensed inputs are
+# absent. Kept separate from lint.yml (ruff) and data-governance.yml (the
+# licensed-data backstop) so each workflow has a single responsibility.
+on: [push, pull_request]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        # The compute/parsing stack + pydantic (agents/scientist/schemas). The LLM
+        # vendor SDKs (requirements_librarian) are intentionally omitted: RealModelClient
+        # imports them lazily and every live path skips without API keys, so the full
+        # suite is green on a clean clone without them.
+        run: pip install -r scripts/requirements_preprocess.txt -r scripts/requirements_parser.txt pydantic
+      - name: Run the test suite (unit + synthetic)
+        run: pytest tests/ -q
