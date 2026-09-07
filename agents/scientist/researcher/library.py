@@ -17,6 +17,8 @@ from pathlib import Path
 
 import yaml
 
+from shared.licensed_inputs import require_licensed_input
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LIB_DIR = REPO_ROOT / "prereg" / "mechanism_library"
 TEMPLATES_DIR = REPO_ROOT / "prereg" / "templates"
@@ -75,7 +77,7 @@ def available_conditioning_variables(repo_root: Path | str = REPO_ROOT) -> set[s
     signals = repo_root / "data" / "development" / "signals"
     delays = repo_root / "docs" / "reporting_delays.yaml"
 
-    cols = set(pd.read_parquet(panel).columns)
+    cols = set(pd.read_parquet(require_licensed_input(panel, "development panel")).columns)
     stems = {p.stem for p in signals.glob("*.parquet")}
     macro = set(yaml.safe_load(delays.read_text())["reporting_delays"])
     return cols | stems | macro

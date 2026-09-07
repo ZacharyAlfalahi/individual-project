@@ -55,6 +55,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agents.auditor.ipca_differential.runner import load_dev_signals  # noqa: E402
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
 from agents.librarian.adapter.adapt import adapt_spec  # noqa: E402
 from agents.librarian.adapter.result import AdaptResult  # noqa: E402
 from agents.librarian.registries.standing_substitutions import (  # noqa: E402
@@ -123,7 +124,7 @@ def load_inputs(run_config: RunConfig) -> tuple[pd.DataFrame, StandingSubstituti
     the 4 dev signal parquets (`load_dev_signals`), views them once, and verifies the standing
     table. Every path is under data/development/ — the holdout is never opened."""
     subs = load_standing_subs_verified()
-    base = pd.read_parquet(BASE_PANEL)
+    base = pd.read_parquet(require_licensed_input(BASE_PANEL, "development panel"))
     signals = load_dev_signals()
     panel = materialise_panel(base, signals, run_config)
     return panel, subs

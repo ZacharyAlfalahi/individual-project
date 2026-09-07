@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
+from shared.licensed_inputs import require_licensed_input
 from agents.auditor.thresholds import (
     IPCAExecutionPairs,
     load_ipca_bootstrap_config,
@@ -80,7 +81,7 @@ def load_dev_inputs() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     `*_jostova_2013` alongside `*_raw` / `*_corr`. ADDITIVE — the committed
     `monthly_panel_maximal.parquet` file is never modified, and an absent
     profiles file leaves the panel byte-identical (raw/corr behaviour unchanged)."""
-    maximal = pd.read_parquet(MAXIMAL_PANEL)
+    maximal = pd.read_parquet(require_licensed_input(MAXIMAL_PANEL, "maximal development panel"))
     prof = DEV / "monthly_panel_profiles.parquet"
     if prof.exists():
         pdf = pd.read_parquet(prof)
