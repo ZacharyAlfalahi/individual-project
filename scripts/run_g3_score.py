@@ -80,7 +80,12 @@ def _resolve_artefacts(anchor: str, run_dir: Path, index: int | None):
     if n == 1:
         return load_run(run_dir, strategy_index=0)
 
-    gold_label = load_gold_spec(anchor).header.strategy_label
+    # The gold header's strategy_label is an Inherited (its .value carries the
+    # string); comparing the wrapper against the trace header's plain string
+    # could never match. Unwrap before comparing; a longer trace label still
+    # falls through to the --map escape hatch.
+    raw_label = load_gold_spec(anchor).header.strategy_label
+    gold_label = getattr(raw_label, "value", raw_label)
     found: dict[int, str] = {}
     for i in range(n):
         art = load_run(run_dir, strategy_index=i)

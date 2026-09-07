@@ -39,9 +39,11 @@ from __future__ import annotations
 # 2026-09-06 after adding corpus.selection.t2_selected_papers (T2-SEL-7 — the selected T2 set, so
 # the consistency guard can distinguish post-selection processing from design contact); RE-PINNED
 # 2026-09-06 after merging the two registers (T2-SEL-7 + the P1/P2/phase_f blocks + the
-# bbw_2019_masked exclusion entry). one-shot holdout's real run
+# bbw_2019_masked exclusion entry); RE-PINNED 2026-09-07 after adding
+# librarian.relocator_diagnostic (the locator-diagnostic bar registration: qr1 accept_bar null by
+# construction, qr2 accept_bar 0.90). one-shot holdout's real run
 # has not run, so re-pinning is maintenance, not a provenance break. Any later thresholds change must re-pin.
-FROZEN_THRESHOLDS_SHA256 = "e5dc27c3778ca877726f8081514f717e4edf4795c741f9aa4f588f6e55be8d30"
+FROZEN_THRESHOLDS_SHA256 = "c2cb3b306116d6bac60ec5126ce325e89dd3acc7dc673cc288ee80cded2675ca"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library

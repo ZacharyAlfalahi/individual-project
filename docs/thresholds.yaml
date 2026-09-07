@@ -560,6 +560,40 @@ librarian:
     # generalisation is the observed gold corpus, so no population-level claim.
     interval_label: descriptive
 
+  # --- Relocate-then-certify locator diagnostic ------------------------------
+  # NEVER on the decision path: agents/librarian/config/locate.py's "no fuzzy
+  # match" guarantee stands; read only by evaluation/harness/
+  # relocate_thresholds.py (fail-loud, never defaulted). The bar is selected by
+  # a pre-registered, target-blind rule on an independent calibration set
+  # (gold-quote perturbations as positives, cross-paper pairs as negatives —
+  # the gate-failing target quotes never enter it); the RULE, not the number,
+  # is the registered object.
+  relocator_diagnostic:
+    metric: sequencematcher_ratio_l1   # difflib ratio over L1 windows, autojunk=False
+    # Protocol qr1 counts EVERY cross-paper accept as a false accept. On this
+    # corpus that universe admits no zero-false-accept bar at any grid value:
+    # same-author companion papers restate gold sentences verbatim (similarity
+    # 1.000), and textual identity does not identify the source paper. The
+    # bar therefore stays null and the qr1 re-scoring pass cannot run — that
+    # outcome is the recorded result, not an omission.
+    accept_bar: null
+    min_quote_chars: 30                # a-priori L1-char guard, fixed before any target inspection
+    min_anchor_chars: 10               # minimum shared block to consider a search text
+    bar_grid_hundredths: {start: 50, stop: 98, step: 2}   # the sweep grid
+    recall_floor_light: 0.90           # truncation+typo composites, punctuation drift, typos
+    recall_floor_moderate: 0.75        # ellipsis elision, word substitution
+    # Protocol qr2 corrects the negative universe with two binary, untunable
+    # exclusions: same-author pairs (a same-author verbatim restatement is the
+    # same evidence in a later paper, not the fabrication hazard the test
+    # models) and exact-present pairs (the production exact gate itself could
+    # not reject them). On that universe the rule selects the loosest zero-
+    # false-accept bar, carrying the recall_floor_unmet label (moderate-tier
+    # recall sits under its floor at every zero-FA bar — the instrument mostly
+    # does not recover heavy paraphrase, by design). Regenerate locally via
+    # scripts/calibrate_relocator.py --protocol qr2.
+    qr2:
+      accept_bar: 0.90
+
 # ---------------------------------------------------------------------------
 # Auditor (RQ3) pre-registration constants — docs/auditor/auditor_design.md v1.7.
 # Read fail-loud by agents/auditor/thresholds.py (never defaulted in code, §13.2).
