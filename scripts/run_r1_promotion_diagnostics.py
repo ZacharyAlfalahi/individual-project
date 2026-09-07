@@ -48,6 +48,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
 
 RAW_FILE = REPO_ROOT / "data" / "trace_enhanced_repull.csv.gz"
 THRESHOLDS_FILE = REPO_ROOT / "docs" / "thresholds.yaml"
@@ -235,7 +236,7 @@ def compute_criteria(daily: pd.DataFrame, variant_cols: dict, thresholds: dict) 
 def accumulate_daily(profile: str, chunk_size: int = 4_000_000) -> tuple:
     variants = _variants(profile)
     parts = []
-    reader = pd.read_csv(RAW_FILE, usecols=_READ_COLS, dtype=_DTYPES,
+    reader = pd.read_csv(require_licensed_input(RAW_FILE, "TRACE enhanced repull"), usecols=_READ_COLS, dtype=_DTYPES,
                          chunksize=chunk_size, on_bad_lines="skip")
     for i, chunk in enumerate(reader):
         chunk = chunk[chunk["trd_exctn_dt"].astype(str) < DEV_END]   # dev only

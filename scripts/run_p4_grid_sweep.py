@@ -61,6 +61,7 @@ from agents.quant.library.run_config import (  # noqa: E402
     corrected,
 )
 from shared.stats import deflated_sharpe_ratio, pbo_cscv  # noqa: E402
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
 
 THRESHOLDS_FILE = REPO_ROOT / "docs" / "thresholds.yaml"
 CACHE_DIR = REPO_ROOT / "results" / "p4_sweep" / "cells"
@@ -1033,7 +1034,7 @@ def main(argv: list[str] | None = None) -> int:
     _guard_no_holdout([base_panel_path, THRESHOLDS_FILE, gate_path])
 
     subs = run_quant.load_standing_subs_verified()
-    panel = pd.read_parquet(base_panel_path)
+    panel = pd.read_parquet(require_licensed_input(base_panel_path, "development panel"))
     panel_sha = _sha256_file(base_panel_path)
     corner = corrected()
 

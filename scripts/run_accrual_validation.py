@@ -47,6 +47,8 @@ CLEAN = DEV / "monthly_panel_maximal.parquet"
 TOTAL = DEV / "monthly_panel_total_return.parquet"
 OUT = DEV / "headlines" / "accrual_validation.json"
 import yaml  # noqa: E402
+
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
 with open(REPO_ROOT / "docs" / "thresholds.yaml") as _f:
     _CFG = yaml.safe_load(_f)
 MOM6 = _CFG["signals"]["mom6"]
@@ -102,9 +104,9 @@ def main():
 
     clean = pd.read_parquet(CLEAN)
     total = pd.read_parquet(TOTAL)
-    signals = (pd.read_parquet(DEV / "signals" / "var_5pct.parquet")
-               .merge(pd.read_parquet(DEV / "signals" / "gamma_illiq.parquet"), on=["cusip", "date"], how="outer"))
-    mom6_sig = pd.read_parquet(DEV / "signals" / "mom6.parquet")
+    signals = (pd.read_parquet(require_licensed_input(DEV / "signals" / "var_5pct.parquet", "var-5pct signal"))
+               .merge(pd.read_parquet(require_licensed_input(DEV / "signals" / "gamma_illiq.parquet", "gamma-illiquidity signal")), on=["cusip", "date"], how="outer"))
+    mom6_sig = pd.read_parquet(require_licensed_input(DEV / "signals" / "mom6.parquet", "mom6 signal panel"))
 
     pc, pt = _bbw_panel(clean, signals), _bbw_panel(total, signals)
     bc, comp_c = bbw_means(pc)

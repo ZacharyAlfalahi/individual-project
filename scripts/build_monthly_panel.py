@@ -69,6 +69,8 @@ import pyarrow.parquet as pq
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
 RAW_DAILY = REPO_ROOT / "data" / "development" / "trace_daily_raw.parquet"
 CORR_DAILY = REPO_ROOT / "data" / "development" / "trace_daily_corr_filtered.parquet"
 RF_FILE = REPO_ROOT / "data" / "development" / "rf_rate.parquet"
@@ -116,13 +118,14 @@ def merge_fisd(panel: pd.DataFrame, fisd_cfg: dict) -> pd.DataFrame:
     size_proxy = fisd_cfg["amount_outstanding"]["size_proxy"]
 
     static = pd.read_parquet(
-        FISD_STATIC,
+        require_licensed_input(FISD_STATIC, "FISD static table"),
         columns=["cusip", "universe_eligible", size_proxy,
                  "maturity", "default_date", "defeased_date"],
     )
     static["cusip"] = static["cusip"].astype(str)
     ratings = pd.read_parquet(
-        FISD_RATINGS, columns=["cusip", "date", "rating_numeric", "investment_grade"]
+        require_licensed_input(FISD_RATINGS, "FISD monthly ratings"),
+        columns=["cusip", "date", "rating_numeric", "investment_grade"],
     ).rename(columns={"rating_numeric": "rating"})
     ratings["cusip"] = ratings["cusip"].astype(str)
 

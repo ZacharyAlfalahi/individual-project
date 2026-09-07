@@ -52,7 +52,7 @@ def load_dev_signals(dev: Path = DEV) -> pd.DataFrame:
     view() resolves. The gamma columns are renamed to the canonical gamma_illiq_* instrument name."""
     merged: pd.DataFrame | None = None
     for fname, cols in _SIGNAL_COLUMNS.items():
-        df = pd.read_parquet(dev / "signals" / fname, columns=["cusip", "date", *cols])
+        df = pd.read_parquet(require_licensed_input(dev / "signals" / fname, "development signal panel"), columns=["cusip", "date", *cols])
         if fname == "gamma_illiq.parquet":
             df = df.rename(columns=_GAMMA_RENAME)
         merged = df if merged is None else merged.merge(df, on=["cusip", "date"], how="outer")
@@ -63,7 +63,7 @@ def load_dev_signals(dev: Path = DEV) -> pd.DataFrame:
     # absent file => raw/corr behaviour is byte-identical.
     prof = dev / "signals" / "profiles_signals.parquet"
     if prof.exists():
-        pdf = pd.read_parquet(prof)
+        pdf = pd.read_parquet(require_licensed_input(prof, "profile signals"))
         merged = merged.merge(pdf, on=["cusip", "date"], how="outer")
     return merged
 
@@ -84,7 +84,7 @@ def load_dev_inputs() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     maximal = pd.read_parquet(require_licensed_input(MAXIMAL_PANEL, "maximal development panel"))
     prof = DEV / "monthly_panel_profiles.parquet"
     if prof.exists():
-        pdf = pd.read_parquet(prof)
+        pdf = pd.read_parquet(require_licensed_input(prof, "profile monthly panel"))
         maximal = maximal.merge(pdf, on=["cusip", "date"], how="left")
     return maximal, load_dev_signals(), load_registry()
 

@@ -36,6 +36,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import yaml  # noqa: E402
 
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
+
 from agents.auditor.validation.known_error_control import (  # noqa: E402
     evaluate_known_error_control,
 )
@@ -98,7 +100,7 @@ def total_return_sensitivity() -> dict | None:
     if not _BBW_FACTORS.is_file():
         return None
     import pandas as pd
-    df = pd.read_parquet(_BBW_FACTORS)
+    df = pd.read_parquet(require_licensed_input(_BBW_FACTORS, "BBW factor panel"))
     diff = (df["lrf_corr"] - df["lrf_raw"]).dropna()
     return {"basis": "total_return", "point_gap_mean": float(diff.mean()), "n_months": int(len(diff)),
             "note": "point cross-check only (no CI); the confirmatory interval is the maximal-basis run"}

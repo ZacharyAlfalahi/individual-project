@@ -24,6 +24,7 @@ by the eligibility filter, not here.
 
 from __future__ import annotations
 
+import sys
 from itertools import product
 from pathlib import Path
 
@@ -31,6 +32,8 @@ import pandas as pd
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
 TEMPLATES_DIR = REPO_ROOT / "prereg" / "templates"
 PANEL = REPO_ROOT / "data" / "development" / "monthly_panel_corrected.parquet"
 SIGNALS_DIR = REPO_ROOT / "data" / "development" / "signals"
@@ -52,7 +55,7 @@ def load_templates() -> list[dict]:
 
 def available_variables() -> tuple[set[str], dict[str, int]]:
     """Available conditioning variables and their timing floor (months)."""
-    panel_cols = set(pd.read_parquet(PANEL, columns=None).columns)
+    panel_cols = set(pd.read_parquet(require_licensed_input(PANEL, "corrected monthly panel"), columns=None).columns)
     signal_stems = {p.stem for p in SIGNALS_DIR.glob("*.parquet")}
     delays = yaml.safe_load(REPORTING_DELAYS.read_text())["reporting_delays"]
     macro = set(delays)

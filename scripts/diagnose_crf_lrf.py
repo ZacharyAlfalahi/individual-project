@@ -43,6 +43,7 @@ from agents.quant.library.run_config import (  # noqa: E402
     RunConfig, PanelViewConfig, ConstructionConfig, EvaluationConfig,
 )
 from agents.quant.library.views import view  # noqa: E402
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
 
 PANEL_FILE = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
 VAR_FILE = REPO_ROOT / "data" / "development" / "signals" / "var_5pct.parquet"
@@ -70,11 +71,11 @@ def main():
     gamma_sep_ratio = float(diag_cfg["gamma_sep_ratio"])
 
     print("Loading panel + signals + coupon...")
-    maximal = pd.read_parquet(PANEL_FILE)
-    var5 = pd.read_parquet(VAR_FILE)
-    gamma = pd.read_parquet(GAMMA_FILE)
+    maximal = pd.read_parquet(require_licensed_input(PANEL_FILE, "maximal development panel"))
+    var5 = pd.read_parquet(require_licensed_input(VAR_FILE, "var-5pct signal"))
+    gamma = pd.read_parquet(require_licensed_input(GAMMA_FILE, "gamma-illiquidity signal"))
     signals = var5.merge(gamma, on=["cusip", "date"], how="outer")
-    coupon = pd.read_parquet(FISD_STATIC, columns=["cusip", "coupon"]).drop_duplicates("cusip")
+    coupon = pd.read_parquet(require_licensed_input(FISD_STATIC, "FISD static table"), columns=["cusip", "coupon"]).drop_duplicates("cusip")
 
     cfg = RunConfig(PanelViewConfig("corr", False, False),
                     ConstructionConfig(0, "none"), EvaluationConfig())

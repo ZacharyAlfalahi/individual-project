@@ -77,6 +77,7 @@ from agents.scientist.schemas.outcomes import REFUSAL_CODES  # noqa: E402
 from shared.evaluation.crowding import load_crowding_factor_bundle  # noqa: E402
 from shared.evaluation.thresholds import load_crowding_config  # noqa: E402
 from shared.handoff.scientist_case import build_scientist_case, load_entry_rule_params  # noqa: E402
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
 
 _STR_AUDIT = _REPO_ROOT / "results" / "auditor" / "str_corrected" / "str_report.json"
 _GEN_AT = "2026-09-05T00:00:00Z"
@@ -190,8 +191,8 @@ def corrected_str_parent():
 
 def bbw4_frame() -> pd.DataFrame:
     """The BBW-4 benchmark frame (date, mktb, drf, crf, lrf) at the corrected family."""
-    bbw = pd.read_parquet(_REPO_ROOT / "data" / "development" / "factors" / "bbw_factors.parquet")
-    mktb = pd.read_parquet(_REPO_ROOT / "data" / "development" / "factors" / "mktb.parquet")
+    bbw = pd.read_parquet(require_licensed_input(_REPO_ROOT / "data" / "development" / "factors" / "bbw_factors.parquet", "BBW factor panel"))
+    mktb = pd.read_parquet(require_licensed_input(_REPO_ROOT / "data" / "development" / "factors" / "mktb.parquet", "market-beta factor"))
     frame = bbw.merge(mktb[["date", "mktb_corr"]], on="date")
     return frame[["date", "mktb_corr", "drf_corr", "crf_corr", "lrf_corr"]].rename(
         columns={"mktb_corr": "mktb", "drf_corr": "drf", "crf_corr": "crf", "lrf_corr": "lrf"})
@@ -212,7 +213,7 @@ def load_macro_series(lo, hi) -> dict:
     extension_1_config.yaml's committed dev median. Holdout months are never read here."""
     macros = {}
     for var, fname in _MACRO_FILES.items():
-        df = pd.read_parquet(_REPO_ROOT / "data" / "development" / fname)
+        df = pd.read_parquet(require_licensed_input(_REPO_ROOT / "data" / "development" / fname, "macro conditioning series"))
         val_col = next(c for c in df.columns if c != "year_month")
         idx = pd.PeriodIndex(df["year_month"], freq="M").to_timestamp(how="end").normalize()
         s = pd.Series(df[val_col].to_numpy(), index=idx, name=var).sort_index()

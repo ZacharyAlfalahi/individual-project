@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from shared.licensed_inputs import require_licensed_input
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FISD_DIR = REPO_ROOT / "data" / "fisd"
 ISSUE_FILE = FISD_DIR / "reference_fisd_mergedissue.parquet"
@@ -248,7 +250,7 @@ def asof_monthly_rating(
 # ---------------------------------------------------------------------------
 
 def _load_issue() -> pd.DataFrame:
-    df = pd.read_parquet(ISSUE_FILE, columns=_ISSUE_COLS)
+    df = pd.read_parquet(require_licensed_input(ISSUE_FILE, "FISD issue table"), columns=_ISSUE_COLS)
     # Force the join key to string and preserve leading zeros (CUSIPs like
     # 000361AB1 must not be coerced to int) — same care as preprocess_trace.py.
     df["complete_cusip"] = df["complete_cusip"].astype("string")
@@ -273,7 +275,7 @@ def _default_dates_by_issue(cfg: dict) -> pd.Series:
     if not tokens:
         raise KeyError("thresholds.yaml fisd.survivorship.default_tokens is required")
     date_min = pd.Timestamp(cfg["rating"]["date_min"])
-    r = pd.read_parquet(RATINGS_FILE, columns=["issue_id", "rating", "rating_date"])
+    r = pd.read_parquet(require_licensed_input(RATINGS_FILE, "FISD ratings table"), columns=["issue_id", "rating", "rating_date"])
     r = r[r["rating"].isin(set(tokens))].copy()
     r["issue_id"] = r["issue_id"].astype("Int64")
     r["rating_date"] = pd.to_datetime(r["rating_date"], errors="coerce").astype("datetime64[ns]")
@@ -296,7 +298,7 @@ def build_static(cfg: dict) -> pd.DataFrame:
     issue = apply_universe_rules(issue, cfg["universe"])
 
     # callable flag from the redemption schedule (issue_id level).
-    redemption = pd.read_parquet(REDEMPTION_FILE, columns=["issue_id", "callable"])
+    redemption = pd.read_parquet(require_licensed_input(REDEMPTION_FILE, "FISD redemption table"), columns=["issue_id", "callable"])
     redemption["issue_id"] = redemption["issue_id"].astype("Int64")
     callable_by_issue = (
         redemption.assign(_c=redemption["callable"].eq("Y"))
@@ -305,7 +307,7 @@ def build_static(cfg: dict) -> pd.DataFrame:
     issue["callable"] = issue["issue_id"].map(callable_by_issue).astype("boolean")
 
     # issuer attributes (issuer_id level).
-    issuer = pd.read_parquet(ISSUER_FILE, columns=["issuer_id", "sic_code", "country_domicile"])
+    issuer = pd.read_parquet(require_licensed_input(ISSUER_FILE, "FISD issuer table"), columns=["issuer_id", "sic_code", "country_domicile"])
     issuer["issuer_id"] = issuer["issuer_id"].astype("Int64")
     issuer = issuer.drop_duplicates(subset="issuer_id", keep="first")
     issue["issuer_id"] = issue["issuer_id"].astype("Int64")
@@ -338,7 +340,8 @@ def build_ratings_monthly(cfg: dict, grid: pd.DataFrame, issue_to_cusip: pd.Seri
     grid_max = pd.Timestamp(grid["date"].max())
 
     ratings = pd.read_parquet(
-        RATINGS_FILE, columns=["issue_id", "rating", "rating_type", "rating_date", "rating_status"]
+        require_licensed_input(RATINGS_FILE, "FISD ratings table"),
+        columns=["issue_id", "rating", "rating_type", "rating_date", "rating_status"],
     )
     ratings = ratings[ratings["rating_type"].isin(agencies)].copy()
     ratings["issue_id"] = ratings["issue_id"].astype("Int64")

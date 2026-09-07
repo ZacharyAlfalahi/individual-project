@@ -32,12 +32,15 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import build_bond_vol as bv          # noqa: E402
 import build_gamma_illiq as gi       # noqa: E402
 import build_mom6_signal as m6       # noqa: E402
 import build_var_5pct as v5          # noqa: E402
+
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
 
 DEV = REPO_ROOT / "data" / "development"
 PROFILE_MONTHLY = DEV / "monthly_panel_profiles.parquet"
@@ -52,7 +55,7 @@ def _profile_daily(pid: str) -> Path:
 
 
 def build() -> dict:
-    monthly = pd.read_parquet(PROFILE_MONTHLY)
+    monthly = pd.read_parquet(require_licensed_input(PROFILE_MONTHLY, "profile monthly panel"))
     v5cfg, bvcfg, m6cfg, gicfg = (v5.load_config(), bv.load_config(),
                                   m6.load_config(), gi.load_config())
 
@@ -82,7 +85,7 @@ def build() -> dict:
         ).rename(columns={"mom6": f"mom6_{pid}"})
 
         # gamma_illiq — from the profile DAILY panel price_vwap
-        daily = pd.read_parquet(_profile_daily(pid),
+        daily = pd.read_parquet(require_licensed_input(_profile_daily(pid), "profile daily panel"),
                                 columns=["cusip_id", "trd_exctn_dt", "price_vwap"])
         g = gi.compute_gamma(
             daily,

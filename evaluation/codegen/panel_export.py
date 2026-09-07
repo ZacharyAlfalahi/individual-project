@@ -33,6 +33,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from shared.licensed_inputs import require_licensed_input
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEV = _REPO_ROOT / "data" / "development"
 _TOTAL = _DEV / "monthly_panel_total_return.parquet"
@@ -91,7 +93,7 @@ def build_codegen_panel() -> pd.DataFrame:
     panel_path = _maximal_panel_path()
     if "holdout" in panel_path.parts:
         raise RuntimeError(f"codegen panel source touches the holdout partition: {panel_path}")
-    maximal = pd.read_parquet(panel_path)
+    maximal = pd.read_parquet(require_licensed_input(panel_path, "development panel"))
     signals = _load_signals()
 
     cfg = RunConfig(
