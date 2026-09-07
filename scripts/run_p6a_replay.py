@@ -24,7 +24,7 @@ is called, no panel data is read, the holdout is never touched.
 
 Usage:
   ./.venv/bin/python scripts/run_p6a_replay.py
-      [--run-root runs/g3_2026-07-22_v3]
+      [--run-root runs/g3_v3]
       [--out docs/extensions/reports/p6a_composition.md]
 """
 
@@ -336,7 +336,7 @@ def _d40_ordering() -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--run-root", default="runs/g3_2026-07-22_v3")
+    ap.add_argument("--run-root", default="runs/g3_v3")
     ap.add_argument("--out", default="docs/extensions/reports/p6a_composition.md")
     args = ap.parse_args(argv)
 

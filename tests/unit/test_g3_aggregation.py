@@ -29,9 +29,9 @@ from evaluation.harness.reportability import Reportability, ReportabilityError  
 from evaluation.harness.run_artefacts import load_run  # noqa: E402
 
 _ROOT = Path(__file__).resolve().parents[2]
-_RUNS = {"drf": _ROOT / "runs" / "g3_2026-07-22_v3" / "bbw",
-         "mom6": _ROOT / "runs" / "g3_2026-07-22_v3" / "jnps",
-         "str": _ROOT / "runs" / "g3_2026-07-22_v3" / "drr"}
+_RUNS = {"drf": _ROOT / "runs" / "g3_v3" / "bbw",
+         "mom6": _ROOT / "runs" / "g3_v3" / "jnps",
+         "str": _ROOT / "runs" / "g3_v3" / "drr"}
 
 _needs_runs = pytest.mark.skipif(
     not all((p / "trace_0.json").exists() for p in _RUNS.values()),

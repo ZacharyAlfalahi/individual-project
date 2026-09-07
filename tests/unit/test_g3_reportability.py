@@ -30,7 +30,7 @@ from evaluation.harness.reportability import (  # noqa: E402
 )
 
 _ROOT = Path(__file__).resolve().parents[2]
-_BBW = _ROOT / "runs" / "g3_2026-07-22_v3" / "bbw"
+_BBW = _ROOT / "runs" / "g3_v3" / "bbw"
 
 _STACK = {
     "phase_d": {"model_a": {"model_id": "gemini-3.1-flash-lite"},

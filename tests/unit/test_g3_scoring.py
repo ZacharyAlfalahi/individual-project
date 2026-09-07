@@ -36,8 +36,8 @@ from evaluation.harness.run_artefacts import (  # noqa: E402
 )
 
 _ROOT = Path(__file__).resolve().parents[2]
-_BBW = _ROOT / "runs" / "g3_2026-07-22_v3" / "bbw"
-_JNPS = _ROOT / "runs" / "g3_2026-07-22_v3" / "jnps"
+_BBW = _ROOT / "runs" / "g3_v3" / "bbw"
+_JNPS = _ROOT / "runs" / "g3_v3" / "jnps"
 
 _needs_bbw = pytest.mark.skipif(
     not (_BBW / "trace_0.json").exists(),
@@ -47,7 +47,7 @@ _needs_jnps = pytest.mark.skipif(
     not (_JNPS / "trace_0.json").exists(),
     reason="post-fix JNPS dev run absent (runs/ is gitignored); regenerate with run_librarian.py",
 )
-_DRR = _ROOT / "runs" / "g3_2026-07-22_v3" / "drr"
+_DRR = _ROOT / "runs" / "g3_v3" / "drr"
 _needs_str = pytest.mark.skipif(
     not (_DRR / "trace_0.json").exists(),
     reason="DRR dev run absent (runs/ is gitignored); regenerate with run_librarian.py",

@@ -12,7 +12,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 from scripts.run_rq1_ablation import _ship, score_grid                    # noqa: E402
 
-_RUNS = _REPO_ROOT / "runs" / "g3_2026-07-22_v3"
+_RUNS = _REPO_ROOT / "runs" / "g3_v3"
 needs_runs = pytest.mark.skipif(not (_RUNS / "bbw" / "raw" / "raw_model_a.jsonl").exists(),
                                 reason="committed dev run not on disk")
 

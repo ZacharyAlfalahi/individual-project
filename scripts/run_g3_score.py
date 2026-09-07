@@ -3,7 +3,7 @@
 RQ1 scoring CLI (B3): one committed entry point from an extraction run root to the
 reportable RQ1 table -- the G3 harness chain that until now ran only inside tests.
 
-    ./.venv/bin/python scripts/run_g3_score.py --run-root runs/g3_2026-07-22_v3
+    ./.venv/bin/python scripts/run_g3_score.py --run-root runs/g3_v3
     ./.venv/bin/python scripts/run_g3_score.py --run-root runs/report_final \
         --anchors str,drf,mom6,crf --out results/librarian/g3_report.md
 
@@ -142,7 +142,7 @@ def score_one(anchor: str, run_dir: Path, index: int | None, *, allow_non_report
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Score an extraction run against the RQ1 golds.")
     ap.add_argument("--run-root", required=True,
-                    help="run root holding per-paper run dirs (e.g. runs/g3_2026-07-22_v3)")
+                    help="run root holding per-paper run dirs (e.g. runs/g3_v3)")
     ap.add_argument("--anchors", default="str,drf,mom6",
                     help="comma-separated sort anchors to score (add crf for the 4-anchor "
                          "headline). Default: the 3-anchor set.")

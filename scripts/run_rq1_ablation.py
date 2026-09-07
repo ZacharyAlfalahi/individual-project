@@ -4,7 +4,7 @@ RQ1 safety-discipline ablation grid (B7 / Ch4 §4.3.3): re-score ARCHIVED raw
 responses under the four combinations of the quote gate × the dual-model rule,
 pricing each discipline's benefit (precision) against its cost (coverage).
 
-    ./.venv/bin/python scripts/run_rq1_ablation.py --run-root runs/g3_2026-07-22_v3 \
+    ./.venv/bin/python scripts/run_rq1_ablation.py --run-root runs/g3_v3 \
         --allow-non-reportable
 
 No new extraction happens and no model is called: elicitation is held fixed, and

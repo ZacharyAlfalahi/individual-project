@@ -27,8 +27,8 @@ from evaluation.harness.missed_evidence import (  # noqa: E402
 from evaluation.harness.run_artefacts import RunField, load_run  # noqa: E402
 
 _ROOT = Path(__file__).resolve().parents[2]
-_BBW = _ROOT / "runs" / "g3_2026-07-22_v3" / "bbw"
-_JNPS = _ROOT / "runs" / "g3_2026-07-22_v3" / "jnps"
+_BBW = _ROOT / "runs" / "g3_v3" / "bbw"
+_JNPS = _ROOT / "runs" / "g3_v3" / "jnps"
 
 _needs_bbw = pytest.mark.skipif(not (_BBW / "trace_0.json").exists(),
                                 reason="post-fix BBW dev run absent (runs/ is gitignored)")

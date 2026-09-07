@@ -19,7 +19,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 from evaluation.harness.reportability import ReportabilityError          # noqa: E402
 from scripts import run_g3_score as cli                                  # noqa: E402
 
-_RUNS = _REPO_ROOT / "runs" / "g3_2026-07-22_v3"
+_RUNS = _REPO_ROOT / "runs" / "g3_v3"
 _have_runs = (_RUNS / "bbw" / "trace_0.json").exists()
 
 needs_runs = pytest.mark.skipif(not _have_runs, reason="committed dev run not on disk")
