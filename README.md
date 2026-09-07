@@ -4,7 +4,7 @@ Given a published corporate bond trading-strategy paper, the system extracts a m
 
 Five-agent pipeline — **Librarian** (paper → spec extraction) → **Quant** (deterministic compilation on an audited backtest library) → **Auditor** (differential bias attribution) → **Scientist** (pre-registered extensions) → **Reporter** (verified research notes).
 
-> Detailed specifications, decision registers, validation records, and licensed data are maintained internally by intention and are not part of this public repository; in-code references to `docs/…` are provenance labels for that internal record.
+> Detailed specifications, decision registers, validation records, and licensed data are maintained internally by intention and are not part of this public repository; in-code references to `docs/…` paths and to numbered `§` sections (e.g. `§3.1`, `§13.2`) are provenance labels citing sections of that internal record.
 
 ---
 
