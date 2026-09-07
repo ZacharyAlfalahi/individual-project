@@ -1,4 +1,4 @@
-"""Construction-scoped field prompts (CI-10 candidate, 2026-09-06; flag-gated,
+"""Construction-scoped field prompts (candidate feature, 2026-09-06; flag-gated,
 default OFF).
 
 The dfps remediation run (CI-9) proved the unscoped per-field prompt is

@@ -1,7 +1,36 @@
 """
 Global pytest fixtures.
 """
+import pathlib
+
 import pytest
+
+
+_CANONICAL_TEXTS_DIR = pathlib.Path(__file__).resolve().parents[1] / "evaluation" / "canonical_texts"
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """A public clone does not ship evaluation/canonical_texts/ (the frozen paper
+    texts are copyrighted, gitignored — see README). When that directory is absent,
+    reclassify any "missing canonical text" failure/error as a SKIP so the suite is
+    all-pass/skip on a clone without the licensed inputs. Gated on the directory being
+    absent, so a genuinely missing single file when the set IS present still fails.
+    Covers every read path (Path.open FileNotFoundError and the loader's own
+    LibrarianSchemaError both carry the canonical_texts path in their message).
+    """
+    outcome = yield
+    report = outcome.get_result()
+    if report.when in ("setup", "call") and report.failed and not _CANONICAL_TEXTS_DIR.exists():
+        exc = getattr(call, "excinfo", None)
+        if exc is not None and "canonical_texts" in str(exc.value):
+            report.outcome = "skipped"
+            report.longrepr = (
+                str(item.location[0]),
+                item.location[1] or 0,
+                "Skipped: requires gitignored canonical texts "
+                "(evaluation/canonical_texts/; copyrighted, not shipped — see README)",
+            )
 
 
 @pytest.fixture(autouse=True)

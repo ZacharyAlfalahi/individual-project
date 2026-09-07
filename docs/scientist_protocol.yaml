@@ -7,7 +7,8 @@
 #
 # STATUS: committed and tagged (`scientist-prereg`), after the eligibility census filled
 # generation.proposals_per_strategy.per_strategy. One item remains open:
-#   * costs.source is UNRESOLVED (see the costs block) — must be cited before a live run.
+#   * costs.source is UNRESOLVED — the round-trip figures are inactive provisional values,
+#     excluded from every reportable calculation until a citation lands (see the costs block).
 #
 # AMENDMENTS TO THE DESIGN-LOCKED SPEC §4 (each supersedes the cited passage; logged here so a
 # reader sees exactly where implementation departs from the spec text and why):
@@ -167,9 +168,10 @@ pbo:
 
 costs:
   # SOURCE UNRESOLVED. Spec §4 cites docs/domain_facts.md, which does NOT exist — the 40/80 bp
-  # round-trip figures currently have no substantiating citation anywhere in the repo. FLAGGED
-  # citation required; a strict consumer must treat `source: UNRESOLVED_pending_citation` as unmet
-  # and refuse to net figures until a real source lands.
+  # round-trip figures currently have no substantiating citation anywhere in the repo. They are
+  # therefore inactive provisional values, excluded from every reportable calculation: a strict
+  # consumer treats `source: UNRESOLVED_pending_citation` as unmet and nets no figure until a
+  # real source lands.
   round_trip_bps: {investment_grade: 40, high_yield: 80}
   source: UNRESOLVED_pending_citation
   report_net_beside_every_gross_figure: true
@@ -355,6 +357,8 @@ amendments:                      # logged amendments appended here post-tag (see
                                    # docs/scientist/holdout_inference_implementation.md; deviation A8 in the
                                    # shared-eval amendments index. Clause (3) one-shot holdout caller still deferred (E14).
     summary: >
+      CURRENT DISPOSITION: clause (3) was retired by SC-SCI-15 (2026-09-01); no implementation
+      remains required. Clauses (1),(2),(4),(5),(6) stand. The full pre-registration record follows.
       PRE-REGISTERED HOLDOUT-INFERENCE SPECIFICATION (ships with RQ4's descriptive rewording;
       gives the SC-SCI-12 SENSITIVITY safeguard its concrete form). At T = 45:
       (1) PRIMARY inference is the paired HAC t (survivor minus parent, and each series' own alpha),

@@ -248,8 +248,8 @@ def run_paper(
             )
         except LibrarianEmissionError as exc:
             # Stamp the owning construction so the persisted event is
-            # attributable per construction (the CI-10 scoped runs surfaced
-            # Guard-1 refusals whose events carried no construction identity).
+            # attributable to the construction that produced it (an emission
+            # refusal otherwise carries no construction identity).
             exc.construction_name = construction.name
             result.events.append(exc)
             continue

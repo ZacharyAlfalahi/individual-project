@@ -794,7 +794,7 @@ _PAPER_TEXT_BLOCK = (
     "<<<\n{paper_text}\n>>>\n\n"
 )
 
-# Construction-scoped field queries (CI-10 candidate, 2026-09-06; built flag-gated,
+# Construction-scoped field queries (candidate feature, 2026-09-06; built flag-gated,
 # default OFF). Completes the per-construction rendering the 2026-09-02 cache-key
 # fix presupposed: render() consumes the strategy label only for method_summary /
 # paper_metric, so on a multi-construction paper every other field's prompt was
@@ -936,7 +936,7 @@ class RealModelClient:
         if not isinstance(query, FieldQuery):
             raise LibrarianSchemaError("RealModelClient.answer expects a FieldQuery")
         # The key includes the construction label (2026-09-02 pre-paid-run fix)
-        # plus the scoped-quote state (CI-10 candidate, 2026-09-06). NOTE the
+        # plus the scoped-quote state (candidate feature, 2026-09-06). NOTE the
         # 2026-09-02 fix was necessary but NOT sufficient: render() consumes the
         # label only for method_summary/paper_metric, so unscoped multi-
         # construction prompts are byte-identical anyway and the DISK cache

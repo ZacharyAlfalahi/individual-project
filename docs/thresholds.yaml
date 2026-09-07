@@ -7,8 +7,8 @@ trace_cleaning:
   # price_floor RESTORED to 0.0 (spec v4 Part C/A4, 2026-08-04). It had been
   # raised to 1.0 as a crutch for the mis-implemented distressed filters, which
   # could not catch the ultra-low prints that produce VWAP-denominator blow-ups.
-  # With the DRR-faithful filters now in place (apply_distressed_filters.py,
-  # repo 42c5dea9), the floor is removed so ultra-low prints (< 1.0 % of par)
+  # With the DRR-faithful filters now in place (apply_distressed_filters.py),
+  # the floor is removed so ultra-low prints (< 1.0 % of par)
   # flow through to the distressed stage, which drops them there — DRR apply no
   # pre-distressed floor. A strict `> price_floor` still drops non-positive
   # prices. See docs/data/registers/citations_verified.md §1.
@@ -284,8 +284,7 @@ bounce_back_filter:
 # DRR (Dickerson, Robotti, Rossetti 2026) distressed daily filters.
 # PROVENANCE — port + disclose (spec v4 Part J; supersedes the prior firewall).
 # The filter IMPLEMENTATION is repo-derived from Dickerson's released
-# `trace-data-pipeline`, pinned commit 42c5dea93fce550089e175bb622dfd32a725b92f
-# (stage1/helper_functions.py::ultra_distressed_filter; ULTRA_DISTRESSED_CONFIG
+# `trace-data-pipeline` (stage1/helper_functions.py::ultra_distressed_filter; ULTRA_DISTRESSED_CONFIG
 # in stage1/_stage1_settings.py; step8 in stage1/stage1_pipeline.py). The earlier
 # "independent coding from the appendix; do NOT port repo code" firewall is
 # RETIRED for the filter implementation — it produced a wrong implementation

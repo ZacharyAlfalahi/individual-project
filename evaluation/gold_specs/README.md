@@ -35,7 +35,7 @@ the 2026-07-11 brief amendment (shipped code name kept; `control_signal` rejecte
 
 The fitted-model gold is a *separate construction class*, never pooled with the sort family. The RQ1
 sort-grading denominator is `ANCHOR_SET` (str/drf/mom6) by default, or `ANCHOR_SET_WITH_CRF` when crf
-is in the scored paper set (`evaluation/harness/aggregation.py`; lrf is not yet wired in). See
+is in the scored paper set (`evaluation/harness/aggregation.py`; lrf is not among the wired anchors). See
 `docs/librarian/specs/schema_v1_2_estimation_block.md`
 and `.../implementation-notes/kpp_rq1_fitted_model_record_2026-08-03.md`.
 
@@ -70,8 +70,8 @@ STATED locators as binding.
 - D20 enumeration golds (recipe-list per paper) — **authored for the three anchor papers**
   (`enum_bbw_2019.yaml`, `enum_drr_2026.yaml`, `enum_jnps_2013.yaml`; NO-MODEL-CONSULT). Scale-layer
   enumeration golds (RQ2 coverage) remain **outstanding**, gated on the O1 scale-layer scope decision
-  (an open decision — see `docs/backlog/remaining_work.md`), and are authored by the human,
-  never by an automated agent. The full reconciled inventory is `docs/evaluation/corpus_inventory.md`;
+  (an open decision — see `docs/backlog/remaining_work.md`), and are transcribed manually and
+  independently verified without model assistance. The full reconciled inventory is `docs/evaluation/corpus_inventory.md`;
   the scale-layer selection rule (proposing O1's resolution, not yet decided) is
   `docs/evaluation/t2_selection_prereg.md`.
 

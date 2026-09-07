@@ -1,6 +1,6 @@
-"""RQ3 per-correction injection grid. Verifies the
-driver's columns against the reused injection/calibration machinery. Component-level (fast) tests;
-the full grid's only expensive column (coverage) is checked on one bias. Deterministic, $0.
+"""RQ3 per-correction injection grid: verifies the driver's columns against the
+reused injection/calibration machinery. Component-level (fast) tests; the full grid's
+only expensive column (coverage) is checked on one bias. Deterministic, $0.
 """
 import sys
 from pathlib import Path

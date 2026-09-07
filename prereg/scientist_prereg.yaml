@@ -76,7 +76,7 @@ pbo: {scope: realised_family_only, status: supplementary_caveated}
 
 costs:
   round_trip_bps: {investment_grade: 40, high_yield: 80}
-  source: UNRESOLVED_pending_citation      # deferred; resolve before the real run
+  source: UNRESOLVED_pending_citation      # inactive provisional values, excluded from reportable figures until cited
 
 selection:
   rule: lexicographic

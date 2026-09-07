@@ -87,6 +87,12 @@ def test_sets_are_explicit_never_sorted_papers():
 # ---------------------------------------------------------------------------
 
 def test_real_fake_run_through_the_loop(tmp_path):
+    # The corpus driver reads the bbw canonical text and records a CRASH (not a raised
+    # exception the report hook could catch) when it is absent, so guard explicitly: a
+    # public clone does not ship evaluation/canonical_texts/ (copyrighted; see README).
+    _bbw = Path(__file__).resolve().parents[2] / "evaluation" / "canonical_texts" / "bbw_2019.frozen.yaml"
+    if not _bbw.exists():
+        pytest.skip("requires the gitignored canonical text (evaluation/canonical_texts/; not shipped — see README)")
     log = corpus.run_set(("bbw",), tmp_path,
                          ["--phase", "fake", "--enumeration", "gold"])
     assert log["papers"]["bbw"]["exit"] == 0

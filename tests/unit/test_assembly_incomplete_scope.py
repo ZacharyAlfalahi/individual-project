@@ -122,8 +122,8 @@ def test_driver_keeps_exit_3_for_zero_specs_without_events(monkeypatch, tmp_path
 
 
 def test_emission_refusals_carry_construction_attribution():
-    """CI-10 follow-up: a Guard-1 style emission refusal event is stamped with
-    its owning construction (the scoped runs surfaced nameless events)."""
+    """A Guard-1 style emission refusal event is stamped with its owning
+    construction, so a persisted refusal is attributable to its source."""
     from agents.quant.config import Evidence, Inherited
     from agents.librarian.pipeline.emission import LibrarianEmissionError
 

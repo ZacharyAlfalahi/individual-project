@@ -274,7 +274,7 @@ def scaffold_pointer(
 ) -> str:
     """Return a filled pointer-file YAML string with sha256 hashes computed from the given
     repo-relative artefact paths. Writes NOTHING (the caller prints it). `join_rationale` is
-    emitted as a TODO placeholder to be filled in manually — the join is a human assertion."""
+    emitted as a manual-attestation placeholder to be filled in by hand — the join is a human assertion."""
     if not _RUN_ID_RE.fullmatch(reporter_run_id):
         raise ManifestError(f"reporter_run_id {reporter_run_id!r} must match [a-z0-9_-]+")
     lines: list[str] = [
@@ -284,8 +284,8 @@ def scaffold_pointer(
         f"strategy_id: {strategy_id}",
         f"phase: {phase}",
         "join_rationale: >",
-        "  TODO: state why these runs describe the same strategy execution, and who "
-        "asserts it.",
+        "  Manual attestation required: state why these runs describe the same "
+        "strategy execution, and who asserts it.",
         "  No mechanical cross-agent join exists (Path B).",
         "artefacts:",
     ]

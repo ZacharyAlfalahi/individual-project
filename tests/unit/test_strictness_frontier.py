@@ -1,8 +1,9 @@
 """Strictness-frontier simulation (scripts/analyze_strictness_frontier.py).
 
-Pure-logic tests for the ship rule and the spec-variant builder, plus a
-machine-local integration pin against the committed frontier artifact (skipped
-where the CI-10 run directories are absent — they are gitignored raw archives).
+Pure-logic tests for the ship rule and the spec-variant builder, plus an optional
+artifact-backed integration test that pins the frontier output (produced by the
+script from the scoped-extraction run archives; skipped when those gitignored
+archives are absent).
 """
 
 from __future__ import annotations
@@ -167,7 +168,7 @@ def test_never_emitted_fails_loud_on_event_count_mismatch(tmp_path):
 @pytest.mark.skipif(
     not all(p.exists() for p in _RUN_DIRS)
     or not (_REPO_ROOT / "results" / "strictness_frontier.json").exists(),
-    reason="CI-10 run archives / frontier artifact absent on this machine",
+    reason="scoped-extraction run archives / frontier artifact absent on this machine",
 )
 def test_committed_frontier_artifact_pins():
     d = json.loads((_REPO_ROOT / "results" / "strictness_frontier.json")

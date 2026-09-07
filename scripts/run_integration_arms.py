@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """System-level integration arms: a clean-variant integration null and an integrated known-error 
 positive control. Both reuse existing (tested) machinery; no module is modified. Deterministic, 
-dev/synthetic only (no /data/holdout/, no LLM).
+dev/synthetic only (no data/holdout/, no LLM).
 
 Arm A -- clean-variant integration null: the zero-injection synthetic scenario is run through the
   SAME engine spine the T4b positive uses (lattice -> common support -> first-order DOE ->

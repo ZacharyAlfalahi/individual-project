@@ -2,15 +2,15 @@
 """RQ3 per-correction synthetic-injection grid.
 
 For each of the five corrections, export the engineering-tier + statistical-tier figures the
-reported grid needs, in bp/mo, computed by REUSING the existing (tested) auditor injection +
+reported grid needs, in bp/mo, computed by reusing the existing (tested) auditor injection +
 magnitude-sweep machinery. No auditor/calibration/synthetic module is modified.
 
 Columns (all bp/mo except the ratio and coverage):
-  * Injected            -- the NOISE-FREE planted long-short effect (build_scenario with
+  * Injected            -- the noise-free planted long-short effect (build_scenario with
                            SyntheticSpec(noise_sd=0.0) -> doe_first_order[bias] x 10000). The
-                           injection *magnitude* is a DGP-internal knob, NOT bp; multiplying it by
-                           10000 would be a fabricated unit, so we report the realised noise-free
-                           effect instead (the honest planted truth).
+                           injection *magnitude* is a DGP-internal knob, not bp; multiplying it by
+                           10000 would invent a bp unit that is not there, so we report the realised
+                           noise-free effect instead (the planted truth).
   * Recovered           -- the estimated effect at the default magnitude (mean over seeds of the
                            magnitude-sweep effect x 10000). Recovered ~ Injected because the
                            synthetic estimator is unbiased on common support; reported as found.
@@ -24,7 +24,7 @@ Columns (all bp/mo except the ratio and coverage):
                            mapped to bp/mo at the threshold magnitude. A structural (magnitude-
                            independent) channel has no genuine threshold -> flagged, not printed 0.
 
-Deterministic, $0, synthetic DGP only (no /data/holdout/, no LLM).
+Deterministic, $0, synthetic DGP only (no data/holdout/, no LLM).
 
     ./.venv/bin/python scripts/run_rq3_injection_grid.py [--seeds 25] [--replicates 200] [--out PATH]
 
@@ -96,7 +96,7 @@ _CAL_DIR = _REPO_ROOT / "results" / "auditor" / "calibration"
 
 
 def _calibration_path() -> Path:
-    """The single committed calibration run's artifact (run_<git>/calibration.json).
+    """The selected local calibration artifact (run_<git>/calibration.json).
     Fail-loud when absent or ambiguous -- recovered/MDE are read, never recomputed."""
     candidates = sorted(_CAL_DIR.glob("run_*/calibration.json"))
     if len(candidates) != 1:
@@ -118,9 +118,9 @@ def _committed_recovered_mde(bias: str) -> dict:
     recovered_bp = to_bps(abs(rec))
     mde_mag = pb.get("mde")
     # structural == detected already at magnitude 0 (the channel is magnitude-independent, e.g.
-    # stale_price). NOTE: survivorship has a mag>0 mde here but its calibration notes flag its
-    # magnitude-zero as NOT a valid null (the structural distress-drop is always active), so its
-    # printed MDE is a crater-depth threshold, not a full detection floor -- narrate accordingly.
+    # stale_price). Survivorship has a mag>0 mde here, but its calibration notes flag its
+    # magnitude-zero as not a valid null (the structural distress-drop is always active), so its
+    # printed MDE measures sensitivity to distress severity, not a general detection floor.
     structural = (mde_mag == 0.0)
     mde_bp = None
     if mde_mag is not None and not structural:

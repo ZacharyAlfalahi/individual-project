@@ -28,8 +28,7 @@ PAPERS[*]["constructions"] is now the FAKE seed only -- it scripts the offline
 FakeModelClients so ``--phase fake`` still proves the assemble -> validate path;
 the dev/report pairs enumerate against the real paper text.
 
-Pre-Phase-F follow-ups (the dev smoke runs fine without them; reportable baselines
-need them):
+Current constraints before reportable baselines (the dev smoke runs without them):
   * Format/schema failures currently fold into UNKNOWN(not_stated) (only the client's
     ``format_failures`` counter distinguishes them) -- before reportable runs they must
     be a DISTINCT trace signal so the contract §3.6 gate can separate the quote/format
@@ -316,7 +315,7 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None,
     def _q(field_name):
         # Stamp template hashes into the trace when the field is bound in the
         # manifest; else fall back to a default query (fill_field infers the kind).
-        # control_n_groups (v1.1) is not yet bound in the manifest -- follow-up.
+        # control_n_groups (v1.1) is not bound in the manifest, so it falls back to a default query.
         return manifest.query_for(field_name) if field_name in manifest.field_types else None
 
     def _skipped(cause: str):
@@ -325,8 +324,8 @@ def make_assembler(model_a, model_b, registry, manifest, field_limit=None,
     def assemble(construction: Construction, canonical_text, prov: RunProvenance):
         # method_summary renders with this construction's name (the Protocol
         # carries no construction context) -- set it on any client that supports it.
-        # The enumeration quote rides beside it for scoped-field runs (CI-10
-        # candidate): inert unless the client's scoped_fields flag is on.
+        # The enumeration quote rides beside it for scoped-field runs (a
+        # candidate feature): inert unless the client's scoped_fields flag is on.
         for m in (model_a, model_b):
             if hasattr(m, "current_strategy_label"):
                 m.current_strategy_label = construction.name
@@ -896,7 +895,7 @@ def main(argv=None) -> int:
     ap.add_argument("--canonical-text", default=None, dest="canonical_text_override",
                     help="override the paper's frozen canonical text path (T5 perturbed variant).")
     ap.add_argument("--scoped-fields", action="store_true", dest="scoped_fields",
-                    help="construction-scoped field queries (CI-10 candidate): every "
+                    help="construction-scoped field queries (candidate feature): every "
                          "per-field prompt carries this construction's name + enum "
                          "quote, so a multi-construction paper's fields resolve per "
                          "construction instead of paper-level. Default OFF = the "
@@ -937,7 +936,7 @@ def main(argv=None) -> int:
     model_a, model_b = build_clients(args.phase, builder, out_dir, paper,
                                      min_interval_s=args.min_interval_s, cache_dir=cache_dir)
     if args.scoped_fields:
-        # CI-10 candidate: construction-scoped field prompts. Attribute-set like
+        # Candidate feature: construction-scoped field prompts. Attribute-set like
         # current_strategy_label; a client without the seam (FakeModelClient)
         # simply ignores the flag -- the fake path has no prompt assembly.
         for m in (model_a, model_b):

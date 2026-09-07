@@ -16,8 +16,7 @@ price_threshold=300 is realised in-place by the decimal-shift target band
 filter) is a documented deferral — see thresholds.yaml + citations_verified.md §1.
 
 PROVENANCE — port + disclose (spec v4 Part J). This implementation is
-repo-derived from Dickerson's released `trace-data-pipeline`, pinned commit
-42c5dea93fce550089e175bb622dfd32a725b92f
+repo-derived from Dickerson's released `trace-data-pipeline`
 (stage1/helper_functions.py::ultra_distressed_filter and the four detectors
 _detect_anomalies_ultra / _detect_spikes_ultra / _detect_plateaus_ultra /
 flag_intraday_inconsistency_vectorized + _compute_round_mask;
@@ -468,13 +467,12 @@ def write_report(dev_counts: dict, hold_counts: "dict | None",
             "meas_err = ON, stage 3: DRR-2026 daily distressed filters "
             "(anomaly, spike, plateau, intraday; round-number mask a shared "
             "predicate). Raw family bypasses entirely per A1.1; corrected "
-            "family processes per A7. Filter implementation is REPO-DERIVED "
-            "from trace-data-pipeline pinned commit "
-            "42c5dea93fce550089e175bb622dfd32a725b92f (spec v4 Part J: port + "
+            "family processes per A7. Filter implementation is repo-derived "
+            "from Dickerson's released trace-data-pipeline (spec v4 Part J: port + "
             "disclose; the OSBAP/DRR published-output validation firewall is "
             "unaffected). See docs/data/registers/citations_verified.md §1."
         ),
-        "pinned_source_commit": "42c5dea93fce550089e175bb622dfd32a725b92f",
+        "pinned_source_commit": "trace-data-pipeline (released; spec v4 Part J)",
         "holdout_processed": hold_counts is not None,
         "rows_dev": dev_counts,
         "inputs": {
@@ -523,7 +521,7 @@ def main():
     params = load_config()
     print(f"Loaded meas_err_distressed_filters config "
           f"(thresholds sha256: {thresholds_sha256()[:12]}...)")
-    print("Stage: meas_err = ON — DRR-2026 distressed filters (repo 42c5dea9)")
+    print("Stage: meas_err = ON — DRR-2026 distressed filters (trace-data-pipeline)")
 
     print("Processing development partition...")
     dev_counts = process_partition(DEV_IN, DEV_OUT, DEV_DROPPED, params)

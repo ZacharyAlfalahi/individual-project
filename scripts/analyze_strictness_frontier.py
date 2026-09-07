@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 """
-Strictness-frontier SIMULATION over the CI-10 scoped-extraction archives.
+Strictness-frontier simulation over the scoped-extraction run archives.
+
+A post-run diagnostic: it reads the scoped-extraction archives left by a corpus
+extraction run (produced by scripts/run_librarian_corpus.py; the raw archives are
+gitignored and not shipped), so a clean clone cannot run it until those archives
+are regenerated locally.
 
 Motivating question: if the extraction shipping rule were relaxed level by
 level, what would each level buy in RQ2 coverage? Levels:
@@ -9,11 +14,11 @@ level, what would each level buy in RQ2 coverage? Levels:
   L1  ship on dual agreement, quote gate waived
   L0  additionally accept a single model's answer (dual architecture abandoned)
 
-Method — CONCRETE SIMULATION, not refusal classification: for every emitted scoped
+Method — a full simulation, not refusal classification: for every emitted scoped
 spec, the level variant is built deterministically from the spec's own recorded
 trace (per-field normalised values, agreement flags, final reasons — no new model
-calls), then pushed through the REAL adapter (`adapt_spec` + verified standing
-substitutions), and, where it compiles, the REAL runner on the corrected
+calls), then pushed through the production adapter (`adapt_spec` + verified standing
+substitutions), and, where it compiles, the production runner on the corrected
 development panel. Cascade refusals, conflict overrides, factory defaults, and
 binding therefore all resolve exactly as the production chain would — nothing is
 inferred from detail strings.
@@ -23,9 +28,9 @@ Ship rules per level (only for fields the run left UNKNOWN in the review lane):
       -> ship the agreed value.
   L0: additionally single_response (ship the answering model's value), and
       quote_match_failure with only one normalised value present. A genuine
-      disagreement ships at NO level.
+      disagreement ships at no level.
 
-Scope + honesty notes:
+Scope and boundaries:
   * Only value fields are simulated (Part-2 commons, leg dials, combiner kind).
     Structural fields (sort signal, control axis, Part 1) are never altered, so a
     construction that failed Guard 1 at emission stays out -- this simulation
@@ -34,7 +39,7 @@ Scope + honesty notes:
     are precisely the worlds where the quote-evidence requirement is waived.
   * Simulated fields carry tag DESIGN with a "frontier-sim" evidence note (a
     deliberate analysis substitution; STATED's D7 locator requirement is the very
-    discipline the relaxed levels waive, so claiming STATED would forge
+    discipline the relaxed levels waive, so claiming STATED would misstate
     provenance). They exist only inside this analysis and are never written into
     any run directory or coverage artifact.
   * L2 is cross-pinned: re-adapting the emitted specs must reproduce the committed
@@ -260,8 +265,8 @@ def never_emitted_detail(run_dirs=_RUN_DIRS, dir_paper=None, gold_paths=None) ->
 
     Dispositions are cross-checked against the run's recorded events, never
     assigned by elimination alone: the never-emitted count must equal the
-    emission-error event count, event-carried construction names (stamped since
-    the CI-10 follow-up) must match the derived set exactly, and the
+    emission-error event count, event-carried construction names (stamped for
+    attribution) must match the derived set exactly, and the
     ``guard1_emission_refusal`` label is used only when the event's own detail
     names Guard 1 -- otherwise the generic ``emission_refusal`` is reported.
 
@@ -346,7 +351,7 @@ def never_emitted_detail(run_dirs=_RUN_DIRS, dir_paper=None, gold_paths=None) ->
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        description="Strictness-frontier simulation over the CI-10 archives")
+        description="Strictness-frontier simulation over the run archives")
     ap.add_argument("--out", default=None,
                     help="output JSON (default results/strictness_frontier.json)")
     args = ap.parse_args(argv)

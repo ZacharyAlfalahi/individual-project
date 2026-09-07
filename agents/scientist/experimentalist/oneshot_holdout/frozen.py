@@ -41,7 +41,7 @@ from __future__ import annotations
 # 2026-09-06 after merging the two registers (T2-SEL-7 + the P1/P2/phase_f blocks + the
 # bbw_2019_masked exclusion entry). one-shot holdout's real run
 # has not run, so re-pinning is maintenance, not a provenance break. Any later thresholds change must re-pin.
-FROZEN_THRESHOLDS_SHA256 = "55e9402f265e89dd46f8e970f69884cf3f954b49d0107cecc6e8680d748a0ec9"
+FROZEN_THRESHOLDS_SHA256 = "e5dc27c3778ca877726f8081514f717e4edf4795c741f9aa4f588f6e55be8d30"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library

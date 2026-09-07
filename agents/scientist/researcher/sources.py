@@ -1,5 +1,5 @@
 """ProposalSource rungs (spec §8.1) — the deterministic ablation ladder, plus the generation
-loop (§8.2). Build the protocol first, rung 3 (llm) last.
+loop (§8.2). Rungs 1–2 (deterministic) are defined in this module; rung 3 is the generative step.
 
   rung 1  random_eligible  — random.sample over the eligible proposal space (isolates: does the
                              library + deterministic filter alone produce anything?).
@@ -8,7 +8,7 @@ loop (§8.2). Build the protocol first, rung 3 (llm) last.
                              R4: exact cosine over <=25 vectors, no index.faiss (ANN is not
                              bit-reproducible; exact ranking is). The embedder is INJECTED so the
                              logic is testable without the sentence-transformers dependency.
-  rung 3  llm_researcher   — DEFERRED (not built in this cycle).
+  rung 3  llm_researcher   — the generative rung; not part of this deterministic-ladder module.
 
 Generation rules (§8.2 / prohibition 6): EXACTLY m candidates per case per seed; invalid and
 duplicate proposals are COUNTED, never regenerated (no retry loop); persist ALL seeds (R5). The
@@ -199,13 +199,13 @@ def _cosine(q: np.ndarray, M: np.ndarray) -> np.ndarray:
 
 def minilm_embedder() -> Callable[[list[str]], np.ndarray]:
     """Production embedder: lazy MiniLM (all-MiniLM-L6-v2). Raises a clear error if
-    sentence-transformers is not installed — a DEFERRED dependency (like the rung-3 model access),
-    NOT needed for the retrieval logic, which is tested with an injected deterministic stub."""
+    sentence-transformers is not installed — an optional dependency (like the rung-3 model access),
+    not needed for the retrieval logic, which is tested with an injected deterministic stub."""
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:  # pragma: no cover - exercised only when the dep is absent
         raise RuntimeError(
-            "retrieval_only's MiniLM embedder needs `sentence-transformers` (deferred dep). "
+            "retrieval_only's MiniLM embedder needs `sentence-transformers` (optional dep). "
             "Install it, or inject a custom embedder into RetrievalOnlySource."
         ) from exc
     model = SentenceTransformer("all-MiniLM-L6-v2")
