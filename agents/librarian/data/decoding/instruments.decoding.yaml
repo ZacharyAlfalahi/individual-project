@@ -10,4 +10,4 @@ top_p: 1
 structured: true
 schema: schemas/instruments.schema.json
 k: 1
-max_output_tokens: 4096
+max_output_tokens: 8192  # ceiling: a full multi-row instrument reply must not truncate mid-JSON

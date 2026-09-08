@@ -42,6 +42,7 @@ import hashlib
 import json
 import random
 import re
+import sys
 import time
 from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
@@ -568,6 +569,17 @@ def _retry_after_seconds(exc: Exception) -> float | None:
 # JSON parsing helpers.
 # ---------------------------------------------------------------------------
 
+def _warn_if_truncated(raw_text, *, field, kind, cap) -> None:
+    """A parse-None reply that ends mid-JSON is a truncation (the max_output_tokens class),
+    not malformed-but-complete. Surface it on stderr so truncation is never silent; both still
+    fold to UNKNOWN(not_stated) downstream (the distinct trace-signal is a pre-reportable
+    constraint, see run_librarian.py)."""
+    if raw_text and raw_text.rstrip()[-1:] not in "}]`":
+        print(f"[real_client] truncation suspected: field={field!r} kind={kind} cap={cap} -- "
+              f"reply ends mid-JSON; raise the field's max_output_tokens (the cap is too small)",
+              file=sys.stderr)
+
+
 def _parse_json(text: str) -> dict | None:
     """Best-effort parse of a model's JSON reply. Strips ``` fences and slices to
     the outermost object. Returns None on failure (the caller records a format
@@ -970,6 +982,7 @@ class RealModelClient:
         model_id_stamp = version or self.model_id
         if parsed is None:
             self.format_failures += 1
+            _warn_if_truncated(raw_text, field=query.field, kind=query.kind, cap=max_tokens)
             answer = ModelAnswer(field=query.field, answered=False, model_id=model_id_stamp,
                                  parse_failed=True)
         else:
@@ -1004,6 +1017,7 @@ class RealModelClient:
         parsed = _parse_json(raw_text)
         if parsed is None:
             self.format_failures += 1
+            _warn_if_truncated(raw_text, field="enumeration", kind="run_template", cap=max_tokens)
             return ()
         return _constructions_from_parsed(parsed)
 
@@ -1039,6 +1053,7 @@ class RealModelClient:
         parsed = _parse_json(raw_text)
         if parsed is None or not isinstance(parsed.get("instruments"), list):
             self.format_failures += 1
+            _warn_if_truncated(raw_text, field="instruments", kind="run_template", cap=max_tokens)
             return None
         return [r for r in parsed["instruments"] if isinstance(r, dict)]
 

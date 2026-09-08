@@ -2,13 +2,14 @@
 #
 # Temperature 0 + structured (JSON-schema-constrained) decoding, per D10/D33.
 # The enumeration stage returns the full construction list in ONE structured call
-# (a run-template, not a per-field kind): k=1 primary sampling, deterministic. The
-# output budget is larger than the per-field kinds because one reply carries every
-# construction (name + verbatim quote + class + optional grid) at once.
+# (a run-template, not a per-field kind): k=1 primary sampling, deterministic.
+# max_output_tokens is a ceiling, not a spend: a full list must not truncate
+# mid-JSON (a truncated reply fails _parse_json and reads as empty). A larger ceiling
+# allows complete long replies without forcing extra output on short ones.
 field_type: enumeration
 temperature: 0
 top_p: 1
 structured: true
 schema: schemas/enumeration.schema.json
 k: 1
-max_output_tokens: 1024
+max_output_tokens: 8192

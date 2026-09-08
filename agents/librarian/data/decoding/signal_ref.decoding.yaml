@@ -9,4 +9,4 @@ top_p: 1
 structured: true
 schema: schemas/signal_ref.schema.json
 k: 1
-max_output_tokens: 512
+max_output_tokens: 2048  # ceiling: room for the value + its verbatim quote; a truncated reply parses to None, never a silent UNKNOWN
