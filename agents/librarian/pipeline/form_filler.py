@@ -51,6 +51,10 @@ QUOTE_MATCH_FAILURE: str = "quote_match_failure"
 SINGLE_RESPONSE: str = "single_response"  # one model answered, the other content-silent (D11 amendment 2026-07-09)
 STATED_REASON: str = "quoted"
 
+# Ship-gate locate level (QR-2, elected 2026-09-07): promoted L1 -> L2
+# (de-hyphenation). L2 is a frozen level of the committed normalisation ladder.
+SHIP_GATE_LEVEL: str = "L2"
+
 # Fields the form-filler is scoped to fill (build brief §5.3 scope note): Part 1
 # menu fields + every field already final in the committed Part 2 inventory. The
 # free-text method_summary and the SignalRef markers are handled specially.
@@ -333,8 +337,11 @@ def fill_field(
 
     q_a = _primary_quote(ans_a)
     q_b = _primary_quote(ans_b)
-    loc_a = canonical_text.locate(q_a) if (ans_a.answered and q_a) else None
-    loc_b = canonical_text.locate(q_b) if (ans_b.answered and q_b) else None
+    # The ship gate locates at ladder level L2 (de-hyphenation), not the recorded L1: L2
+    # is a frozen, calibration-free level of the committed ladder that recovers true spans
+    # rejected at L1 only by an intra-word hyphen or line-break, while preserving precision.
+    loc_a = canonical_text.locate(q_a, level=SHIP_GATE_LEVEL) if (ans_a.answered and q_a) else None
+    loc_b = canonical_text.locate(q_b, level=SHIP_GATE_LEVEL) if (ans_b.answered and q_b) else None
 
     norm_a = normalise(field, ans_a.raw, value_kind) if ans_a.answered else None
     norm_b = normalise(field, ans_b.raw, value_kind) if ans_b.answered else None
