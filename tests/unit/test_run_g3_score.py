@@ -80,3 +80,30 @@ def test_map_override_parsing(tmp_path, monkeypatch):
     with pytest.raises(Exception):
         cli.main(["--run-root", str(tmp_path), "--anchors", "str",
                   "--map", "str=nowhere:0", "--allow-non-reportable"])
+
+
+def test_resolve_artefacts_unwraps_the_gold_inherited_label(tmp_path):
+    """The gold header's strategy_label is an Inherited wrapper; matching must
+    compare its .value, not the wrapper (2026-09-07 QR-1 review finding)."""
+    import hashlib
+
+    from evaluation.gold_specs.gold_loader import load_gold_spec
+    from evaluation.harness.run_artefacts import canonical_trace_json
+
+    def write_strategy(run_dir, index, label):
+        trace = {"header": {"paper_id": "STUB", "strategy_label": label}, "records": []}
+        trace_json = canonical_trace_json(trace)
+        (run_dir / f"trace_{index}.json").write_text(trace_json, encoding="utf-8")
+        spec = {"header": {"trace_sha256": hashlib.sha256(trace_json.encode()).hexdigest()}}
+        (run_dir / f"spec_{index}.json").write_text(json.dumps(spec), encoding="utf-8")
+
+    raw_label = load_gold_spec("str").header.strategy_label
+    gold_value = getattr(raw_label, "value", raw_label)
+    assert isinstance(gold_value, str) and gold_value
+
+    run_dir = tmp_path / "multi"
+    run_dir.mkdir()
+    write_strategy(run_dir, 0, "some other strategy label")
+    write_strategy(run_dir, 1, gold_value)
+    art = cli._resolve_artefacts("str", run_dir, None)
+    assert art.header["strategy_label"] == gold_value
