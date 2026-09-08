@@ -132,7 +132,8 @@ def run_experimentalist(
         if compiled.template_mode == "month_filter" and compiled.panel_transform is not None:
             # Route to the proposal's OWN conditioning series (None -> MISSING_INPUT downstream).
             macro_series = (macros or {}).get(compiled.panel_transform.variable)
-        g1b, exec_res = execute_g1b(compiled, panel, base_rulebook, macro=macro_series)
+        g1b, exec_res = execute_g1b(compiled, panel, base_rulebook, macro=macro_series,
+                                    holding_period=holding_period)
         if not g1b.passed:
             stored[p.proposal_id] = (_booleans(g0.booleans, compiled=True, execution_verified=False),
                                      g1b.refusal_code, Measurements())

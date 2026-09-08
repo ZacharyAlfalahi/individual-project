@@ -104,7 +104,12 @@ def _load_dotenv(path: Path) -> None:
 #    3 fields, so we reconstruct exactly those, as the entry-rule unit test does).
 # --------------------------------------------------------------------------
 
-def build_case(audit_json: Path = _STR_AUDIT):
+def build_case(audit_json: Path = _STR_AUDIT, *, strategy_id: str = "str",
+               case_id: str = "rq4_str", corrected_quant_config_ref: str = "qc_str_corrected",
+               corrected_run_ref: str = "str_corrected"):
+    """Defaults reproduce the recorded str funnel byte-identically; the SC-SCI-16 capability
+    benchmark passes the non-entering anchors' ids + report paths through the same shim
+    (corrected_run_ref is per-anchor here — each anchor has its own corrected run dir)."""
     params = load_entry_rule_params()
     rd = json.loads(Path(audit_json).read_text(encoding="utf-8"))
     runnable = tuple(rd["runnable_toggles"])
@@ -118,8 +123,8 @@ def build_case(audit_json: Path = _STR_AUDIT):
                                    runnable_toggles=runnable),
         fdr=types.SimpleNamespace(decisions=dec))
     case = build_scientist_case(
-        report, strategy_id="str", case_id="rq4_str",
-        corrected_quant_config_ref="qc_str_corrected", corrected_run_ref="str_corrected",
+        report, strategy_id=strategy_id, case_id=case_id,
+        corrected_quant_config_ref=corrected_quant_config_ref, corrected_run_ref=corrected_run_ref,
         audit_report_ref=str(audit_json),
         development_window=DevelopmentWindow("2002-07", "2021-12"),
         holdout_status=HoldoutStatus(accessible=False), theta=params.theta, q=params.q)

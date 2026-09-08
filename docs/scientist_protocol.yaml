@@ -91,7 +91,7 @@ entry:
   condition: failed_at_least_one_auditor_check
   evaluated_at: corrected_lattice_point
   refused_strategies: excluded_from_numerator_counted_in_denominator
-  # O8 — interaction-borne entry fallback (spec §16 open item; committed now so it is not
+  # O8 — interaction-borne entry fallback (spec §16 item; committed now so it is not
   # invented after seeing a result). The per-toggle first-order rule (thresholds.yaml
   # scientist.entry_rule) is primary; expected incidence here is zero (all three anchors are
   # main-effect-dominated).
@@ -252,7 +252,7 @@ amendments:                      # logged amendments appended here post-tag (see
       POST-TAG AMENDMENT — holdout evaluation window ruled 2022-2025 (48 months), the full
       /data/holdout/ partition, superseding the 2022-2024 window stated at the tag (the holdout
       block comment in this file, the SC-SCI-3 caveat, ARCHITECTURE.md RQ4) and resolving FINAL decision
-      log open item O6. A definitional deviation from the interim pre-registration, ruled
+      log item O6. A definitional deviation from the interim pre-registration, ruled
       2026-08-05 BEFORE any holdout read (no holdout artefact accessed; the walk-forward split is
       intact — every evaluation month remains post-development, so this is added forward sample,
       not leakage). Consequences: OOS T rises 36 -> 48 months; the 60-month support floors still
@@ -448,3 +448,95 @@ amendments:                      # logged amendments appended here post-tag (see
       71 offline tests pass; thresholds.yaml unchanged.
       TIMING: recorded pre-holdout (register-before-run); no holdout artefact, listing, or metadata
       accessed — so no window-selection (post-hoc) risk.
+  - id: SC-SCI-16
+    date: 2026-09-06
+    status: APPROVED              # Decision recorded 2026-09-06. POST-HOC diagnostic: this amendment
+                                  # was written AFTER observing the development-funnel result
+                                  # (0/24 advanced, sole eligible parent str) and is disclosed as
+                                  # such. Register-before-run applies to the benchmark's OWN runs:
+                                  # this entry precedes every capability-benchmark execution.
+    finding: scientist-capability-benchmark
+    summary: >
+      SCIENTIST CAPABILITY BENCHMARK over the non-entering corrected parents (drf, mom6) — the
+      second layer of a two-question separation the original design conflated. RQ4 as registered
+      answers two questions at once: (1) does the preceding pipeline produce strategies deserving
+      extension, and (2) conditional on a suitable parent, does the Scientist produce quality
+      extensions? With one eligible parent (str), question (2) is under-exercised: the 24 funnel
+      proposals share one parent, one development period, one mechanism library, one template set,
+      and one evaluator, so "the Scientist is weak" cannot be distinguished from "the Scientist was
+      barely exercised". This amendment adds the missing layer as a POST-HOC DIAGNOSTIC, and the
+      thesis admits the conflation as a design flaw regardless (the benchmark partially remedies it
+      along the parent axis ONLY — period, library, templates, and evaluator remain shared).
+      DESIGN: run the unchanged generation + gate stack over every audit-set anchor's fully
+      corrected (all-ON) parent REGARDLESS of entry — parent set fixed by STRUCTURE (the RQ3 audit
+      census: str [reference; already run as the registered funnel], mom6, drf), never by results.
+      crf is structurally excluded (RQ3-excluded, no corrected lattice cell exists); lrf is the
+      negative control. Exactly ONE pre-registered gate is relaxed — entry
+      (failed_at_least_one_auditor_check) — and the bypass is recorded per parent
+      (entered_would_be, entry_bypassed: true). Every other registered parameter holds at its
+      committed value: m = 6 per strategy (per_strategy {str: 6, mom6: 6, drf: 6}, committed
+      BEFORE the first generation run precisely because entry outcomes were unknown), k = 5,
+      q = 0.10, BBW4 primary inference, realised-parent-sign direction rule, compiled-transform
+      dedup, cap = null, the generative wall, and the 13-code refusal taxonomy. Eligibility is
+      evaluated at each parent's TRUE holding period (SC-SCI-7 executability census, ex ante:
+      str 11, drf 11, mom6 9 — all >= the 8 gate).
+      STATUS OF RESULTS: descriptive proposal-quality metrics only (schema-valid / executable /
+      audit-clean / duplicate rates, typed refusal profile, dev-window alpha statistics, and the
+      per-parent EXHAUSTIVE CEILING — the §4.6.2.5 canonical benchmark generalised — so each
+      parent's funnel outcome is read against what the library could possibly achieve on that
+      parent). The G3 BH-FDR/G4/G5 stages run mechanically to complete the funnel readout, but no
+      confirmatory selection claim attaches to non-entering parents and NOTHING advances: the
+      HOLDOUT STAYS SHUT (dev-window only; the single protected holdout remains reserved for
+      pipeline-conditioned survivors under the registered RQ4).
+      ARMS: random_eligible + retrieval_only (production MiniLM) are reportable now (fully
+      offline). Generative-LLM arms are DEFERRED: the Phase-F response cache is parent-specific
+      (str prompts only), so new parents require new live vendor calls gated on SKU/cost
+      authorization; the deferral is recorded in the artifact, not silently dropped.
+      CODE: execute_g1b grows a holding_period kwarg (default 1, byte-identical) routing
+      holding > 1 through the audited overlap.run_with_holding_period engine (single-sort only —
+      double-sort at holding > 1 is already compiler-refused per SC-SCI-7); run_experimentalist
+      threads its existing holding_period parameter into that call; evaluate_batch
+      (run_rq4_exhaustive_benchmark) is parameterised identically. New driver
+      scripts/run_rq4_capability_benchmark.py generalises the corrected-parent construction
+      (auditor-exact all-ON cell, self-verified against run_cell at zero tolerance per parent,
+      dev-window guard, per-parent derived direction) and writes artifacts under
+      results/scientist/rq4_capability/ — the recorded funnel artifacts are never touched.
+      thresholds.yaml is unchanged (no FROZEN_THRESHOLDS_SHA256 re-pin).
+  - id: SC-SCI-17
+    date: 2026-09-07
+    status: APPROVED              # RATIFIED 2026-09-08, closing the earlier DRAFT. SC-SCI-16
+                                  # registered the unlock condition (SKU/cost authorization) ex
+                                  # ante, so this entry records — it does not gate — an
+                                  # already-registered contingency; the generative capability run
+                                  # is licensed by that ex-ante registration plus this ratification.
+    finding: scientist-capability-benchmark-generative-arms
+    summary: >
+      GENERATIVE ARMS for the SC-SCI-16 capability benchmark — the deferral SC-SCI-16 recorded is
+      now lifted. SC-SCI-16 ran random_eligible + retrieval_only over the two non-entering
+      corrected parents (drf, mom6) and DEFERRED the generative-LLM arms for one reason only: the
+      Phase-F response cache is parent-specific (str prompts), so new parents need new live vendor
+      calls, gated on SKU/cost authorization. That authorization was granted on 2026-09-07.
+      This amendment runs the UNCHANGED generation + gate stack over drf and mom6 at their fully
+      corrected (all-ON) cells with ALL THREE sources — random_eligible + retrieval_only (MiniLM)
+      + the Phase-F generative pair (claude-sonnet-4-6, gemini-3.5-flash, scientist.model_stack
+      .phase_f). Every registered parameter holds at its SC-SCI-16 value: m = 6, k = 5, q = 0.10,
+      BBW4 inference, realised-parent-sign direction, compiled-transform dedup, cap = null, the
+      generative wall (no realised statistic ever reaches a generative call), the 13-code refusal
+      taxonomy, and per-parent eligibility at the true holding period. The random/retrieval arms
+      reproduce the SC-SCI-16 ADVANCEMENT outcomes (a determinism cross-check; the generated_at
+      metadata stamp differs); the generative arm is the new content.
+      STATUS OF RESULTS: identical to SC-SCI-16 — descriptive proposal-quality metrics only; the
+      G3 BH-FDR/G4/G5 stages run mechanically to complete the funnel readout; no confirmatory
+      selection claim attaches to a non-entering parent; NOTHING advances; the HOLDOUT STAYS SHUT
+      (dev-window only; the single protected holdout remains reserved for pipeline-conditioned
+      survivors under the registered RQ4). The generative arm is expected to change no conclusion:
+      the per-parent exhaustive canonical ceiling already sits below the joint BH bar on both
+      parents, though a non-canonical (mechanism, variable) proposal is not logically barred from
+      beating its canonical representative, which is why the arm is run rather than assumed.
+      CODE: SC-SCI-16's driver (scripts/run_rq4_capability_benchmark.py) and its deferral-guard
+      test STAY FROZEN — this is a SIBLING, scripts/run_rq4_capability_generative.py, that
+      reuses SC-SCI-16's frozen helpers (corrected_parent, directional_ceiling, _ANCHORS) and adds
+      the generative sources exactly as the funnel wires them (LLMResearcherSource + ResponseCache
+      + build_phase_f_clients over a dedicated parent-specific cache). Artifacts are written
+      under results/scientist/rq4_capability_generative/; the SC-SCI-16 artifacts are never touched.
+      thresholds.yaml is unchanged (no FROZEN_THRESHOLDS_SHA256 re-pin).

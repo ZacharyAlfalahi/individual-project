@@ -120,9 +120,12 @@ def canonical_proposals(case, elig, library) -> list:
 
 
 def evaluate_batch(proposals, *, case, library, panel, base_rulebook, bbw4, macros,
-                   available, reporting_delays, parent_mean_bp) -> list[dict]:
+                   available, reporting_delays, parent_mean_bp,
+                   holding_period: int = 1) -> list[dict]:
     """Mirror of the orchestrator's Phase A (G0→G1a→dedup→G1b→G2) plus per-candidate G3
-    regression statistics. Deliberately NO run_fdr and NO G4/G5 — see module docstring."""
+    regression statistics. Deliberately NO run_fdr and NO G4/G5 — see module docstring.
+    holding_period (SC-SCI-16, default 1 = the recorded str behaviour) is threaded to
+    compile_g1a and execute_g1b for multi-month-hold parents."""
     rows: list[dict] = []
     seen: set = set()
     seen_transforms: set = set()
@@ -142,7 +145,7 @@ def evaluate_batch(proposals, *, case, library, panel, base_rulebook, bbw4, macr
             continue
         seen.add(equivalence_key(p))
         template = library.templates[p.template_ref]
-        g1a, compiled = compile_g1a(p, template, case, holding_period=1,
+        g1a, compiled = compile_g1a(p, template, case, holding_period=holding_period,
                                     available_variables=available)
         if not g1a.passed:
             row.update(status="refused", refusal_code=g1a.refusal_code.value, gate="G1a")
@@ -157,7 +160,8 @@ def evaluate_batch(proposals, *, case, library, panel, base_rulebook, bbw4, macr
         macro_series = None
         if compiled.template_mode == "month_filter" and compiled.panel_transform is not None:
             macro_series = (macros or {}).get(compiled.panel_transform.variable)
-        g1b, exec_res = execute_g1b(compiled, panel, base_rulebook, macro=macro_series)
+        g1b, exec_res = execute_g1b(compiled, panel, base_rulebook, macro=macro_series,
+                                    holding_period=holding_period)
         if not g1b.passed:
             row.update(status="refused", refusal_code=g1b.refusal_code.value, gate="G1b")
             rows.append(row)

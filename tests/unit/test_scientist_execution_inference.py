@@ -181,3 +181,48 @@ def test_g3_sign_aware_survivor_for_negative_premium_strategy():
 def test_two_sided_p_matches_normal():
     assert two_sided_p(1.96) == pytest.approx(0.05, abs=2e-3)
     assert two_sided_p(0.0) == pytest.approx(1.0)
+
+
+# ---- G1b holding-period routing (SC-SCI-16) -----------------------------------------------
+
+def test_g1b_holding_period_default_is_unchanged():
+    # holding_period=1 (explicit) must be byte-identical to the historical call (implicit) —
+    # the recorded str funnel's regression bar.
+    ext = _ext("row_filter", transform=PanelTransform("row_filter", "rating", 1,
+                                                      "restrict_investment_grade"))
+    out_a, res_a = execute_g1b(ext, _panel(), _BASE_RULEBOOK)
+    out_b, res_b = execute_g1b(ext, _panel(), _BASE_RULEBOOK, holding_period=1)
+    assert out_a.passed and out_b.passed
+    pd.testing.assert_series_equal(res_a.candidate_returns, res_b.candidate_returns)
+
+
+def test_g1b_holding_gt1_routes_through_overlap_engine():
+    from agents.quant.library.overlap import run_with_holding_period
+    ext = _ext("row_filter", transform=PanelTransform("row_filter", "rating", 1,
+                                                      "restrict_investment_grade"))
+    # Rotating scores: cohort membership changes each formation month, so the H=3 average of
+    # staggered cohorts genuinely differs from the H=1 series (constant scores would make every
+    # cohort identical and the two paths numerically coincide).
+    panel = _panel()
+    panel["score"] = (panel["score"] + panel["date"].dt.month.astype(float)) % 20
+    out, res = execute_g1b(ext, panel, _BASE_RULEBOOK, holding_period=3)
+    assert out.passed and out.booleans["execution_verified"]
+    expected = run_with_holding_period(
+        apply_row_filter(panel, variable="rating", form="restrict_investment_grade"),
+        _BASE_RULEBOOK, 3).set_index("date")["strategy_ret"]
+    pd.testing.assert_series_equal(res.candidate_returns, expected)
+    # and the dispatch is real: the H=1 series differs
+    _, res_h1 = execute_g1b(ext, panel, _BASE_RULEBOOK, holding_period=1)
+    common = res.candidate_returns.index.intersection(res_h1.candidate_returns.index)
+    assert not np.allclose(res.candidate_returns.loc[common].to_numpy(),
+                           res_h1.candidate_returns.loc[common].to_numpy(), equal_nan=True)
+
+
+def test_g1b_double_sort_at_holding_gt1_is_execution_mismatch():
+    # Defensive backstop: the compiler refuses double_sort at holding>1 upstream (SC-SCI-7);
+    # a hand-built compiled extension reaching G1b must fail typed, never leak overlap's
+    # NotImplementedError.
+    ext = _ext("double_sort", control="rating")
+    out, res = execute_g1b(ext, _panel(), _BASE_RULEBOOK, holding_period=3)
+    assert not out.passed and res is None
+    assert out.refusal_code is RefusalCode.EXECUTION_MISMATCH

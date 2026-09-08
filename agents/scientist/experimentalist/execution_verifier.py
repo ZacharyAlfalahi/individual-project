@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from agents.quant.library.characteristic_sort import run_characteristic_sort
+from agents.quant.library.overlap import run_with_holding_period
 
 from ..schemas.outcomes import RefusalCode
 from .gate_result import GateOutcome
@@ -42,8 +43,14 @@ def _respects_transform(compiled, run_panel: pd.DataFrame, result: dict) -> bool
     return False
 
 
-def execute_g1b(compiled, panel: pd.DataFrame, base_rulebook: dict, *, macro=None, min_history=60):
-    """Return (GateOutcome, ExecutionResult | None). EXECUTION_MISMATCH on any procedural failure."""
+def execute_g1b(compiled, panel: pd.DataFrame, base_rulebook: dict, *, macro=None, min_history=60,
+                holding_period: int = 1):
+    """Return (GateOutcome, ExecutionResult | None). EXECUTION_MISMATCH on any procedural failure.
+
+    holding_period > 1 (SC-SCI-16) routes through the audited overlap engine
+    (run_with_holding_period; single-sort only — a double_sort at holding > 1 is compiler-refused
+    upstream per SC-SCI-7, so hitting one here is a procedural failure). Default 1 is the
+    unchanged run_characteristic_sort path."""
     def fail():
         return GateOutcome("G1b", passed=False, booleans={"execution_verified": False},
                            refusal_code=RefusalCode.EXECUTION_MISMATCH), None
@@ -80,10 +87,16 @@ def execute_g1b(compiled, panel: pd.DataFrame, base_rulebook: dict, *, macro=Non
     if len(run_panel) == 0:                # the transform left nothing to run
         return fail()
     try:
-        result = run_characteristic_sort(run_panel, rulebook)
+        if holding_period == 1:
+            result = run_characteristic_sort(run_panel, rulebook)
+            mr = result.get("monthly_returns")
+        else:
+            if mode == "double_sort":      # overlap v1 is single-sort only (compiler-refused upstream)
+                return fail()
+            mr = run_with_holding_period(run_panel, rulebook, holding_period)
+            result = {"monthly_returns": mr, "settings_used": {}}
     except Exception:                      # any engine error is a procedural (execution) failure
         return fail()
-    mr = result.get("monthly_returns")
     if mr is None or len(mr) == 0:
         return fail()
     if not _respects_transform(compiled, run_panel, result):
