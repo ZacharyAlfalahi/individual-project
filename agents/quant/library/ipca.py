@@ -934,7 +934,7 @@ def smoothing_cost_curve(
     For each γ: smooth the weight path, realise ``w̃_t·f_t``, subtract the per-period 19 bp turnover
     drag, report the net Sharpe. ``weights_path`` is (J, K); ``factor_path`` is (K, J). At γ=0 the
     net return is gross minus the un-smoothed turnover cost. (The spread leg emits no weight path —
-    that path is the deferred item; see docs/quant/registers/ipca_adjudications.md.)
+    that path is out of scope by design.)
     """
     wp = np.asarray(weights_path, dtype=np.float64)
     fp = np.asarray(factor_path, dtype=np.float64)
@@ -1316,7 +1316,7 @@ def context_table(
     """Render the §10.4 context-value comparison as markdown (§10 acceptance harness).
 
     ``computed`` = the run's metrics; ``context_values`` = the published reference numbers (KPP
-    §10.4 — placeholders until ``kelly_2023_ipca.md`` is authored; NOT gates, POLICY D1). A missing
+    §10.4 — non-gating context placeholders, POLICY D1). A missing
     context entry renders ``—``. ``comparability_label`` stamps non-comparable runs at the top so the
     table can never be mistaken for a like-for-like target. Built against synthetic placeholders
     per §10; the WS-B shakedown calls this on real (non-comparable) data.

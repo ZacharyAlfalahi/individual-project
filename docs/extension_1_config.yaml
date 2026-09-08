@@ -6,8 +6,8 @@
 # opens; the SAME fixed median is applied on the 2022-01..2025-09 holdout window (45mo, SC-SCI-12) (so there is no holdout
 # look-ahead — the split threshold is frozen from development).
 #
-# STATUS: DRAFT — not final. The decision flagged below (which window defines the
-# median). Git-tagged with the rest of the pre-registration (`scientist-prereg`, after census).
+# STATUS: PRE-REGISTERED. The median-window decision is resolved and frozen from development;
+# git-tagged with the rest of the pre-registration (`scientist-prereg`, after census).
 # =============================================================================================
 
 version: 1.0.0

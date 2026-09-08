@@ -1,6 +1,6 @@
 # Architecture
 Five-agent LLM pipeline for corporate bond factor replication, bias detection, and extension. Two-layer corpus: anchor (BBW + short-term reversal + six-month momentum, n=3, data-matched, fully manual; KPP methodology-exemplar and Duraj-Giesecke showcase sit outside it) + scale (10–20 papers, pipeline + paper-statistics verification).
-Every implementation is validated and verifiable.
+Implemented production paths have corresponding deterministic or synthetic validation.
 
 ## Research Questions
 RQ1 — Librarian extraction fidelity on the gold-standard set (BBW, KPP, DG): field-level per-field accuracy, multi-model agreement rate, failure taxonomy (field-level reconstruction, NOT strategy-class routing).

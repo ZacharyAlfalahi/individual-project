@@ -335,7 +335,7 @@ def view(
     # (last distressed traded price); a month with no trade is NaN and never
     # enters a sort. NO recovery overlay is applied — a bond that stops trading
     # AT default contributes no crater, which understates the gap. Sensitivity
-    # test (last-price vs ~40% recovery) is tracked in docs/backlog/remaining_work.md.
+    # test (last-price vs ~40% recovery) is a deliberate out-of-scope sensitivity (no recovery overlay by design).
     if "exit_reason" in panel.columns and not config.panel_view.include_terminal_rows:
         distress = set(_load_distress_exits() if distress_exits is None else distress_exits)
         panel = panel[~panel["exit_reason"].isin(distress)].copy()

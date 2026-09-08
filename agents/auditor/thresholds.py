@@ -1,6 +1,6 @@
 """
 thresholds.py — typed, FAIL-LOUD loader for the Auditor's pre-registration
-constants (design §13.1; open item O-A10 / O-A6).
+constants (design §13.1; items O-A10 / O-A6).
 
 The project's contribution is a critique of undisclosed researcher degrees of
 freedom, and every numerical threshold the Auditor uses is a place where a nudge

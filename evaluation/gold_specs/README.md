@@ -69,8 +69,8 @@ STATED locators as binding.
 
 - D20 enumeration golds (recipe-list per paper) — **authored for the three anchor papers**
   (`enum_bbw_2019.yaml`, `enum_drr_2026.yaml`, `enum_jnps_2013.yaml`; NO-MODEL-CONSULT). Scale-layer
-  enumeration golds (RQ2 coverage) remain **outstanding**, gated on the O1 scale-layer scope decision
-  (an open decision — see `docs/backlog/remaining_work.md`), and are transcribed manually and
+  enumeration golds (RQ2 coverage) follow the O1 scale-layer scope decision, and are
+  transcribed manually and
   independently verified without model assistance. The full reconciled inventory is `docs/evaluation/corpus_inventory.md`;
   the scale-layer selection rule (proposing O1's resolution, not yet decided) is
   `docs/evaluation/t2_selection_prereg.md`.

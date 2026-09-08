@@ -4,8 +4,8 @@ scripts/run_quant.py — the RQ2 "B1" end-to-end StrategySpec -> run orchestrati
   ./.venv/bin/python scripts/run_quant.py --anchor mom6
   ./.venv/bin/python scripts/run_quant.py --anchor all
 
-This is the deterministic compilation spine RQ2 asks for (`docs/backlog/remaining_work.md`
-Q1): a supported anchor strategy compiles StrategySpec -> adapter -> QuantConfig -> audited
+This is the deterministic compilation spine RQ2 asks for: a supported anchor strategy
+compiles StrategySpec -> adapter -> QuantConfig -> audited
 runner and RUNS on the development panel; an unsupported family (or a spec the engine stack
 cannot represent) emits a TYPED `ConfigRefusal`, recorded for the RQ2 coverage denominator
 rather than crashing. It is "`scripts/run_auditor.py` minus the 2^k bias-toggle lattice":

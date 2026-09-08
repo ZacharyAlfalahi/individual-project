@@ -195,7 +195,7 @@ python scripts/run_ipca_shakedown.py  # in-sample K-sweep + recursive OOS
 ## Tests
 
 ```bash
-python -m pytest tests/unit/ -q                          # full unit suite (256 test files)
+python -m pytest tests/unit/ -q                          # full unit suite (261 test files)
 python -m pytest tests/synthetic/ -q                     # incl. the IPCA certification battery
 ```
 

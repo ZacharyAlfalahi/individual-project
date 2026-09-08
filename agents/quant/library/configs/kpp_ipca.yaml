@@ -58,4 +58,4 @@ window:
   name: development         # paper | paper_analogue | development [POLICY K15]
   oos_burn_in_months: 36    # [CODE Trange=36:T-1; PAPER Table IV caption]
 context_values:
-  source: kelly_2023_ipca.md §10.4   # NOT gates [POLICY D1]; file absent — placeholders until authored
+  source: kelly_2023_ipca.md §10.4   # NOT gates [POLICY D1]; non-gating published-reference values

@@ -1,7 +1,7 @@
 # T5 adversarial tier — refusal-recall ("must-refuse") set
 #
-# Status: DRAFT -- not yet finalised. Replaces the recorded "one out-of-scope doc" with a
-# per-category refusal-recall set (a design amendment; the count must be pre-registered before the run,
+# Status: PRE-REGISTERED (ratified). Replaces the recorded "one out-of-scope doc" with a
+# per-category refusal-recall set (a design amendment; the count is pre-registered before the run,
 # like the RQ2 refuse/FIR set). Answer key = agents/librarian/corpus_fate.py FATE_TABLE (already
 # authored). The must-refuse grader (scripts/run_t5_adversarial.py) runs run_librarian.py on each paper
 # and asserts the outcome against `expected_run_outcome`.
@@ -19,7 +19,7 @@
 # design_touched consistency test is not triggered per reject paper.
 
 schema: reject_set_v1
-status: draft_pending_ratification   # -> finalised + count pre-registered, then tag t5-adversarial-frozen
+status: finalised   # ratified; count pre-registered (8, 2026-09-01); tag t5-adversarial-frozen
 
 papers:
   # --- refuse_asset_class (equity) ---

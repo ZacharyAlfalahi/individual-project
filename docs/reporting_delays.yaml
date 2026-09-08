@@ -17,7 +17,7 @@
 #       source: str         # REQUIRED. Provenance of the series and its release cadence.
 #       note: str           # REQUIRED. Why this lag is a safe conservative minimum.
 #
-#   A loader (G2, not implemented here) reads `reporting_delays[variable].lag_months` and refuse
+#   A loader (G2, not implemented here) reads `reporting_delays[variable].lag_months` and refuses
 #   any proposal whose `config_delta.conditioning_lag_months` is below it, or whose variable is
 #   absent from this file (an unknown variable has no defensible lag -> refuse, never default).
 #
