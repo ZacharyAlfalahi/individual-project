@@ -33,10 +33,10 @@ Current constraints before reportable baselines (the dev smoke runs without them
     ``format_failures`` counter distinguishes them) -- before reportable runs they must
     be a DISTINCT trace signal so the contract §3.6 gate can separate the quote/format
     bucket from genuine silence.
-  * The quote gate is strict L1 (the frozen ladder): some real model spans locate only
-    at L2 (OCR folds) -> UNKNOWN(quote_match_failure) -> review (kept strict-L1 by
-    decision, 2026-07-16). Nudge the extraction prompts toward short, verbatim,
-    locate-friendly spans.
+  * The ship gate locates at ladder level L2 (QR-2, 2026-09-07 -- supersedes the 2026-07-16
+    strict-L1 decision): a de-hyphenation-only normalisation that recovers true spans a
+    hyphen or line-break rejected at L1, while holding selective accuracy. Extraction
+    prompts still favour short, verbatim, locate-friendly spans.
   * An authoritative per-field ``definition`` resource (frozen, hash-stamped);
     the ``control_n_groups`` manifest binding.
 """
@@ -214,6 +214,24 @@ PAPERS: dict[str, dict] = {
         "canonical_text": "evaluation/canonical_texts/bwwss_2019.frozen.yaml",
         "gold_enum": "evaluation/gold_specs/enum_bwwss_2019.yaml",
     },
+    # T2-SEL-8 expanded transfer cohort (listed 2026-09-07, gold-free; admitted 2026-09-02
+    # in the executed T2-SEL search): 10 papers drawn from the ranked search order.
+    # Deliberately NO gold_enum -- these fall through to LIVE enumeration (the honest
+    # unseen-transfer test); no StrategySpec/enum gold is authored (2026-09-07
+    # expanded-transfer pre-registration). NEVER enter the RQ3 census or RQ4 denominator.
+    "lee": {
+        "paper_id": "LEE_2022",
+        "canonical_text": "evaluation/canonical_texts/lee_2022.frozen.yaml",
+    },
+    "bgn": {"paper_id": "BGN_2025", "canonical_text": "evaluation/canonical_texts/bgn_2025.frozen.yaml"},
+    "bsw": {"paper_id": "BSW_2021", "canonical_text": "evaluation/canonical_texts/bsw_2021.frozen.yaml"},
+    "dlw": {"paper_id": "DLW_2025", "canonical_text": "evaluation/canonical_texts/dlw_2025.frozen.yaml"},
+    "manser": {"paper_id": "MANSER_2023", "canonical_text": "evaluation/canonical_texts/manser_2023.frozen.yaml"},
+    "twww": {"paper_id": "TWWW_2022", "canonical_text": "evaluation/canonical_texts/twww_2022.frozen.yaml"},
+    "zz": {"paper_id": "ZHANGZHANG_2023", "canonical_text": "evaluation/canonical_texts/zhang_zhang_2023.frozen.yaml"},
+    "cwww": {"paper_id": "CWWW_2024", "canonical_text": "evaluation/canonical_texts/cwww_2024.frozen.yaml"},
+    "fhhl": {"paper_id": "FHHL_2022", "canonical_text": "evaluation/canonical_texts/fhhl_2022.frozen.yaml"},
+    "ligalvani": {"paper_id": "LIGALVANI_2021", "canonical_text": "evaluation/canonical_texts/li_galvani_2021.frozen.yaml"},
     # T4(b) synthetic evaluation instrument (end-to-end known-answer test). Registered mode
     # is gold-enum (a single SBM construction); the planted answer key lives at
     # evaluation/synthetic/planted_key_synth_2026.yaml. Not a scale-layer corpus paper and
@@ -1112,7 +1130,10 @@ def _write_outputs(result, out_dir: Path) -> None:
         def _ev(ev):
             if hasattr(ev, "to_dict"):
                 return ev.to_dict()
-            return {"kind": type(ev).__name__, "detail": str(ev)}
+            d = {"kind": type(ev).__name__, "detail": str(ev)}
+            if getattr(ev, "construction_name", None):
+                d["construction_name"] = ev.construction_name
+            return d
         (out_dir / "events.json").write_text(
             json.dumps([_ev(ev) for ev in result.events], indent=2, ensure_ascii=False),
             encoding="utf-8",

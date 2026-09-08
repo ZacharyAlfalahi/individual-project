@@ -41,9 +41,12 @@ from __future__ import annotations
 # 2026-09-06 after merging the two registers (T2-SEL-7 + the P1/P2/phase_f blocks + the
 # bbw_2019_masked exclusion entry); RE-PINNED 2026-09-07 after adding
 # librarian.relocator_diagnostic (the locator-diagnostic bar registration: qr1 accept_bar null by
-# construction, qr2 accept_bar 0.90). one-shot holdout's real run
+# construction, qr2 accept_bar 0.90); RE-PINNED 2026-09-07 after folding
+# corpus.selection.t2_selected_papers into design_touched_exclusions and appending the T2-SEL-8
+# expanded transfer cohort (10 stems: lee_2022 … li_galvani_2021 — gold-free live-enumeration set).
+# one-shot holdout's real run
 # has not run, so re-pinning is maintenance, not a provenance break. Any later thresholds change must re-pin.
-FROZEN_THRESHOLDS_SHA256 = "ce855a029e41a78e4e14e0e8b748661d091dc76d7c083db1df2c0aa9b60da800"
+FROZEN_THRESHOLDS_SHA256 = "8b8d82ea1114a6d9cfb04678775af98d416d83508e18f73d77b81e1c56238402"
 
 # _dir_code_hash() over oneshot_holdout/*.py (excluding frozen.py). Pinned 2026-08-10; RE-PINNED 2026-08-11 after
 # panel_builder.py's imports were repointed from scripts.* to agents/quant/library (the scripts→library
