@@ -127,7 +127,7 @@ def test_g6_single_access_fires_on_second_call():
 
 def test_g6_prereg_tag_is_detected():
     if not H.prereg_tag_present("scientist-prereg"):
-        pytest.skip("pre-registration tag not shipped in this copy")
+        pytest.skip("pre-registration tag not shipped with the repository")
     # The scientist-prereg tag was applied earlier in the build; the checker finds it.
     assert H.prereg_tag_present("scientist-prereg") is True
     assert H.prereg_tag_present("no-such-tag-xyz") is False

@@ -118,7 +118,7 @@ def test_inventory_doc_mirrors_module():
     repo = Path(__file__).resolve().parents[2]
     doc_path = repo / "docs" / "auditor" / "ipca_frozen_state_inventory.md"
     if not doc_path.exists():
-        pytest.skip("inventory doc not shipped in this copy")
+        pytest.skip("inventory doc not shipped with the repository")
     doc = doc_path.read_text()
     for name in inv.CAT1_FITTED_FIELDS + inv.CAT3_EXCLUDED_FIELDS + inv.CAT4_LAMBDA:
         assert name in doc, f"inventory field {name!r} missing from the audit doc"

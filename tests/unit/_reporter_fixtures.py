@@ -63,7 +63,7 @@ SPEC_DOC = {
 def load_real(path: Path) -> dict:
     if not path.exists():
         import pytest
-        pytest.skip(f"results fixture not shipped in this copy: {path}")
+        pytest.skip(f"results fixture not shipped with the repository: {path}")
     return json.loads(path.read_text())
 
 

@@ -26,7 +26,7 @@ from tests.unit._oneshot_holdout_fixtures import valid_checklist_cfg
 def test_checklist_happy_path_returns_window(tmp_path):
     cfg = valid_checklist_cfg(tmp_path)
     if not _tag_reachable_from_head(cfg.release_tag, cfg.repo_root):
-        pytest.skip(f"release tag {cfg.release_tag} not shipped in this copy")
+        pytest.skip(f"release tag {cfg.release_tag} not shipped with the repository")
     result = run_pre_run_checklist(cfg)
     assert (result.window.start, result.window.end, result.window.n_months) == ("2022-01", "2025-09", 45)
     assert len(result.checks_passed) == 8

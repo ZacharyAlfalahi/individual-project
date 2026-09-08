@@ -43,7 +43,7 @@ def test_full_rehearsal_is_green_and_writes_marker(tmp_path):
     from agents.scientist.experimentalist.oneshot_holdout.gate_checklist import _tag_reachable_from_head
     _cfg = valid_checklist_cfg(tmp_path)
     if not _tag_reachable_from_head(_cfg.release_tag, _cfg.repo_root):
-        pytest.skip("release tag not shipped in this copy")
+        pytest.skip("release tag not shipped with the repository")
     holdout._reset_single_access_for_tests()
     cfg = _rehearsal_cfg(tmp_path)
     report = run_oneshot_holdout(cfg)
@@ -67,7 +67,7 @@ def test_rehearsal_refuses_when_a_construction_is_nan_at_first_month(tmp_path):
     from agents.scientist.experimentalist.oneshot_holdout.gate_checklist import _tag_reachable_from_head
     _cfg = valid_checklist_cfg(tmp_path)
     if not _tag_reachable_from_head(_cfg.release_tag, _cfg.repo_root):
-        pytest.skip("release tag not shipped in this copy")
+        pytest.skip("release tag not shipped with the repository")
     holdout._reset_single_access_for_tests()
     # A builder whose frames are entirely NaN fails the seeding validation.
     import numpy as np
@@ -87,7 +87,7 @@ def test_real_path_state_machine_completes_then_refuses_rerun(tmp_path, monkeypa
     from agents.scientist.experimentalist.oneshot_holdout.gate_checklist import _tag_reachable_from_head
     _cfg = valid_checklist_cfg(tmp_path)
     if not _tag_reachable_from_head(_cfg.release_tag, _cfg.repo_root):
-        pytest.skip("release tag not shipped in this copy")
+        pytest.skip("release tag not shipped with the repository")
     holdout._reset_single_access_for_tests()
     monkeypatch.setattr(holdout, "prereg_tag_present", lambda *a, **k: True)
     monkeypatch.setattr(holdout, "env_unlock_set", lambda *a, **k: True)
