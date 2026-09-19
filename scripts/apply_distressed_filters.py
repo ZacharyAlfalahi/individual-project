@@ -472,7 +472,7 @@ def write_report(dev_counts: dict, hold_counts: "dict | None",
             "disclose; the OSBAP/DRR published-output validation firewall is "
             "unaffected). See docs/data/registers/citations_verified.md §1."
         ),
-        "pinned_source_commit": "trace-data-pipeline (released; spec v4 Part J)",
+        "source_reference": "trace-data-pipeline (released; spec v4 Part J)",
         "holdout_processed": hold_counts is not None,
         "rows_dev": dev_counts,
         "inputs": {

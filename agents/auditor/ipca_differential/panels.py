@@ -6,13 +6,13 @@ as-published) — the same orientation as the recovery sweep's primary estimand.
 exactly one axis of the corrected ``RunConfig`` via ``TOGGLE_AXES`` (the single toggle→config
 source of truth) and materialising through the pure ``views.view``.
 
-**Scope note (amendment / precomputed-signal nuance).** The three *panel_view* biases (meas_err,
+**Scope note (precomputed-signal nuance).** The three *panel_view* biases (meas_err,
 stale_price, survivorship) propagate cleanly into the IPCA feed through ``view()`` — family
 selection, the stale mask, and terminal-row membership all change the returns/cross-section the
 estimator sees. The two *construction* biases (lib_gap = characteristic timing, lab_trim = a return
 trim) are NOT consumed by ``view()``; propagating them into the IPCA feed needs the signal-lag
 decoupling and the per-paper trim spec (plus per-panel signal recomputation) — a real-data
-modelling decision left unresolved. Rather than silently return identical panels (a no-op
+modelling decision outside this module. Rather than silently return identical panels (a no-op
 that would fake I = 0), ``panel_states`` raises ``ConstructionToggleDeferred`` for those two. The
 contract + engine + build gates exercise the panel_view biases.
 """
@@ -40,7 +40,7 @@ _MERGED_SIGNAL_COLUMNS = ("mom6", "var_5pct", "gamma_illiq", "bond_vol")
 
 class ConstructionToggleDeferred(NotImplementedError):
     """lib_gap / lab_trim IPCA-feed propagation is an unresolved modelling decision (§3.2 focal
-    pairs lib_gap→str, lab_trim→mom6 are executed then). This build handles the three
+    pairs lib_gap→str, lab_trim→mom6 depend on it). This module handles the three
     panel_view biases, which propagate through view()."""
 
 
@@ -69,7 +69,7 @@ def panel_states(
     if bias in CONSTRUCTION_BIASES:
         raise ConstructionToggleDeferred(
             f"bias {bias!r} is a construction toggle; its IPCA-feed propagation (characteristic "
-            "timing / return trim) is not implemented here. This build handles the "
+            "timing / return trim) is not implemented here. This module handles the "
             f"panel_view biases {PANEL_VIEW_BIASES}."
         )
     base, off = config_leave_out(bias)
@@ -109,15 +109,57 @@ def build_cell_feed(
     *,
     recompute_signals: bool = False,
     thresholds_path=None,
+    return_panel: pd.DataFrame | None = None,
 ) -> IPCAFeed:
     """view() panel → canonical merged frame → build_ipca_feed → per-month matrices (IPCAFeed).
 
     When ``recompute_signals`` (real runs), var_5pct/bond_vol/mom6 are recomputed from the
     panel state's own toggle-applied returns before to_merged, so stale_price/survivorship propagate
-    into the characteristics (gamma_illiq is daily-sourced and left as-is; see signal_recompute)."""
+    into the characteristics (gamma_illiq is daily-sourced and left as-is; see signal_recompute).
+
+    When ``return_panel`` is given (a view() panel of the SAME cell state on another return basis, e.g.
+    total return), every instrument — including str_reversal and the recomputed var_5pct/bond_vol/mom6 —
+    comes from ``view_panel`` and only the IPCA return R comes from ``return_panel``'s xret (see
+    ``_feed_with_return_leg``). Without it the feed is the single-basis build_ipca_feed output."""
     if recompute_signals:
         from .signal_recompute import recompute_signals as _recompute
         view_panel = _recompute(view_panel, thresholds_path=thresholds_path)
     merged = to_merged(view_panel)
-    out, _ = build_ipca_feed(merged, reg, family, validate=True)
+    if return_panel is None:
+        out, _ = build_ipca_feed(merged, reg, family, validate=True)
+    else:
+        out = _feed_with_return_leg(merged, return_panel, reg, family)
     return feed_matrices(out)
+
+
+def _feed_with_return_leg(merged: pd.DataFrame, return_panel: pd.DataFrame, reg: dict, family: str) -> pd.DataFrame:
+    """The long feed frame with instruments from ``merged`` and the return leg from ``return_panel``.
+
+    Uses the audited feed stages unchanged: ``align_scale`` runs on ``merged`` with its str_reversal column
+    swapped for the return basis's xret, so R = next-month return-basis xret / max(instrument-time bond_vol,
+    floor) with the library's own adjacency and VOL-scaling; the instrument-time str_reversal is then
+    restored from ``merged`` before ``rank_and_emit`` + ``validate_feed``. A row survives only if both its
+    return-basis and instrument-basis values are finite. Refuses unless both panels carry exactly the same
+    (cusip, date) rows — the same cell state on two return bases."""
+    from agents.quant.library.ipca_feed import align_scale, rank_and_emit, validate_feed
+
+    keys = ["cusip", "date"]
+    if "xret" not in return_panel.columns:
+        raise KeyError("return_panel must carry xret")
+    left = merged[keys].sort_values(keys, kind="mergesort").reset_index(drop=True)
+    right = return_panel[keys].sort_values(keys, kind="mergesort").reset_index(drop=True)
+    if not left.equals(right):
+        raise ValueError("return_panel rows differ from the characteristics panel — they must be the same "
+                         "cell state on two return bases")
+    instrument_xret = merged[keys + ["str_reversal"]].rename(columns={"str_reversal": "_instrument_xret"})
+    swapped = merged.drop(columns=["str_reversal"]).merge(
+        return_panel[keys + ["xret"]].rename(columns={"xret": "str_reversal"}), on=keys, how="left",
+        validate="1:1")
+    df, counts = align_scale(swapped, reg)
+    df = df.merge(instrument_xret, on=keys, how="left", validate="1:1")
+    df["str_reversal"] = df.pop("_instrument_xret")
+    df = df.dropna(subset=["str_reversal"]).reset_index(drop=True)
+    counts["rows_complete_case"] = int(len(df))
+    out = rank_and_emit(df, counts)
+    validate_feed(out, reg, family)
+    return out

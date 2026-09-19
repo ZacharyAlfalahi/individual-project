@@ -1,10 +1,9 @@
 """
 G3 phase gate (evaluation contract §1, D33, D37).
 
-This is the FIRST mechanical enforcement of the phase discipline anywhere in the
-stack: until now `--phase report` differed from `--phase dev` by a YAML key, the
-D33 authorization was a process step with no code behind it, and the only marker was a
-hand-typed banner in a baseline document.
+This is the mechanical enforcement of the phase discipline: without it `--phase report`
+differs from `--phase dev` by a YAML key, the D33 authorization is a process step with no
+code behind it, and the only marker is a banner in a baseline document.
 
 The tests below pin the four properties that make it a gate rather than a label:
 it derives the phase from what ANSWERED (the header) not what was requested, it

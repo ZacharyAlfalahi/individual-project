@@ -20,7 +20,7 @@ def _real_available() -> bool:
 
 
 needs_real = pytest.mark.skipif(
-    not _real_available(), reason="committed drf artefacts absent"
+    not _real_available(), reason="recorded drf artefacts absent (local pipeline output, not shipped with the repository)"
 )
 
 

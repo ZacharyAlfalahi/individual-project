@@ -73,9 +73,9 @@ _PAPER_FACTS_RE = re.compile(r"^paper_facts\.(.+)$")
 class FieldKey:
     """The join key: the trace-side flat field name plus the leg it belongs to.
 
-    ``leg_index`` is ``None`` for spec-level fields. It is carried even though
-    every anchor is single-leg today, because a multi-leg spec would otherwise
-    collapse two legs' fields onto one key and score them as one field."""
+    ``leg_index`` is ``None`` for spec-level fields. It is carried for single-leg
+    and multi-leg specs alike (crf is multi-leg), because a multi-leg spec would
+    otherwise collapse two legs' fields onto one key and score them as one field."""
 
     name: str
     leg_index: int | None = None
@@ -100,7 +100,7 @@ def trace_key(dotted_path: str) -> FieldKey | None:
         # fill_signal_ref pushes parameter traces under the BARE parameter name
         # (signal_filler.py), so a registry parameter shares the flat trace
         # namespace with schema fields. Every v1 concept has an empty parameter
-        # schema, so this cannot fire today; load_run's duplicate guard catches it
+        # schema, so this cannot fire under the current schema; load_run's duplicate guard catches it
         # if a future concept introduces a colliding name.
         return FieldKey(m.group(2), int(m.group(1)))
     m = _LEG_FIELD_RE.match(dotted_path)
@@ -273,7 +273,8 @@ def pair_fields(spec, artefacts) -> tuple[list[PairedField], list[str]]:
 def match_legs(gold_legs, run_legs) -> list[tuple[int, int]]:
     """Order-invariant leg matching (D34).
 
-    Identity for n<=1, which is every anchor today. The permutation search lands
+    Identity for n<=1 (a single-leg spec); load-bearing for multi-leg specs such as
+    crf. The permutation search lands
     with it because retrofitting order-invariance into a scorer whose row identity
     assumes positional legs is far more expensive than carrying it from the start.
     Ties break to the lexicographically-first permutation -- deterministic."""

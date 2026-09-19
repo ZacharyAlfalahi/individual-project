@@ -42,6 +42,31 @@ from .support import primary_metric_vector, return_matrix
 # applies. Everything else is a nonlinear functional => bootstrap only.
 MEAN_METRICS: frozenset[str] = frozenset({"average", "annualised_average"})
 
+#: Default inert-coordinate tolerance for direct (synthetic / unit-test) callers. The audited path
+#: takes it from ``AuditorConfig.inert_relative_tol``, which ``from_thresholds`` reads fail-loud from
+#: ``auditor.inert_relative_tol`` — so a production run never scores against an unregistered value.
+#: A DOE coordinate whose monthly contrast series is zero at floating-point
+#: precision has no estimand: every month's cross-cell contrast cancels exactly and what remains is
+#: round-off (many orders of magnitude below the return scale). A test statistic formed from that residue is noise,
+#: so the coordinate is reported as inert (p = 1, t = 0) rather than tested. The tolerance is relative to
+#: the largest cell metric value in the run; a real effect of one basis point per month (1e-4) sits eight
+#: orders of magnitude above it.
+INERT_RELATIVE_TOL = 1e-12
+
+
+def _metric_scale(Y) -> float:
+    vals = np.asarray(list(Y.values()) if isinstance(Y, dict) else Y, dtype=float)
+    finite = vals[np.isfinite(vals)]
+    return max(1.0, float(np.max(np.abs(finite)))) if finite.size else 1.0
+
+
+def is_inert(values, scale: float, tol: float = INERT_RELATIVE_TOL) -> bool:
+    """True iff every finite value lies within ``tol * scale`` of zero (an empty or all-NaN
+    series is not inert: it is missing, not zero)."""
+    vals = np.asarray(values, dtype=float)
+    finite = vals[np.isfinite(vals)]
+    return bool(finite.size) and float(np.max(np.abs(finite))) <= tol * scale
+
 
 @dataclass(frozen=True)
 class InferenceResult:
@@ -54,6 +79,7 @@ class InferenceResult:
     ci_high: float
     t_stat: float | None = None
     n_obs: int | None = None    # months (HAC branch)
+    inert: bool = False         # identically-zero contrast: not tested (p = 1, t = 0)
 
 
 def _monthly_doe_series(
@@ -93,6 +119,7 @@ def infer_doe_effects(
     coordinates: Sequence[frozenset] | None = None,
     months_per_year: int = 12,
     alpha: float = 0.05,
+    inert_relative_tol: float = INERT_RELATIVE_TOL,
 ) -> dict[frozenset, InferenceResult]:
     """Infer each DOE coordinate, routed by estimand. `coordinates` defaults to
     every subset; pass the confirmatory set to restrict. HAC is used iff `metric`
@@ -104,17 +131,23 @@ def infer_doe_effects(
 
     results: dict[frozenset, InferenceResult] = {}
 
+    scale = _metric_scale(Y)
     if metric in MEAN_METRICS:
         keys, R = return_matrix(cells, months)
         series = _monthly_doe_series(R, keys, months, toggles)
         for T in coords:
-            # A coordinate whose monthly DOE series has zero within-sample variance
-            # yields a NaN HAC t (and NaN p). That is a degenerate case on real returns;
-            # such a coordinate should be read off its bootstrap CI (carried below),
-            # which still shows a tight nonzero interval.
             summ = summarize_returns(series[T], None, months_per_year)
-            t = summ["t_stat"]
             lo, hi = doe_ci.get(T, (float("nan"), float("nan")))
+            if is_inert(series[T], scale, inert_relative_tol):
+                results[T] = InferenceResult(
+                    coordinate=T, metric=metric, point=basis.doe[T], method="HAC",
+                    p_value=1.0, ci_low=lo, ci_high=hi, t_stat=0.0, n_obs=summ["n_months"], inert=True,
+                )
+                continue
+            # A coordinate whose monthly DOE series is constant but non-zero has zero
+            # within-sample variance and yields a NaN HAC t (and NaN p); read it off its
+            # bootstrap CI (carried below).
+            t = summ["t_stat"]
             results[T] = InferenceResult(
                 coordinate=T, metric=metric, point=basis.doe[T], method="HAC",
                 p_value=two_sided_p(t), ci_low=lo, ci_high=hi,
@@ -124,9 +157,11 @@ def infer_doe_effects(
         for T in coords:
             draws = bootstrap.doe_draws.get(T)
             lo, hi = doe_ci.get(T, (float("nan"), float("nan")))
+            inert = (draws is not None and is_inert(draws, scale, inert_relative_tol)
+                     and abs(float(basis.doe[T])) <= inert_relative_tol * scale)
             results[T] = InferenceResult(
                 coordinate=T, metric=metric, point=basis.doe[T], method="bootstrap",
-                p_value=_bootstrap_p(draws) if draws is not None else float("nan"),
-                ci_low=lo, ci_high=hi, t_stat=None, n_obs=None,
+                p_value=(1.0 if inert else _bootstrap_p(draws) if draws is not None else float("nan")),
+                ci_low=lo, ci_high=hi, t_stat=None, n_obs=None, inert=inert,
             )
     return results

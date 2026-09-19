@@ -806,8 +806,8 @@ _PAPER_TEXT_BLOCK = (
     "<<<\n{paper_text}\n>>>\n\n"
 )
 
-# Construction-scoped field queries (candidate feature, 2026-09-06; built flag-gated,
-# default OFF). Completes the per-construction rendering the 2026-09-02 cache-key
+# Construction-scoped field queries (candidate feature; built flag-gated,
+# default OFF). Completes the per-construction rendering the cache-key
 # fix presupposed: render() consumes the strategy label only for method_summary /
 # paper_metric, so on a multi-construction paper every other field's prompt was
 # byte-identical across constructions (the dfps 28-clone replay). When a caller
@@ -947,8 +947,8 @@ class RealModelClient:
     def answer(self, query: FieldQuery, canonical_text: CanonicalText) -> ModelAnswer:
         if not isinstance(query, FieldQuery):
             raise LibrarianSchemaError("RealModelClient.answer expects a FieldQuery")
-        # The key includes the construction label (2026-09-02 pre-paid-run fix)
-        # plus the scoped-quote state (candidate feature, 2026-09-06). NOTE the
+        # The key includes the construction label (pre-run fix)
+        # plus the scoped-quote state (candidate feature). NOTE the
         # 2026-09-02 fix was necessary but NOT sufficient: render() consumes the
         # label only for method_summary/paper_metric, so unscoped multi-
         # construction prompts are byte-identical anyway and the DISK cache

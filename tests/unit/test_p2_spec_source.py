@@ -20,7 +20,7 @@ from evaluation.codegen.p2_spec_source import (
 )
 
 
-def _write_run(run_dir, phase="report", commit="abc1234", specs=(), declare_outputs=True):
+def _write_run(run_dir, phase="report", commit="fixture-commit", specs=(), declare_outputs=True):
     """Write a fixture run dir. By default the manifest DECLARES its spec outputs (with sha256),
     matching the frozen runs, so the provenance-integrity guard is exercised. Pass
     ``declare_outputs=False`` to model an older manifest with no ``outputs`` block."""
@@ -62,13 +62,13 @@ def test_missing_manifest_is_a_build_error(tmp_path):
 # --- byte-exact load + provenance ---------------------------------------------------
 
 def test_load_keys_by_paper_and_label_with_provenance(tmp_path):
-    run = _write_run(tmp_path / "bbw", commit="b68cc6c",
+    run = _write_run(tmp_path / "bbw", commit="fixture-commit",
                      specs=[("BBW_2021", "Alpha strategy"), ("BBW_2021", "Beta strategy")])
     specs, prov = load_real_specs([run])
     assert set(specs) == {("bbw_2021", "Alpha strategy"), ("bbw_2021", "Beta strategy")}
     p = prov[("bbw_2021", "Alpha strategy")]
     assert set(p) == {"run_dir", "spec_file", "spec_sha256", "manifest_phase", "code_commit"}
-    assert p["manifest_phase"] == "report" and p["code_commit"] == "b68cc6c"
+    assert p["manifest_phase"] == "report" and p["code_commit"] == "fixture-commit"
     assert len(p["spec_sha256"]) == 64
 
 

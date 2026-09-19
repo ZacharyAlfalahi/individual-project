@@ -140,7 +140,7 @@ def conditional_bootstrap(
     }
     assert set(draws) == set(_EFFECTS), "bootstrap draw keys drifted from _EFFECTS"
     # Tripwire: a "computed" interval must be finite. Recovered factors on gate-valid periods and
-    # finite anchor values make this unreachable today; if it ever fires, the differential catches
+    # finite anchor values make this unreachable; if it ever fires, the differential catches
     # BootstrapError and REFUSES the interval rather than minting a fabricated (nan, nan) CI (§6.2).
     if not all(np.all(np.isfinite(d)) for d in draws.values()):
         raise BootstrapError("non-finite bootstrap draw — interval refused, not fabricated (§6.2)")

@@ -6,9 +6,9 @@ block, runs it in the WS-C sandbox against the exported corr-family engine panel
 series against the oracle with the rung-3/4 comparator, archives the run, and tabulates the raw
 per-run metrics (§5 mandates the re-thresholdable table).
 
-Separated from ``runner`` so ``runner`` stays generation-only (its dry-run + tests are untouched)
-and this module owns the sandbox+score orchestration. Mirrors ``p2_driver``'s generate->sandbox
-loop, adding oracle scoring (P2 has no oracle) and budget accounting.
+Separated from ``runner`` so ``runner`` stays generation-only (its dry-run and tests do not depend
+on the sandbox) and this module owns the sandbox+score orchestration. Mirrors ``p2_driver``'s
+generate->sandbox loop, adding oracle scoring (P2 has no oracle) and budget accounting.
 
 DEV ONLY: the panel + oracles are under ``data/development/``; the sandbox denies network and jails
 writes; the holdout is never opened.
@@ -33,7 +33,7 @@ from evaluation.codegen.runner import (
     build_prompt,
     contract_freeze_ok,
     extract_code,
-    generate_once,
+    generate_from_prompt,
     load_models,
     prompt_sha256,
 )
@@ -90,16 +90,25 @@ def run_scored_ablation(
     python_bin: Path | None = None,
     thresholds_path: Path | None = None,
     ensure_panel: bool = True,
+    factors_dir: Path | None = None,
+    prompt_fn: Callable[[str], str] | None = None,
+    deny_read_paths: tuple[Path, ...] = (),
 ) -> dict:
     """The full scored ablation. Requires a real ``client_factory`` (a live pair, or a fake in
     tests); the contract freeze (§8, prompt-asset hashes) must verify before any generation.
 
     Returns a typed run record: per-run verdicts + metrics, the §5 raw metrics table, the phase +
     reportability stamp, and the budget summary. ``reportable`` is True only for ``phase='reported'``
-    with every returned SKU matching the pinned Phase-F model (contract §3)."""
+    with every returned SKU matching the pinned Phase-F model (contract §3). ``factors_dir``
+    relocates the oracle parquets (``oracles.oracle_path``); ``None`` keeps the registry paths.
+
+    ``prompt_fn`` swaps the field-key prompt (``runner.build_prompt``) for another arm's prompt,
+    e.g. the paper arm; the caller owns that arm's freeze check. ``deny_read_paths`` is passed to
+    the sandbox so generated code cannot read those trees."""
     ok, msg = contract_freeze_ok()
     if not ok:
         raise GenerationBlockedError(msg)
+    render = prompt_fn or build_prompt
 
     models = load_models(phase, thresholds_path)
     thresholds = load_scoring_thresholds(thresholds_path)
@@ -129,7 +138,7 @@ def run_scored_ablation(
     sku_ok = True
 
     for strategy in strategies:
-        oracle = load_oracle_series(strategy)
+        oracle = load_oracle_series(strategy, factors_dir)
         for model in models:
             model_id = model["model_id"]
             client = client_factory(model)
@@ -138,7 +147,7 @@ def run_scored_ablation(
             # recorded as a typed generation_error and the loop continues. One vendor's free-tier
             # 429 must never abort the whole ablation. A budget breach still HALTS (it is a real cap).
             try:
-                response = generate_once(strategy, model_id, client, cache)
+                response = generate_from_prompt(render(strategy), model_id, client, cache)
             except BudgetExceededError:
                 raise
             except Exception as exc:
@@ -172,6 +181,7 @@ def run_scored_ablation(
                         panel_path=panel,
                         wall_clock_s=wall_clock_s,
                         memory_mb=memory_mb,
+                        deny_read_paths=tuple(deny_read_paths),
                     ),
                 )
                 sandbox_status, sandbox_reason, output_sha = sb.status, sb.reason, sb.output_sha256
@@ -224,7 +234,7 @@ def run_scored_ablation(
             out["raw_metrics_table"].append(_raw_metrics_row(strategy, model_id, score))
             out["verdict_counts"][score.verdict.value] += 1
 
-    out["prompt_sha256"] = {s: prompt_sha256(build_prompt(s)) for s in strategies}
+    out["prompt_sha256"] = {s: prompt_sha256(render(s)) for s in strategies}
     # Reportable only when the paid phase ran, every returned SKU matched (§3), AND no run failed
     # on infrastructure (a generation_error means missing data — re-run to fill via the cache).
     out["reportable"] = bool(phase == "reported" and sku_ok and not out["generation_errors"])

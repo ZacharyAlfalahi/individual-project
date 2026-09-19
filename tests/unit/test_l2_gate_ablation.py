@@ -1,5 +1,5 @@
 """L2-gate ablation tests (scripts/run_l2_gate_ablation.py) — synthetic replays plus
-a machine-local pin on the committed artifact once the real pass has run."""
+a machine-local pin on the recorded artifact."""
 
 from __future__ import annotations
 
@@ -89,8 +89,8 @@ _HEADLINE = {"coverage": [47, 132], "selective_accuracy": [36, 47], "over_claim"
 
 
 @pytest.mark.skipif(not _ARTIFACT.exists(),
-                    reason="committed L2-ablation artifact absent on this machine")
-def test_committed_l2_ablation_artifact_pins():
+                    reason="recorded L2-ablation artifact not shipped with the repository")
+def test_recorded_l2_ablation_artifact_pins():
     result = json.loads(_ARTIFACT.read_text(encoding="utf-8"))
     assert result["diagnostic"].startswith("L2-gate ablation")
     primary = result["primary"]

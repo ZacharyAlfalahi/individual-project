@@ -2,7 +2,7 @@
 G3 gold calibration -- the scoring unit (build brief §8 G3, D34, D37).
 
 The golden end-to-end assertions, and the trap guards. Every trap test is
-BEHAVIOURAL on real committed artefacts rather than a source grep: a grep passes
+BEHAVIOURAL on real recorded artefacts rather than a source grep: a grep passes
 if someone renames a symbol, whereas asserting that two quantities genuinely
 differ on real data fails the moment a "simplification" collapses them.
 
@@ -352,7 +352,7 @@ def test_multi_construction_double_write_still_refused(tmp_path):
 
 @_needs_bbw4
 def test_stray_trace_named_file_does_not_join_the_sum(tmp_path):
-    """Review hardening (2026-09-04): only int-suffixed traces enter the
+    """Trace-suffix hardening: only int-suffixed traces enter the
     integrity sum -- a stray trace_backup.json must not mask a double-write."""
     import shutil
 

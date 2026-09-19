@@ -11,7 +11,7 @@ from agents.reporter.renderer import render_note
 from shared.reporting.claims import ArtefactType
 
 needs_real = pytest.mark.skipif(
-    not (DRF_CORE.exists() and DRF_QUANT.exists()), reason="committed drf artefacts absent"
+    not (DRF_CORE.exists() and DRF_QUANT.exists()), reason="recorded drf artefacts absent (local pipeline output, not shipped with the repository)"
 )
 
 

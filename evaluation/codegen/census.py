@@ -17,8 +17,10 @@ Design (mirrors corpus_fate's typed-data discipline, kept build-only):
   * Text-acquisition / text-quality failures are *typed COUNTED exclusions*
     (``text_quality_ok=False`` + a non-empty ``exclusion_reason``), never silent
     drops and never routed — you cannot route a spec you could not extract.
-  * A refusal's ``refusal_reason`` MUST be one of ``corpus_fate.REFUSAL_FATES``
-    (imported for typing); an unknown reason is a build error.
+  * A refusal's ``refusal_reason`` MUST be one of the two closed vocabularies
+    ``REFUSAL_REASONS`` = adjudicated ``corpus_fate.REFUSAL_FATES`` ∪ the live
+    router's ``RefusalCode`` values (both imported for typing, neither mutated);
+    an unknown reason is a build error.
   * Fail-loud everywhere: a duplicate paper, an unknown paper id at lookup, an
     off-enum refusal reason, or an internally inconsistent member is raised
     (``P2CensusError``), never silently coerced.
@@ -33,8 +35,52 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-# Imported for typing only — the closed refusal enum. NEVER mutated.
+# Imported for typing only — the closed refusal enums. NEITHER is mutated.
 from agents.librarian.corpus_fate import REFUSAL_FATES
+from agents.quant.config.refusal import RefusalCode
+
+#: A refusal reason is typed against one of two closed vocabularies, because the census can be
+#: built two ways and both must stay legible:
+#:   * ``REFUSAL_FATES`` — the adjudicated D21 corpus fates (e.g. ``refuse_asset_class``), used
+#:     when the partition transcribes the pre-registered implement/refuse labels;
+#:   * ``ROUTER_REFUSAL_CODES`` — the LIVE deterministic router's own typed codes (e.g.
+#:     ``REVIEW_REQUIRED``), used when the partition is the router's own decision, which is
+#:     what the contract's arm rule describes.
+#: An unknown reason stays a build error either way.
+ROUTER_REFUSAL_CODES: frozenset[str] = frozenset(code.value for code in RefusalCode)
+REFUSAL_REASONS: frozenset[str] = REFUSAL_FATES | ROUTER_REFUSAL_CODES
+
+#: Refusals are of two KINDS, and the distinction is load-bearing for this experiment.
+#:
+#:   * ``coverage`` — the audited engine cannot REPRESENT the construction (an adjudicated
+#:     corpus fate, a missing signal binding, a weighting/trim/combiner outside the enum).
+#:     This is the coverage boundary the experiment is built to measure.
+#:   * ``extraction`` — the SPECIFICATION did not certify (a field needs the manual-review
+#:     lane; the paper was silent on a load-bearing field). The construction never reaches
+#:     the coverage layer, so a refusal here says nothing about representability.
+#:
+#: An arm filled with ``extraction`` refusals is NOT the coverage boundary, however wide it
+#: is; reporting it as one would answer a different question than the arm rule asks.
+EXTRACTION_REFUSAL_REASONS: frozenset[str] = frozenset({
+    RefusalCode.REVIEW_REQUIRED.value,
+    RefusalCode.REFUSED_ON_SILENCE.value,
+})
+COVERAGE_REFUSAL_REASONS: frozenset[str] = REFUSAL_REASONS - EXTRACTION_REFUSAL_REASONS
+
+
+def refusal_kind(reason: str | None) -> str | None:
+    """``"coverage"`` / ``"extraction"`` for a typed refusal reason, ``None`` for no refusal.
+    Fail-loud on an unknown reason — the two kinds partition the closed vocabulary."""
+    if reason is None:
+        return None
+    if reason in EXTRACTION_REFUSAL_REASONS:
+        return "extraction"
+    if reason in COVERAGE_REFUSAL_REASONS:
+        return "coverage"
+    raise P2CensusError(
+        f"refusal_reason {reason!r} is not in the closed refusal vocabulary, so its kind "
+        "cannot be decided"
+    )
 
 
 #: The closed vocabulary of eligibility-exclusion reasons. An eligibility
@@ -43,10 +89,10 @@ from agents.librarian.corpus_fate import REFUSAL_FATES
 #: as ``REFUSAL_FATES`` for refusals). Two families:
 #:   * text acquisition / quality failures (the general eligibility bar), and
 #:   * extraction-outcome exclusions (a reportable run produced no usable spec for
-#:     the member) — ``extraction_review_exit_no_spec`` is the one used by the P2
-#:     coverage-boundary close-out (a Phase-F run that exited to review with zero
-#:     specs; the schema forbids partial emission, so the member has no spec to
-#:     generate from and is a COUNTED exclusion, never a silent drop).
+#:     the member) — ``extraction_review_exit_no_spec`` types a member whose Phase-F
+#:     extraction exited to review with zero specs (the schema forbids partial
+#:     emission, so the member has no spec to generate from and is a COUNTED
+#:     exclusion, never a silent drop).
 ELIGIBILITY_EXCLUSION_REASONS = frozenset({
     "text_acquisition_failed",         # text could not be acquired
     "text_quality_below_bar",          # text acquired but below the quality bar
@@ -114,10 +160,11 @@ class RoutingDecision:
         if self.compilable and self.refused:
             raise P2CensusError("a routing decision cannot be BOTH compilable and refused")
         if self.refused:
-            if self.refusal_reason not in REFUSAL_FATES:
+            if self.refusal_reason not in REFUSAL_REASONS:
                 raise P2CensusError(
                     f"refusal_reason {self.refusal_reason!r} is not one of the closed "
-                    f"REFUSAL_FATES {sorted(REFUSAL_FATES)}"
+                    f"refusal vocabularies: adjudicated fates {sorted(REFUSAL_FATES)} or "
+                    f"router codes {sorted(ROUTER_REFUSAL_CODES)}"
                 )
         elif self.refusal_reason is not None:
             raise P2CensusError(
@@ -178,10 +225,11 @@ class CensusMember:
                 f"{self.paper_id!r}: an eligible (routed) member carries no exclusion_reason"
             )
         if self.refused:
-            if self.refusal_reason not in REFUSAL_FATES:
+            if self.refusal_reason not in REFUSAL_REASONS:
                 raise P2CensusError(
                     f"{self.paper_id!r}: refusal_reason {self.refusal_reason!r} is not one of "
-                    f"the closed REFUSAL_FATES {sorted(REFUSAL_FATES)}"
+                    f"the closed refusal vocabularies: adjudicated fates "
+                    f"{sorted(REFUSAL_FATES)} or router codes {sorted(ROUTER_REFUSAL_CODES)}"
                 )
         elif self.refusal_reason is not None:
             raise P2CensusError(
@@ -191,6 +239,12 @@ class CensusMember:
     @property
     def is_eligibility_exclusion(self) -> bool:
         return not self.text_quality_ok
+
+    @property
+    def refusal_kind(self) -> str | None:
+        """``"coverage"`` / ``"extraction"`` for a refused member (see the module constants);
+        ``None`` for any member that was not refused."""
+        return refusal_kind(self.refusal_reason) if self.refused else None
 
     @property
     def disposition(self) -> str:
@@ -207,6 +261,7 @@ class CensusMember:
             "compilable": self.compilable,
             "refused": self.refused,
             "refusal_reason": self.refusal_reason,
+            "refusal_kind": self.refusal_kind,
             "text_quality_ok": self.text_quality_ok,
             "exclusion_reason": self.exclusion_reason,
         }
@@ -249,6 +304,16 @@ class CensusResult:
     def compilable_set(self) -> tuple[CensusMember, ...]:
         """Every compilable member, in input order — the Arm-B candidate pool."""
         return tuple(m for m in self.members if m.compilable)
+
+    def refusals_by_kind(self) -> dict[str, tuple[CensusMember, ...]]:
+        """The refusal set split into ``coverage`` and ``extraction`` refusals. An Arm A of a
+        given size means different things depending on this split, so every artefact that
+        quotes an arm size should quote this beside it."""
+        refused = self.refusal_set()
+        return {
+            "coverage": tuple(m for m in refused if m.refusal_kind == "coverage"),
+            "extraction": tuple(m for m in refused if m.refusal_kind == "extraction"),
+        }
 
     def eligibility_exclusions(self) -> tuple[CensusMember, ...]:
         """Every eligibility-excluded member (text acquisition/quality failure),

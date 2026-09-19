@@ -1,6 +1,6 @@
 """The RQ2 coverage driver (2026-09-04): glue over tested pieces, pinned at the
 seams -- refusal-code collection, the not_run expansion over registered names,
-and (machine-local) the committed headline of the first real scoring run."""
+and (machine-local) the recorded headline of the first real scoring run."""
 
 from __future__ import annotations
 

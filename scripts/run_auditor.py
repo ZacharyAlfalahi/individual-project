@@ -9,20 +9,17 @@ Runs each anchor's strategy through the deterministic 2^k bias-toggle lattice
 The frozen holdout is NEVER read. No language model appears in the analytical path
 (that is a structural property of the core, not a policy).
 
-`--check core-sync-1` asserts the panel-boundary structural zero proven by the
+`--check core-sync-1` asserts the panel-boundary structural zero registered by the
 IPCA-differential extension (`docs/auditor/ipca_differential_open_item_O-EXT-1.md`
-§5.3): on the WRDS-MMN dev panel the 30-day stale-price mask masks ZERO incremental
+§5.3): on the dev panel the 30-day stale-price mask must mask no incremental
 bond-months (`view(stale_mask=True)` is bit-identical to `view(stale_mask=False)`
 across the full dev view — panel construction subsumes the staleness correction
 upstream). Because the lattice consumes the same `panel_view.stale_mask` axis, the
 `stale_price` main effect `E_stale` AND the `meas_err × stale_price` interaction
 must be EXACTLY zero. A nonzero value means this component's panel view has diverged
-from the extension's — a wiring defect to fix before any results circulate.
+from the extension's, and the check fails.
 
-STATUS — READ BEFORE RUNNING. The anchor -> strategy -> lattice path has never been
-exercised on the real panel (the core has only ever run on synthetic panels in
-pytest). What must be confirmed/supplied first is documented in
-`docs/auditor/core_real_data_run_prerun_notes.md`. This module is import-safe and
+This module is import-safe and
 unit-tested on synthetic panels; it does not touch real data until `main()` runs.
 """
 
@@ -51,8 +48,9 @@ from agents.librarian.registries.standing_substitutions import (  # noqa: E402
     STANDING_SUBS_V1_SHA256,
     load_standing_substitutions,
 )
+from scripts import basis_inputs  # noqa: E402
 
-# The pre-registration tag stamped on every core AuditCore (README §14; thresholds:auditor).
+# The pre-registration tag stamped on every core AuditCore (thresholds:auditor).
 AUDITOR_PREREG_TAG = "auditor-prereg"
 ANCHORS = ("str", "drf", "mom6")
 
@@ -62,8 +60,8 @@ _MEAS_STALE = frozenset({"meas_err", "stale_price"})
 
 # view(stale_mask=True) is bit-identical to view(stale_mask=False) on this panel, so the
 # stale cells are computed from identical return series. The DOE coordinates are therefore
-# zero up to float noise (~1e-19 from the Walsh transform's ±1 summation), NOT bit-zero —
-# so the check is tolerance-based, not `== 0.0`. Measured on the synthetic no-op panel.
+# zero up to float noise (from the Walsh transform's ±1 summation), NOT bit-zero —
+# so the check is tolerance-based, not `== 0.0`.
 DEFAULT_TOL = 1e-9
 
 
@@ -162,21 +160,19 @@ def load_anchor_expost_trim_off(anchor_id: str, thresholds_path: str | Path | No
 
 # The per-anchor as-published cleaning profile = the meas_err OFF price_family
 # (spec v4 D1): drf/crf -> bbw_2019, mom6 -> jostova_2013, str -> excluded
-# (not_applicable, no OFF arm). ACTIVE only once the profile columns exist in the
-# maximal panel (Part D pipeline execution); until then every anchor uses 'raw'
-# (the default behaviour) so no run selects a family the panel lacks. Flip
-# PROFILES_BUILT when build_monthly_panel emits *_bbw_2019 / *_jostova_2013 columns.
-# Flipped True 2026-08-08: the per-paper baseline profile family columns
+# (not_applicable, no OFF arm). PROFILES_BUILT gates the mapping: when it is False
+# every anchor uses 'raw' (the default behaviour) so no run selects a family the
+# panel lacks. It is True here because the per-paper baseline profile family columns
 # (monthly_panel_profiles.parquet) + signal variants (profiles_signals.parquet)
-# are built, and load_dev_inputs / load_dev_signals join them, so meas_err OFF
-# selects the profile family (drf/crf->bbw_2019, mom6->jostova_2013).
+# exist and load_dev_inputs / load_dev_signals join them, so meas_err OFF selects
+# the profile family (drf/crf->bbw_2019, mom6->jostova_2013).
 PROFILES_BUILT = True
 _ANCHOR_OFF_PROFILE = {"drf": "bbw_2019", "crf": "bbw_2019", "mom6": "jostova_2013"}
 
 
 def load_anchor_meas_err_off_family(anchor_id: str) -> str:
-    """The meas_err OFF price_family for an anchor (spec v4 D1). 'raw' until the
-    per-paper profile columns are built (PROFILES_BUILT), then the anchor's profile.
+    """The meas_err OFF price_family for an anchor (spec v4 D1). 'raw' when PROFILES_BUILT
+    is False, else the anchor's profile.
     str never reaches here (its meas_err is excluded, not_applicable)."""
     if not PROFILES_BUILT:
         return "raw"
@@ -321,6 +317,13 @@ def _auditor_config_hash() -> str:
     return hashlib.sha256(yaml.safe_dump(block, sort_keys=True).encode()).hexdigest()[:16]
 
 
+def default_out_dir(basis: str | None = None) -> Path:
+    """The default `results/auditor/full_run` without a basis; the consistent-basis location with one."""
+    if basis is None:
+        return REPO_ROOT / "results" / "auditor" / "full_run"
+    return basis_inputs.basis_dir(basis, "auditor", "full_run")
+
+
 def write_results(out_dir: Path, records: list[dict], run_log: dict) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "run_log.json").write_text(json.dumps(run_log, indent=2, default=str))
@@ -341,10 +344,17 @@ def run_all(
     *,
     out_dir: Path | None = None,
     tol: float = DEFAULT_TOL,
+    basis: str | None = None,
 ) -> int:
     """Load the dev panel once, run each anchor, write results, print the CORE-SYNC-1
-    verdicts. Returns a process exit code: 0 iff every requested anchor PASSED CORE-SYNC-1."""
-    maximal, signals, _registry = load_dev_inputs()  # holdout never read
+    verdicts. Returns a process exit code: 0 iff every requested anchor PASSED CORE-SYNC-1.
+    `basis` selects the return basis via `basis_inputs.load_basis_inputs` (recorded in the run
+    log; default output under the consistent-basis root); None keeps the default dev loader
+    (`load_dev_inputs`)."""
+    if basis is None:
+        maximal, signals, _registry = load_dev_inputs()  # holdout never read
+    else:
+        maximal, signals, _registry = basis_inputs.load_basis_inputs(basis)  # dev-only asserted
     records: list[dict] = []
     refusals: list[dict] = []
     incomplete_lattice: list[dict] = []
@@ -364,7 +374,6 @@ def run_all(
             })
 
     run_log = {
-        "git_commit": _git_short(),
         "auditor_prereg_tag": AUDITOR_PREREG_TAG,
         "thresholds_auditor_hash": _auditor_config_hash(),
         "standing_subs_sha256": STANDING_SUBS_V1_SHA256,
@@ -376,7 +385,9 @@ def run_all(
         "refusals": refusals,
         "incomplete_lattice": incomplete_lattice,
     }
-    out_dir = out_dir or (REPO_ROOT / "results" / "auditor" / f"run_{_git_short()}")
+    if basis is not None:
+        run_log["basis_provenance"] = basis_inputs.basis_provenance(basis).to_dict()
+    out_dir = out_dir or default_out_dir(basis)
     write_results(out_dir, records, run_log)
 
     all_pass = (
@@ -398,7 +409,7 @@ def run_all(
     return 0 if all_pass else 1
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument(
         "--anchor", choices=(*ANCHORS, "all"), default="all",
@@ -408,14 +419,21 @@ def main() -> int:
         "--check", choices=("core-sync-1",), default="core-sync-1",
         help="the assertion to apply after the lattice run",
     )
-    ap.add_argument("--out", type=Path, default=None, help="output dir (default results/auditor/run_<git>)")
+    ap.add_argument("--out", type=Path, default=None, help="output dir (default results/auditor/full_run)")
     ap.add_argument(
         "--tol", type=float, default=DEFAULT_TOL,
         help=f"max |DOE coordinate| accepted as the structural zero (default {DEFAULT_TOL:g})",
     )
-    args = ap.parse_args()
+    ap.add_argument(
+        "--basis", choices=basis_inputs.BASES, default=None,
+        help="return basis of the core-lattice dev panel (default: the dev loader load_dev_inputs; "
+             "with --basis the default output is results/consistent_basis/<basis>/auditor/full_run)",
+    )
+    args = ap.parse_args(argv)
     anchors = ANCHORS if args.anchor == "all" else (args.anchor,)
-    return run_all(anchors, out_dir=args.out, tol=args.tol)
+    if args.basis is None:
+        return run_all(anchors, out_dir=args.out, tol=args.tol)
+    return run_all(anchors, out_dir=args.out, tol=args.tol, basis=args.basis)
 
 
 if __name__ == "__main__":

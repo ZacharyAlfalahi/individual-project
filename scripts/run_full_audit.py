@@ -18,12 +18,10 @@ against the typed report by `verify_numbers` before it is written.
 
 DSR PRE-REGISTRATION GATE (fail-loud, by design). `run_full_audit` needs a per-anchor
 `n_trials`/`sr_std` — the deflated-Sharpe inputs (O-A4, design §9.1). Those are a
-PRE-REGISTRATION decision that is NOT yet ratified/committed: a proposal sits at
-`docs/auditor/confirmatory_prereg_proposal.md`, whose ratified home is
-`thresholds.yaml` -> `auditor.dsr`. Until that block is committed and git-tagged,
-this driver REFUSES to run (`DsrPreRegistrationAbsent`). Running it TODAY is expected
-to refuse — that is the whole point: the researcher-degree-of-freedom the project
-exists to expose is enforced in code, not left to discipline.
+PRE-REGISTRATION decision whose registered home is `thresholds.yaml` -> `auditor.dsr`.
+The driver REQUIRES that block and REFUSES to run (`DsrPreRegistrationAbsent`) if it is
+absent or incomplete for any requested anchor — the researcher-degree-of-freedom the
+project exists to expose is enforced in code, not left to discipline.
 
 STRUCTURE. The pure, injectable functions (`audit_anchor_full`, `render_verified_prose`,
 `load_anchor_dsr`) are unit-testable on synthetic scenarios with INJECTED DSR inputs
@@ -95,9 +93,9 @@ _DSR_ABSENT_MESSAGE = (
 class DsrPreRegistrationAbsent(AuditorThresholdError):
     """The DSR pre-registration gate (O-A4), enforced IN CODE. The per-anchor
     deflated-Sharpe inputs (`n_trials`, `sr_std`; design §9.1) are a pre-registration
-    decision that is NOT yet ratified/committed, so the confirmatory full audit
-    REFUSES to run. A subclass of `AuditorThresholdError` so it is caught by the same
-    fail-loud handling, but it carries the exact ratify/commit/tag instruction instead
+    decision, so the confirmatory full audit REFUSES to run when they are absent or
+    incomplete. A subclass of `AuditorThresholdError` so it is caught by the same
+    fail-loud handling, but it carries the exact registration instruction instead
     of the generic 'missing constant' template."""
 
     def __init__(self, message: str = _DSR_ABSENT_MESSAGE) -> None:
@@ -298,14 +296,14 @@ def run_all(
     """The confirmatory driver: DSR gate -> load dev panel -> full audit per anchor ->
     deterministic verified prose -> write. Returns 0 iff every requested anchor produced
     a numerically-verified report. Refuses (fail-loud) at the DSR gate before touching
-    real data if `auditor.dsr` is not yet ratified/committed."""
+    real data if `auditor.dsr` is absent or incomplete for a requested anchor."""
     anchors = list(anchors)
 
-    # Config from thresholds (loads fully from YAML today). This does NOT need the DSR
-    # block — that is a separate, not-yet-committed pre-registration.
+    # Config from thresholds. This does NOT need the DSR block — the gate below
+    # resolves that separately.
     config = AuditorConfig.from_thresholds(thresholds_path)
 
-    # DSR gate FIRST — before any real data is read. Refuses today (auditor.dsr absent).
+    # DSR gate FIRST — before any real data is read. Refuses if auditor.dsr is absent.
     dsr_map = load_dsr_for_anchors(anchors, thresholds_path)
 
     maximal, signals, _registry = load_dev_inputs()  # holdout never read

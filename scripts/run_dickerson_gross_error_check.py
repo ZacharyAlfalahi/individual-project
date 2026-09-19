@@ -1,12 +1,12 @@
 """
-E13 gross-error check — descriptive, NON-GATING (always exits 0).
+Gross-error check — descriptive, NON-GATING (always exits 0).
 
 Compares the pipeline's monthly long-short factor series against external
 published references, development window only:
 
   1. drf vs the PRINTED DRR-2023 Table 1 Panel B figure (0.673 %/mo, t 3.355,
      2004:08-2016:12) — the printed window lies entirely inside the development
-     split, so the figure is matched directly on our own series. Level
+     split, so the figure is matched directly on the pipeline's series. Level
      divergence is EXPECTED (par-weighting, wider universe, clean-price basis —
      the D-Q17 rationale); reported sign-aware, never gated.
   2. str and mom6 vs the authors' published monthly factor series
@@ -17,33 +17,33 @@ published references, development window only:
      README documents (factor count, LBFI gap-month NaN pattern, decimal
      units, boundary month) — the load/truncate derivation is certified
      against published documentation, not against a printed factor figure:
-     the DRR-2023 replicated BBW factor series (which the original bridge
-     design targeted) is absent from the current public distribution
-     (CONFIRM-ON-LOAD outcome, 2026-09-01, recorded in scope_changes.md).
+     the DRR-2023 replicated BBW factor series is absent from the
+     public distribution.
 
 Sign conventions (anchor spec §5.1/§9): comparisons are magnitude/correlation/
 direction-aware, never signed-level. The external `str*` column is
 sign-corrected (-1 x the raw winners-minus-losers series, README-documented);
-our str is winners-minus-losers and reads positive (momentum) on our panel —
-a §8 result. Sign disagreement in as-published orientation is therefore the
-expected outcome, not an error; the leg-convention orientation un-flips it.
+our str is winners-minus-losers, and its sign on the panel is reported, not
+assumed. Sign disagreement in as-published orientation is therefore
+not by itself an error; the leg-convention orientation un-flips it.
 
 Policy firewall (docs/thresholds.yaml validation notes / D16): external level
-comparisons stay DESCRIPTIVE; the ±15% absolute-level criterion is RETIRED.
+comparisons stay DESCRIPTIVE; no absolute-level criterion applies.
 This script always exits 0 (deliberate divergence from the gate scripts'
 exit-code convention) and is NEVER wired into run_validation_gates.py.
 
 Output: data/development/headlines/dickerson_gross_error.json
 
 Usage:
-  python scripts/run_dickerson_gross_error_check.py
+  python scripts/run_dickerson_gross_error_check.py [--factors-dir DIR] [--out PATH]
+      defaults: data/development/factors, data/development/headlines/dickerson_gross_error.json
 """
 
+import argparse
 import hashlib
 import json
 import math
 import os
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -69,8 +69,8 @@ DRR2023_T1PB_N_MONTHS = 149
 DRR2023_T1PB_DRF_MEAN_PCT = 0.673
 DRR2023_T1PB_DRF_TSTAT = 3.355
 
-# External column resolution: exact candidates in preference order. Confirmed
-# on load 2026-09-01 (single_sort_exc_all.csv): `str*` (sign-corrected),
+# External column resolution: exact candidates in preference order. Per the
+# distribution README (single_sort_exc_all.csv): `str*` (sign-corrected),
 # `mom6_1` (not sign-corrected). Candidates retained defensively in case the
 # distribution's naming shifts on a future re-pull.
 EXTERNAL_COLUMNS = {
@@ -79,7 +79,7 @@ EXTERNAL_COLUMNS = {
 }
 SIGN_CORRECTED_SUFFIX = "*"  # README: trailing * = series multiplied by -1
 
-# Our series: (parquet name, headline column, secondary column). Decimal units.
+# Pipeline series: (parquet name, headline column, secondary column). Decimal units.
 OUR_SERIES = {
     "str": ("str.parquet", "str_corr", "str_raw"),
     "mom6": ("mom6.parquet", "mom6_corr", "mom6_raw"),
@@ -99,14 +99,6 @@ MIN_OVERLAP_MONTHS = 24
 
 def thresholds_sha256() -> str:
     return hashlib.sha256(THRESHOLDS_FILE.read_bytes()).hexdigest()
-
-
-def git_commit() -> str:
-    try:
-        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT,
-                              capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:
-        return "unknown"
 
 
 def _dev_boundary_period() -> pd.Period:
@@ -175,7 +167,7 @@ def _window_slice(s: pd.Series, window: tuple[str, str]) -> pd.Series:
 
 
 def drf_printed_window_comparison(our_drf_dec: pd.Series, column: str) -> dict:
-    """Our drf over the printed DRR-2023 window vs the printed figure.
+    """The pipeline's drf over the printed DRR-2023 window vs the printed figure.
     Sign-aware magnitude comparison; level divergence expected (D-Q17)."""
     window_pct = _window_slice(our_drf_dec, DRR2023_T1PB_WINDOW).dropna() * 100.0
     stats = _summaries_pct(window_pct)
@@ -247,11 +239,10 @@ def compare_factor(ours_dec: pd.Series, theirs_dec: pd.Series,
     })
     if factor == "str":
         out["note"] = (
-            "our str is winners-minus-losers and reads positive (momentum) on "
-            "our panel — a §8 result; DRR's raw str is the same leg convention "
+            "our str is winners-minus-losers; DRR's raw str is the same leg convention "
             "with a negative (reversal) premium, published sign-corrected as "
-            "`str*`. Sign disagreement in leg convention is a documented "
-            "finding, not an error; |corr| is the gross-error statistic."
+            "`str*`. Sign disagreement in leg convention is not by itself "
+            "an error; |corr| is the gross-error statistic."
         )
     return out
 
@@ -314,9 +305,8 @@ def structural_certification(ext: pd.DataFrame, matched: dict) -> dict:
     passes = [c["pass"] for c in checks.values() if c.get("pass") is not None]
     return {
         "basis": "README_factor_time_series.txt (shipped in the distribution); "
-                 "the DRR-2023 replicated BBW factor series targeted by the "
-                 "original printed-figure bridge is absent from the current "
-                 "public distribution (CONFIRM-ON-LOAD, 2026-09-01)",
+                 "the DRR-2023 replicated BBW factor series is not part of the "
+                 "public distribution",
         "checks": checks,
         "first_non_nan_month_observational": first_non_nan,
         "all_pass": bool(passes and all(passes)),
@@ -331,36 +321,64 @@ def _load_year_month_series(path: Path, column: str) -> pd.Series | None:
     return pd.Series(df[column].values, index=ym)
 
 
-def _write_report(report: dict) -> None:
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    tmp = OUT.with_suffix(".json.tmp")
+def _write_report(report: dict, out: Path | None = None) -> None:
+    out = OUT if out is None else out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(".json.tmp")
     with open(tmp, "w") as f:
         json.dump(report, f, indent=2)
-    os.replace(tmp, OUT)
-    print(f"\nReport written: {OUT}")
+    os.replace(tmp, out)
+    print(f"\nReport written: {out}")
+
+
+def _rel(path: Path) -> str:
+    """Repo-relative path when inside the repo, else the path as given (never raises)."""
+    try:
+        return str(Path(path).relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Defaults are read from the module globals at call time (tests monkeypatch them)."""
+    ap = argparse.ArgumentParser(description="Descriptive gross-error check.")
+    ap.add_argument("--factors-dir", type=Path, default=FACTORS_DIR,
+                    help="directory holding str/mom6/bbw_factors parquets "
+                         "(default data/development/factors)")
+    ap.add_argument("--out", type=Path, default=OUT,
+                    help="report path (default data/development/headlines/dickerson_gross_error.json)")
+    return ap.parse_args(argv or [])
 
 
 def _envelope() -> dict:
     return {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
-        "git_commit": git_commit(),
         "thresholds_sha256": thresholds_sha256(),
         "family": "corr",
         "gate": {
             "gating": False,
-            "criterion": "E13 descriptive gross-error check; external level "
-                         "comparisons stay descriptive (D16 retired ±15%, "
+            "criterion": "descriptive gross-error check; external level "
+                         "comparisons stay descriptive (D16, "
                          "D-Q17); never wired into run_validation_gates.py; "
                          "exits 0 unconditionally",
         },
     }
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
+    factors_dir, out = Path(args.factors_dir), Path(args.out)
+    if factors_dir != FACTORS_DIR and out == OUT:
+        raise SystemExit(f"ERROR: --factors-dir {factors_dir} with the default --out would overwrite the default "
+                         f"report {OUT}; pass --out")
     report = _envelope()
+    if factors_dir != FACTORS_DIR:
+        report["factors_dir"] = _rel(factors_dir)
+        report["factors_sha256"] = {v[0]: hashlib.sha256((factors_dir / v[0]).read_bytes()).hexdigest()
+                                    for v in OUR_SERIES.values() if (factors_dir / v[0]).is_file()}
 
     missing = [str(p) for p in
-               [EXTERNAL_FILE] + [FACTORS_DIR / v[0] for v in OUR_SERIES.values()]
+               [EXTERNAL_FILE] + [factors_dir / v[0] for v in OUR_SERIES.values()]
                if not p.exists()]
     if missing:
         report["status"] = "inputs_missing"
@@ -369,7 +387,7 @@ def main() -> None:
               "factor builders first:")
         for m in missing:
             print(f"  {m}")
-        _write_report(report)
+        _write_report(report, out)
         sys.exit(0)
 
     ext = pd.read_parquet(EXTERNAL_FILE)
@@ -398,8 +416,8 @@ def main() -> None:
 
     ext_ym = ext.set_index("year_month")
 
-    # 1. drf vs the printed DRR-2023 figure, on our own series.
-    drf_path = FACTORS_DIR / OUR_SERIES["drf"][0]
+    # 1. drf vs the printed DRR-2023 figure, on the pipeline's series.
+    drf_path = factors_dir / OUR_SERIES["drf"][0]
     our_drf = _load_year_month_series(drf_path, OUR_SERIES["drf"][1])
     if our_drf is not None:
         report["drf_printed_figure"] = drf_printed_window_comparison(
@@ -425,7 +443,7 @@ def main() -> None:
         fname, primary, secondary = OUR_SERIES[factor]
         block = {"external_scale_detected": scale_label, "arms": {}}
         for col in (primary, secondary):
-            ours = _load_year_month_series(FACTORS_DIR / fname, col)
+            ours = _load_year_month_series(factors_dir / fname, col)
             if ours is None:
                 block["arms"][col] = {"status": "our_column_missing"}
                 continue
@@ -436,9 +454,9 @@ def main() -> None:
         comparisons[factor] = block
     report["series_comparisons"] = comparisons
 
-    _write_report(report)
+    _write_report(report, out)
     sys.exit(0)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

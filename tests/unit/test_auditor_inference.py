@@ -114,3 +114,53 @@ def test_hac_point_equals_mean_of_monthly_doe_series():
 
 def test_mean_metrics_set_contents():
     assert "average" in MEAN_METRICS and "sharpe" not in MEAN_METRICS
+
+
+# --------------------------------------------------------------------------
+# inert coordinates (identically-zero contrasts are not tested)
+# --------------------------------------------------------------------------
+
+def _doctored_cells_with_inert_stale_price(seed: int):
+    """The meas_err scenario with stale_price made an exact no-op: every cell with stale_price ON carries
+    the returns of its stale_price-OFF twin, so every DOE contrast involving stale_price is zero up to
+    round-off — the exact no-op case an invariance gate checks for."""
+    import dataclasses
+    scenario = build_scenario("meas_err", seed=seed)
+    run = run_scenario(scenario, metric="average")
+    by_key = {c.on_set: c for c in run.lattice.cells}
+    cells = [dataclasses.replace(c, returns=by_key[c.on_set - {"stale_price"}].returns)
+             if "stale_price" in c.on_set else c for c in run.lattice.cells]
+    return cells, run.common
+
+
+def test_inert_coordinate_is_not_tested_under_hac():
+    cells, common = _doctored_cells_with_inert_stale_price(seed=3)
+    res = run_bootstrap(cells, common, TOGGLE_IDS, seed=1, **_BOOT)
+    coords = [frozenset({"stale_price"}), frozenset({"meas_err"}), frozenset({"meas_err", "stale_price"})]
+    inf = infer_doe_effects(cells, common, TOGGLE_IDS, res, metric="average", coordinates=coords)
+    sp = inf[frozenset({"stale_price"})]
+    assert sp.inert and sp.p_value == 1.0 and sp.t_stat == 0.0 and abs(sp.point) < 1e-12
+    assert inf[frozenset({"meas_err", "stale_price"})].inert
+    me = inf[frozenset({"meas_err"})]                      # the planted effect is still detected
+    assert not me.inert and me.p_value < 0.05 and me.t_stat != 0.0
+
+
+def test_inert_coordinate_is_not_tested_under_bootstrap():
+    cells, common = _doctored_cells_with_inert_stale_price(seed=4)
+    res = run_bootstrap(cells, common, TOGGLE_IDS, seed=1, **_BOOT)
+    inf = infer_doe_effects(cells, common, TOGGLE_IDS, res, metric="sharpe",
+                            coordinates=[frozenset({"stale_price"}), frozenset({"meas_err"})])
+    assert inf[frozenset({"stale_price"})].inert and inf[frozenset({"stale_price"})].p_value == 1.0
+    assert not inf[frozenset({"meas_err"})].inert
+
+
+def test_guard_leaves_every_non_inert_coordinate_untouched():
+    # Every non-inert HAC coordinate keeps the two-sided normal p of its t; every inert one has p = 1, t = 0;
+    # the planted effect is never inert.
+    inf = _run("meas_err", "average", seed=1)
+    assert not inf[frozenset({"meas_err"})].inert
+    for r in inf.values():
+        if r.inert:
+            assert r.p_value == 1.0 and r.t_stat == 0.0
+        else:
+            assert math.isclose(r.p_value, two_sided_p(r.t_stat), rel_tol=0, abs_tol=1e-15)

@@ -14,7 +14,7 @@ re-asserted when the result is constructed (``schemas.IPCADifferentialResult``).
 
 ``differential_from_feeds`` is the core (fed synthetic inputs by the build gates).
 ``run_differential`` is the real entry point (panels via ``panel_states``, anchors via
-``run_bbw_factor``); its real-data validation lives in the experimentalist build.
+``run_bbw_factor``); its real-data path is driven by scripts/run_ipca_differential.py.
 """
 
 from __future__ import annotations
@@ -212,7 +212,7 @@ def differential_from_states(
 #   mom6 (JNPS-2013): decile sort on the 6-month momentum signal, EQUAL-weighted, with the
 #        Jostova SKIP (signal_lag = skip_months) and STAGGERED holding (holding_months) — the same
 #        run_with_holding_period construction as the canonical build_mom6 factor, NOT a plain
-#        1-month no-skip sort (which is a materially different, opposite-signed series).
+#        1-month no-skip sort (a materially different construction).
 #   drf  (BBW-2019): bivariate var_5pct × rating, value-weighted (run_bbw_factor).
 _STR_RULEBOOK: dict = {
     "score": "xret", "groups": 10, "weighting": "by_size", "long_group": 9, "short_group": 0,
@@ -263,11 +263,14 @@ def run_differential(
     bootstrap_seed: int = 0,
     recompute_signals: bool = True,
     thresholds_path=None,
+    characteristics_maximal: pd.DataFrame | None = None,
 ) -> IPCADifferentialResult:
     """Real entry point: build (P_N, P_b) via ``panel_states``, their feeds and the fixed anchor
     from P_N, then the 2x2 with §5.3 conditional bootstrap intervals. ``recompute_signals`` (the
     default) recomputes var/vol/mom6 per panel state. Construction biases raise
-    ``ConstructionToggleDeferred`` (see panels.py)."""
+    ``ConstructionToggleDeferred`` (see panels.py). ``characteristics_maximal`` (optional): IPCA
+    instruments from this panel's cell states, IPCA returns and the anchor from ``maximal``; None ⇒
+    the single-panel construction (instruments, IPCA returns and anchor all from maximal)."""
     lam = lam or load_ipca_lambda(thresholds_path)
     gate = gate or load_ipca_projection_gate(thresholds_path)
     bootstrap = bootstrap or load_ipca_bootstrap_config(thresholds_path)
@@ -277,8 +280,16 @@ def run_differential(
     p_n, p_b = panel_states(bias, maximal, signals)
     family_n = "corr"
     family_b = "raw" if bias == "meas_err" else "corr"
-    feed_n = build_cell_feed(p_n, reg, family_n, recompute_signals=recompute_signals, thresholds_path=thresholds_path)
-    feed_b = build_cell_feed(p_b, reg, family_b, recompute_signals=recompute_signals, thresholds_path=thresholds_path)
+    if characteristics_maximal is None:
+        feed_n = build_cell_feed(p_n, reg, family_n, recompute_signals=recompute_signals, thresholds_path=thresholds_path)
+        feed_b = build_cell_feed(p_b, reg, family_b, recompute_signals=recompute_signals, thresholds_path=thresholds_path)
+    else:
+        # Instruments from the characteristics basis (same cell states); IPCA returns from ``maximal``.
+        c_n, c_b = panel_states(bias, characteristics_maximal, signals)
+        feed_n = build_cell_feed(c_n, reg, family_n, recompute_signals=recompute_signals,
+                                 thresholds_path=thresholds_path, return_panel=p_n)
+        feed_b = build_cell_feed(c_b, reg, family_b, recompute_signals=recompute_signals,
+                                 thresholds_path=thresholds_path, return_panel=p_b)
     anchor = _anchor_series(p_n, anchor_name, thresholds_path=thresholds_path)   # fixed anchor from P_N
     return differential_from_feeds(
         bias, anchor_name, feed_n, feed_b, anchor, lam, gate,

@@ -288,6 +288,10 @@ class P2Metrics:
     distribution: dict = field(default_factory=dict)
     divergences: tuple[CodegenVsCompiler, ...] = ()
     mde: dict = field(default_factory=dict)
+    #: The authorised departure id under which numbers were computed BELOW the
+    #: registered floor (``None`` on every registered path). Carried into the report and
+    #: the results JSON so a below-floor number can never be read as a registered one.
+    floor_override: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -298,7 +302,29 @@ class P2Metrics:
             "distribution": self.distribution,
             "divergences": [d.to_dict() for d in self.divergences],
             "mde": {str(k): v for k, v in self.mde.items()},
+            "floor_override": self.floor_override,
         }
+
+
+def _validated_override(floor_override: str | None, selection: ArmSelection) -> str | None:
+    """The departure id, validated. ``None`` selects the registered (suppressing) path.
+    An empty id, or one supplied for an ABOVE-floor selection (where the registered rule
+    already emits numbers), is a caller error — refusing keeps the label meaningful."""
+    if floor_override is None:
+        return None
+    override = str(floor_override).strip()
+    if not override:
+        raise ValueError(
+            "floor_override must be a non-empty departure id (the registered decision that "
+            "authorises computing below the registered floor)"
+        )
+    if not selection.below_floor:
+        raise ValueError(
+            f"floor_override {override!r} was supplied for an ABOVE-floor selection "
+            f"(|Arm A|={selection.arm_a_size}) — there is no floor to depart from; the "
+            "registered path already emits these numbers"
+        )
+    return override
 
 
 def compute_p2_metrics(
@@ -309,6 +335,7 @@ def compute_p2_metrics(
     thresholds: dict,
     *,
     model_ids: tuple[str, str] = ("model_a", "model_b"),
+    floor_override: str | None = None,
 ) -> P2Metrics:
     """Assemble the P2 metrics from per-member inter-model series pairs and the
     Arm-B compiler series. Honours the below-floor suppression rule.
@@ -319,14 +346,21 @@ def compute_p2_metrics(
     or partial when a compiler series is unavailable (those members simply carry
     no divergence row — never a silent Sharpe substitute)."""
     fate_table = census.fate_table()
+    override = _validated_override(floor_override, selection)
+    floor_reason: str | None = None
     if selection.below_floor:
-        reason = (
+        floor_reason = (
             f"|Arm A|={selection.arm_a_size} < below_floor_min_arm_a="
             f"{int(thresholds['arms']['below_floor_min_arm_a'])} — agreement/divergence "
             "suppressed; only the census fate table + taxonomy are emitted"
         )
-        return P2Metrics(
-            suppressed=True, below_floor_reason=reason, census_fate_table=fate_table
+        if override is None:
+            return P2Metrics(
+                suppressed=True, below_floor_reason=floor_reason, census_fate_table=fate_table
+            )
+        floor_reason = (
+            f"{floor_reason}. COMPUTED ANYWAY under the authorised departure "
+            f"{override}: descriptive at this arm size, never a registered result"
         )
 
     agreements: list[MemberAgreement] = []
@@ -360,10 +394,11 @@ def compute_p2_metrics(
 
     return P2Metrics(
         suppressed=False,
-        below_floor_reason=None,
+        below_floor_reason=floor_reason,
         census_fate_table=fate_table,
         agreements=tuple(agreements),
         distribution=distribution,
         divergences=tuple(divergences),
         mde=mde,
+        floor_override=override,
     )

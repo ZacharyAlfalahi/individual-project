@@ -1,7 +1,7 @@
 """Shared Reporter test fixtures (not collected — leading underscore).
 
 Builds a `ReportBundle` directly from serialised docs, so renderer/verifier/registry tests do
-not have to round-trip through the loader. Reuses real committed artefacts where available.
+not have to round-trip through the loader. Reuses recorded artefacts where available.
 """
 
 from __future__ import annotations

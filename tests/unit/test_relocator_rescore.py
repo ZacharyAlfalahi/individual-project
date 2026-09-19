@@ -1,6 +1,6 @@
 """Re-scoring tests (scripts/run_relocator_rescore.py) — synthetic
 recorded runs through the replay + cross-pin machinery, plus a machine-local
-pin on the committed artifact once the real pass has run."""
+pin on the recorded artifact."""
 
 from __future__ import annotations
 
@@ -244,9 +244,9 @@ _HEADLINE = {"coverage": [47, 132], "selective_accuracy": [36, 47], "over_claim"
 
 
 @pytest.mark.skipif(not _ARTIFACT.exists(),
-                    reason="committed qr1 rescore artifact absent on this machine "
+                    reason="recorded qr1 rescore artifact absent on this machine "
                            "(the strict-universe calibration admits no bar, so it never exists)")
-def test_committed_rescore_artifact_pins():
+def test_recorded_rescore_artifact_pins():
     result = json.loads(_ARTIFACT.read_text(encoding="utf-8"))
     assert result["diagnostic"].startswith("Relocate-then-certify")
     primary = result["primary"]
@@ -262,8 +262,8 @@ _QR2_ARTIFACT = _REPO_ROOT / "results" / "relocator_rescore_qr2.json"
 
 
 @pytest.mark.skipif(not _QR2_ARTIFACT.exists(),
-                    reason="committed qr2 rescore artifact absent on this machine")
-def test_committed_qr2_rescore_artifact_pins():
+                    reason="recorded qr2 rescore artifact absent on this machine")
+def test_recorded_qr2_rescore_artifact_pins():
     result = json.loads(_QR2_ARTIFACT.read_text(encoding="utf-8"))
     assert result["config"]["protocol"] == "qr2"
     assert result["config"]["accept_bar"] == 0.90

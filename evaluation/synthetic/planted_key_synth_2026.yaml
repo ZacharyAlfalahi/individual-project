@@ -13,7 +13,7 @@ authoring:
 provenance:
   pdf_file: papers/synthetic/sbm_synth_2026.pdf
   pdf_sha256: 040b51c199fcda214fff53820e9a89b8e640e5942c4b25f8ca5b3d1c83d3e592
-  pdf_rebuilt: '2026-08-24'   # de-branding recompile (title block + banner); body text unchanged
+  pdf_rebuilt: '2026-08-24'   # recompile (title block + banner); body text unchanged
   canonical_text: evaluation/canonical_texts/synth_2026.frozen.yaml
   canonical_recipe_normalise_sha256: abe11ff63b76df2e46a775a70f1feb397d10fa59984bafd38d312b178b01a79e
   canonical_text_hash: 6ba99f10f0d84d349d870817f2501bbc0017da6c4e80571c89943fbc5457de97

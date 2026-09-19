@@ -3,7 +3,7 @@ Download the DRR-2026 monthly long-short factor series (openbondassetpricing.com
 → data/development/dickerson_factor_returns.parquet, truncated at the development
 boundary BEFORE anything touches disk.
 
-Source artifact (CONFIRM-ON-LOAD outcome recorded 2026-09-01, scope_changes.md):
+Source artifact (confirmed at load time; docs/data/registers/scope_changes.md):
   "108 Bond Factors — Dickerson, Robotti & Rossetti (2026)" → Bond Level Single
   Sort → 108 Wide Format Factors (single_sort_public.zip), member
   single_sort_exc_all.csv: all-bonds decile sorts, long-short P10-P1,
@@ -20,7 +20,7 @@ written to disk. The stored artifact is therefore development-only by
 construction, like baa_aaa_spread.parquet.
 
 Mirrors scripts/download_baa_aaa_spread.py (curl + atomic parquet write).
-DEVIATION (recorded in scope_changes.md): the endpoint URL is held as a module
+DEVIATION (docs/data/registers/scope_changes.md): the endpoint URL is held as a module
 constant, not a thresholds.yaml key, to keep this additive instrument zero-touch
 on the frozen thresholds file (FROZEN_THRESHOLDS_SHA256 re-pin discipline).
 DEVIATION from the BAA template: curl runs WITHOUT text=True and WITH -L —

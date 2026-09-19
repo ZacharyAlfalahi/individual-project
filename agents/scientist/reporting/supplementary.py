@@ -1,10 +1,10 @@
-"""G4 supplementary PBO — the measurement the pre-registration promised
+"""G4 supplementary PBO — the pre-registered supplementary measurement
 (DEV-G4-PBO-1 resolution, E6, 2026-08-06).
 
 The protocol pre-registered `pbo: {scope: realised_family_only, status:
 supplementary_caveated}` with the in-file comment "coarse at m = 6; reported
-with a caveat, never gating" — but the implemented G4 never computed it.
-This module fulfils the promise INERTLY, under the three conditions:
+with a caveat, never gating". G4 itself does not compute it.
+This module computes it INERTLY, under three conditions:
 
   (i)  additive only — computed from the FINISHED `ExperimentReport` and the
        driver-held candidate returns, strictly after every gate decision;
@@ -14,9 +14,8 @@ This module fulfils the promise INERTLY, under the three conditions:
        that the report's records are byte-identical with and without this
        computation (it takes the report read-only and returns a separate
        block);
-  (iii) had the wiring required touching any decision path, the ruling was
-       to revert to disclosure-only — it did not: this lives in the
-       `reporting` subpackage, sibling to (never inside) the gate stack.
+  (iii) no decision path is touched: it lives in the `reporting` subpackage,
+       sibling to (never inside) the gate stack.
 
 The realised family = the audit-clean proposals whose candidate series
 executed (the trials over which G3's joint BH actually operated). The
@@ -42,6 +41,74 @@ def _is_realised(record) -> bool:
     joint BH ran over (compiled, execution-verified, audit-clean)."""
     b = record.booleans
     return bool(b.compiled and b.execution_verified and b.audit_clean)
+
+
+def _serialise(obj):
+    """A result object as plain data, whatever shape it exposes."""
+    if hasattr(obj, "to_dict"):
+        return obj.to_dict()
+    import dataclasses
+    return dataclasses.asdict(obj) if dataclasses.is_dataclass(obj) else obj
+
+
+def funnel_supplementary(
+    reports_by_source: Mapping[str, object],
+    returns_by_source: Mapping[str, Mapping[str, pd.Series]],
+    *,
+    parent_returns: pd.Series | None = None,
+    spread: pd.Series | None = None,
+) -> dict:
+    """The three registered post-hoc diagnostics, computed AFTER every gate
+    decision and gating nothing:
+
+      * **deflated Sharpe** — measured inside G4 for each survivor and
+        lifted out of the finished records here, never recomputed;
+      * **PBO** — the family-level CSCV probability of backtest overfitting, per source
+        family, with its pre-registered caveat;
+      * **regime decomposition** — the mechanism-consistency comparison over the frozen
+        evaluation median, per advanced candidate.
+
+    Read-only over the reports. A missing input yields a typed note, never an exception:
+    a supplementary measurement must not be able to take down the run it accompanies."""
+    from shared.evaluation.regimes import evaluate_regimes
+
+    out: dict = {
+        "computed_after_every_gate_decision": True,
+        "gates_nothing": True,
+        "sources": {},
+    }
+    for source, report in sorted(reports_by_source.items()):
+        returns = dict(returns_by_source.get(source) or {})
+        records = list(getattr(report, "records", ()))
+        advanced = list(getattr(report, "advanced", ()))
+
+        dsr = {}
+        for record in records:
+            measurements = getattr(record, "measurements", None)
+            value = getattr(measurements, "deflated_sharpe", None) if measurements else None
+            if value is not None:
+                dsr[record.proposal_id] = float(value)
+
+        regimes: dict = {}
+        for proposal_id in advanced:
+            series = returns.get(proposal_id)
+            if series is None:
+                regimes[proposal_id] = {"status": "no_series_retained"}
+                continue
+            if spread is None:
+                regimes[proposal_id] = {"status": "no_macro_spread_supplied"}
+                continue
+            regimes[proposal_id] = _serialise(evaluate_regimes(
+                series, spread, parent_returns=parent_returns))
+
+        out["sources"][source] = {
+            "deflated_sharpe": dsr,
+            "n_deflated_sharpe": len(dsr),
+            "pbo": family_pbo_supplementary(records, returns),
+            "regimes": regimes,
+            "n_advanced": len(advanced),
+        }
+    return out
 
 
 def family_pbo_supplementary(

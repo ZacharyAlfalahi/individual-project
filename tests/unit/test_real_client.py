@@ -400,7 +400,7 @@ def test_disk_cache_keyed_by_model_id(monkeypatch, builder, tmp_path):
 
 
 def test_cache_is_per_construction_not_per_paper(monkeypatch, builder):
-    """Pre-paid-run fix (2026-09-02): on a multi-construction paper the per-field
+    """Pre-run fix: on a multi-construction paper the per-field
     cache must NOT serve construction 1's answers to construction 2 -- the prompt
     renders per-construction via current_strategy_label, so the key must too.
     (dfps carries 28 constructions; a paper-wide key would emit 28 near-clones.)"""

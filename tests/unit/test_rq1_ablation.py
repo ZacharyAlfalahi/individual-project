@@ -14,7 +14,7 @@ from scripts.run_rq1_ablation import _ship, score_grid                    # noqa
 
 _RUNS = _REPO_ROOT / "runs" / "g3_v3"
 needs_runs = pytest.mark.skipif(not (_RUNS / "bbw" / "raw" / "raw_model_a.jsonl").exists(),
-                                reason="committed dev run not on disk")
+                                reason="recorded dev run not on disk")
 
 _A = {"answered": True, "quote": "qa", "value": "v"}
 _B = {"answered": True, "quote": "qb", "value": "v"}
@@ -42,7 +42,7 @@ def test_ship_single_model_prefers_a_then_b_deterministically():
 
 
 @needs_runs
-def test_grid_monotonicity_on_the_committed_run():
+def test_grid_monotonicity_on_the_recorded_run():
     """Removing a discipline can only widen what ships: coverage must be
     monotone non-decreasing from the full system to neither."""
     rows = {r["combo"]: r for r in score_grid("drf", _RUNS / "bbw")}

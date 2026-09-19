@@ -16,7 +16,7 @@ import run_rq4_positive_control as mod  # noqa: E402
 
 
 def test_beta_for_bp_mapping_is_linear_on_the_realised_anchor():
-    # Anchor: _BETA = 0.00020 <=> 44 bp/mo (the historical run of record's realised mean_return).
+    # Anchor: _BETA = 0.00020 <=> 44 bp/mo (the recorded run's realised mean_return).
     assert mod.beta_for_bp(44.0) == pytest.approx(0.00020, rel=1e-12)
     # Linear: half the bp -> half the beta; and an explicit ladder point.
     assert mod.beta_for_bp(22.0) == pytest.approx(0.00010, rel=1e-12)

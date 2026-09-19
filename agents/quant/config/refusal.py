@@ -21,7 +21,7 @@ class RefusalCode(str, Enum):
     OUT_OF_ENUM_WEIGHTING = "OUT_OF_ENUM_WEIGHTING"        # weighting the config cannot represent
     UNSUPPORTED_TRIM_VARIANT = "UNSUPPORTED_TRIM_VARIANT"  # trim the engine cannot express
     UNSUPPORTED_COMBINATION = "UNSUPPORTED_COMBINATION"    # e.g. control + holding_period > 1
-    # --- additive members (D29, 2026-07-08; landed with the adapter build). These
+    # --- additive members (D29). These
     #     are ADAPTER-side refusal codes: the factory above never emits them (it
     #     owns only the four engine-representability refusals). Adding them is an
     #     explicit, bounded reopening of frozen code -- additive enum members only;

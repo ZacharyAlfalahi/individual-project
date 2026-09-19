@@ -55,6 +55,10 @@ class OneshotHoldoutConfig:
     priors: Mapping[str, float]
     holdout_reader_open: Callable[[], None] | None = None      # real path: opens data/holdout access
     zero_leakage_check: Callable[[pd.DataFrame, Window], None] | None = None
+    # Real path: derive the stage-2 inputs FROM the stage-1 build (the survivors re-run on the seeded holdout
+    # panel, the BBW-4 benchmark built on it) instead of carrying them in (the spec's survivor/benchmark derivation step).
+    # Returns (survivors, benchmarks, record); the record lands in the manifest. None = use the fields above.
+    derive_inputs: Callable[[Stage1Result], tuple[list[SurvivorInput], Mapping[str, pd.DataFrame], dict]] | None = None
 
 
 @dataclass(frozen=True)
@@ -101,7 +105,7 @@ def _manifest(cfg: OneshotHoldoutConfig, check: GateChecklistResult, stage1: Sta
 
 def _dir_code_hash() -> str:
     """Hash of the one-shot holdout package source — the frozen-script fingerprint (§1.1). Excludes ``frozen.py``
-    (which HOLDS the committed pin) so the pin is over the other modules and cannot depend on itself."""
+    (which HOLDS the pin) so the pin is over the other modules and cannot depend on itself."""
     here = Path(__file__).resolve().parent
     h = hashlib.sha256()
     for py in sorted(here.glob("*.py")):
@@ -113,7 +117,7 @@ def _dir_code_hash() -> str:
 
 def _open_holdout_gate(cfg: OneshotHoldoutConfig) -> None:
     """Open the artefact-gated single-access holdout gate (never a date). Requires ALL of: the prereg
-    tag present, the frozen one-shot holdout-package hash matching the committed pin (**fail-closed** if unpinned —
+    tag present, the frozen one-shot holdout-package hash matching the pin (**fail-closed** if unpinned —
     an unpinned/tampered script keeps the gate shut), and the env unlock set; then consumes the single
     access and opens the real reader. Called before EVERY real holdout read — including RESUME_EVALUATE,
     which re-reads the holdout in a fresh process and so must re-gate (defence-in-depth)."""
@@ -132,10 +136,15 @@ def _open_holdout_gate(cfg: OneshotHoldoutConfig) -> None:
 
 
 def _evaluate_and_manifest(cfg: OneshotHoldoutConfig, check, window, stage1, *, holdout_processed: bool):
-    # Clip to the registered window (m3) so the "full" statistic is exactly window.n_months — seed
-    # months can never leak into the holdout statistic.
-    results = evaluate_survivors(cfg.survivors, cfg.benchmarks, window, cfg.priors)
+    survivors, benchmarks, derivation = cfg.survivors, cfg.benchmarks, None
+    if cfg.derive_inputs is not None:
+        survivors, benchmarks, derivation = cfg.derive_inputs(stage1)
+    results = evaluate_survivors(survivors, benchmarks, window, cfg.priors)
     manifest = _manifest(cfg, check, stage1, results, holdout_processed=holdout_processed)
+    manifest["survivor_ids"] = [s.survivor_id for s in survivors]
+    manifest["benchmarks"] = sorted(benchmarks)
+    if derivation is not None:
+        manifest["stage2_input_derivation"] = derivation
     return results, manifest
 
 
@@ -175,7 +184,7 @@ def _run_real(cfg: OneshotHoldoutConfig, check: GateChecklistResult) -> OneshotH
             zero_leakage_check=cfg.zero_leakage_check,
         )
         marker.append("STAGE1_COMPLETE", ts=cfg.ts, extra={"data_hash": stage1.artefact_hashes()})
-    else:  # RESUME_EVALUATE — the builder re-reads data/holdout, so it MUST re-gate (M2).
+    else:  # RESUME_EVALUATE — the builder re-reads data/holdout, so it MUST re-gate.
         _open_holdout_gate(cfg)
         stage1 = build_holdout_panel(
             window=window, quarantine_dir=cfg.quarantine_dir,

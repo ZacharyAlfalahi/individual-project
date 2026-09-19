@@ -10,10 +10,10 @@ Phase F (paid anchor, the only source of reported RQ1 figures). It also states
 that calibration is pair-specific -- ``P(correct|agree)`` and every selective
 metric measured on Phase D do **not** transfer.
 
-Today that firewall is documentary only. `--phase report` differs from
-`--phase dev` by a single YAML key; the D33 authorization is a process step with no
-code behind it; and the one existing marker is a hand-typed banner at the top of
-a baseline document. This module makes it mechanical: a run's phase is DERIVED
+Without a code-level check that firewall is documentary: `--phase report` differs from
+`--phase dev` by a single YAML key, the D33 authorization is a process step with no
+code behind it, and a banner at the top of a baseline document is not enforcement.
+This module makes it mechanical: a run's phase is DERIVED
 from the model ids its trace header records, compared against the pinned stack,
 and the resulting stamp is a mandatory field that renderers refuse to drop.
 

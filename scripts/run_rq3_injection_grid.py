@@ -3,21 +3,21 @@
 
 For each of the five corrections, export the engineering-tier + statistical-tier figures the
 reported grid needs, in bp/mo, computed by reusing the existing (tested) auditor injection +
-magnitude-sweep machinery. No auditor/calibration/synthetic module is modified.
+magnitude-sweep machinery.
 
 Columns (all bp/mo except the ratio and coverage):
   * Injected            -- the noise-free planted long-short effect (build_scenario with
                            SyntheticSpec(noise_sd=0.0) -> doe_first_order[bias] x 10000). The
                            injection *magnitude* is a DGP-internal knob, not bp; multiplying it by
-                           10000 would invent a bp unit that is not there, so we report the realised
+                           10000 would invent a bp unit that is not there, so the grid reports the realised
                            noise-free effect instead (the planted truth).
   * Recovered           -- the estimated effect at the default magnitude (mean over seeds of the
                            magnitude-sweep effect x 10000). Recovered ~ Injected because the
                            synthetic estimator is unbiased on common support; reported as found.
   * Signal/background   -- injected effect / largest UNINJECTED toggle effect on the injected panel
                            (single_bias_fixture; dominance_ratio 5.0 == the "req >= 5" bar). On the
-                           clean DGP the background is ~machine-zero, so we report "PASS (>=5),
-                           background < 0.01 bp/mo" rather than a meaningless ~1e16 ratio.
+                           clean DGP the background is ~machine-zero, so the grid reports "PASS (>=5),
+                           background < 0.01 bp/mo" rather than a meaningless near-infinite ratio.
   * Interval coverage   -- fraction of per-seed bootstrap CIs (at the default magnitude) that cover
                            the noise-free Injected truth. The one column that needs a fresh run.
   * MDE                 -- minimum detectable effect (target power 0.8) over the magnitude grid,
@@ -34,8 +34,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
-import subprocess
 import sys
 from pathlib import Path
 
@@ -59,7 +59,7 @@ _BACKGROUND_FLOOR_BP = 0.01   # below this the uninjected background is machine-
 # materiality floor is theta = 10 bp/mo = 1e-3 return units), yet orders of magnitude ABOVE the
 # ~1e-17 machine-precision scatter of a deterministic contrast. A CI narrower than this carries no
 # bootstrap variability at all -- e.g. meas_err's per-bond time-constant shift hits the raw family
-# only, so the ON-OFF contrast is deterministic, the CI collapses to ~1e-17 width, and
+# only, so the ON-OFF contrast is deterministic, the CI collapses to machine-precision width, and
 # covered-vs-not becomes a floating-point coin flip. Such seeds are classified `degenerate`
 # instead of covered/not-covered.
 _DEGENERATE_CI_HALFWIDTH_FLOOR = 1e-12
@@ -96,7 +96,7 @@ _CAL_DIR = _REPO_ROOT / "results" / "auditor" / "calibration"
 
 
 def _calibration_path() -> Path:
-    """The selected local calibration artifact (run_<git>/calibration.json).
+    """The selected local calibration artifact (run_*/calibration.json).
     Fail-loud when absent or ambiguous -- recovered/MDE are read, never recomputed."""
     candidates = sorted(_CAL_DIR.glob("run_*/calibration.json"))
     if len(candidates) != 1:
@@ -106,9 +106,9 @@ def _calibration_path() -> Path:
     return candidates[0]
 
 
-def _committed_recovered_mde(bias: str) -> dict:
-    """Recovered (at the default magnitude) and MDE, read from the COMMITTED, validated calibration
-    run — the same magnitude-sweep machinery, already run and cited. Reading it here
+def _recorded_recovered_mde(bias: str) -> dict:
+    """Recovered (at the default magnitude) and MDE, read from the local validated calibration
+    run (``_calibration_path``) — the same magnitude-sweep machinery. Reading it here
     is $0 and avoids re-running the (expensive) full grid; the values carry their source."""
     cal_path = _calibration_path()
     cal = json.loads(cal_path.read_text())
@@ -118,17 +118,32 @@ def _committed_recovered_mde(bias: str) -> dict:
     recovered_bp = to_bps(abs(rec))
     mde_mag = pb.get("mde")
     # structural == detected already at magnitude 0 (the channel is magnitude-independent, e.g.
-    # stale_price). Survivorship has a mag>0 mde here, but its calibration notes flag its
-    # magnitude-zero as not a valid null (the structural distress-drop is always active), so its
-    # printed MDE measures sensitivity to distress severity, not a general detection floor.
+    # stale_price). A channel with a mag>0 mde whose magnitude-zero is not a valid null (e.g.
+    # survivorship's always-active distress-drop) has its printed MDE measuring sensitivity to
+    # distress severity, not a general detection floor.
     structural = (mde_mag == 0.0)
     mde_bp = None
     if mde_mag is not None and not structural:
         at_mde = pb["per_magnitude"].get(str(mde_mag))
         mde_bp = to_bps(abs(at_mde["mean_effect"])) if at_mde else None
     return {"recovered_bp": recovered_bp,
-            "recovered_source": f"committed calibration {cal_path.parent.name}",
+            "recovered_source": f"calibration {cal_path.parent.name}",
             "mde_magnitude": mde_mag, "mde_bp": mde_bp, "mde_structural": structural}
+
+
+def _recovery_accuracy(errors: list[float]) -> dict:
+    """Estimator bias and RMSE in bp/month from the per-seed recovery errors
+    (point estimate minus that seed's own noise-free truth).
+
+    Registered as a statistical-tier output alongside interval coverage and MDE. RMSE is the quantity the
+    registration names and bias alone cannot supply: a signed bias of zero is consistent with
+    large symmetric error, which is exactly what a recovery claim must rule out."""
+    if not errors:
+        return {"estimator_bias_bp": None, "rmse_bp": None, "accuracy_n_seeds": 0}
+    n = len(errors)
+    bias_bp = (sum(errors) / n) * 10000.0
+    rmse_bp = math.sqrt(sum(e * e for e in errors) / n) * 10000.0
+    return {"estimator_bias_bp": bias_bp, "rmse_bp": rmse_bp, "accuracy_n_seeds": n}
 
 
 def _coverage(bias: str, seeds: int, replicates: int) -> dict:
@@ -143,14 +158,20 @@ def _coverage(bias: str, seeds: int, replicates: int) -> dict:
     classified `degenerate` (deterministic contrast, no genuine interval) instead of
     covered/not-covered. If ANY seed is degenerate the bias reports
     interval_coverage="degenerate_deterministic" + n_degenerate + exact_recovery (max over the
-    degenerate seeds of |truth - point estimate|, return units -- ~1e-17 == exact recovery at
-    machine precision for meas_err)."""
+    degenerate seeds of |truth - point estimate|, return units -- machine-precision values
+    indicate exact recovery)."""
     covered, valid, degenerate = 0, 0, 0
     exact_recovery_diffs = []
+    # Estimator bias and RMSE use the SAME per-seed pairs as the coverage loop
+    # (each seed's own noise-free truth and its noisy point estimate), at no extra cost.
+    # Both are accumulated over EVERY seed, including degenerate ones: a deterministic contrast
+    # still has a well-defined error, and dropping those seeds would silently change the estimand.
+    errors: list[float] = []
     for s in range(seeds):
         truth = run_scenario(build_scenario(bias, DEFAULT_MAGNITUDES[bias], seed=s,
                                             spec=SyntheticSpec(noise_sd=0.0))).doe_first_order[bias]
         run = run_scenario(build_scenario(bias, DEFAULT_MAGNITUDES[bias], seed=s))
+        errors.append(run.doe_first_order[bias] - truth)
         # Use the full TOGGLE_IDS so the CI is the saturated-DOE main effect for `bias` -- the SAME
         # estimand as the noise-free truth (bit-identical to a singleton toggle on a single-bias
         # panel, but self-consistent with the pre-registered magnitude_sweep/run_scenario path).
@@ -166,20 +187,13 @@ def _coverage(bias: str, seeds: int, replicates: int) -> dict:
         valid += 1
         if cls == "covered":
             covered += 1
+    accuracy = _recovery_accuracy(errors)
     if degenerate:
         return {"interval_coverage": "degenerate_deterministic", "n_degenerate": degenerate,
                 "exact_recovery": max(exact_recovery_diffs),
-                "coverage_n_seeds": seeds, "coverage_n_replicates": replicates}
+                "coverage_n_seeds": seeds, "coverage_n_replicates": replicates, **accuracy}
     return {"interval_coverage": (covered / valid) if valid else None,
-            "coverage_n_seeds": seeds, "coverage_n_replicates": replicates}
-
-
-def _git_commit() -> str:
-    try:
-        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=_REPO_ROOT,
-                              capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:
-        return "unknown"
+            "coverage_n_seeds": seeds, "coverage_n_replicates": replicates, **accuracy}
 
 
 def run_injection_grid(seeds: int = 20, replicates: int = 200) -> dict:
@@ -187,13 +201,13 @@ def run_injection_grid(seeds: int = 20, replicates: int = 200) -> dict:
     for bias in TOGGLE_IDS:
         injected_bp = _injected_bp(bias, seeds=3)
         sig = _signal_background(bias)
-        rec_mde = _committed_recovered_mde(bias)
+        rec_mde = _recorded_recovered_mde(bias)
         cov = _coverage(bias, seeds, replicates)
         grid[bias] = {"injected_bp": injected_bp, "signal_background": sig, **rec_mde, **cov}
     return {"component": "rq3_injection_grid", "synthetic_dgp_only": True,
             "reads_real_data": False, "touches_holdout": False, "cost_usd": 0.0,
             "unit": "bp_per_month (effect x 10000; injection magnitude is DGP-internal, not bp)",
-            "git_commit": _git_commit(), "per_correction": grid}
+            "per_correction": grid}
 
 
 def main(argv=None) -> int:

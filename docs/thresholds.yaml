@@ -624,6 +624,11 @@ auditor:
   # (mean monthly long-short return) is a mean of observables, so the exact HAC
   # branch applies (§7.1); Sharpe is still reported per-cell as secondary.
   primary_metric: average
+  # Inert-coordinate guard (§7.1). A DOE coordinate whose monthly contrast series is zero to this
+  # RELATIVE tolerance (scaled by the largest cell metric in the run) has no estimand: what remains
+  # is round-off, so it is reported inert (p = 1, t = 0) rather than tested. Registered because it
+  # decides WHETHER a coordinate is tested; a real 1 bp/mo effect sits ~8 orders of magnitude above it.
+  inert_relative_tol: 1.0e-12
   # Check 5 (§7.5) — the multiple-testing flag. ADDITIVE, dated 2026-09-03 (after
   # the registered confirmatory str run): mt_flag is INFORMATIONAL and enters
   # no gate or differential (D7/A7), so these constants alter no registered
@@ -1155,6 +1160,11 @@ p1_codegen:
   budget:
     usd_cap: 30.0                   # §3/§9 "≤ $30 of the Phase-F cap — APPROVED 2026-08-06"
     per_call_output_token_cap: 16000  # §3/§9 "per-call output ceiling 16,000 tokens — APPROVED"
+    # Shared pre-flight policy (design decision 2026-09-11), registered here so no driver carries
+    # its own copy: the per-vendor spend ceiling every generation path refuses above, and the floor
+    # on the per-call prompt-token bound the pre-flight estimate uses.
+    per_vendor_usd_ceiling: 10.0
+    input_tokens_floor: 8000
     # Per-model prices (USD per 1,000,000 tokens) used ONLY to convert token usage into the
     # estimated cumulative spend the $30 rail bounds. The binding rails are the
     # $30 cap + the 16k per-call ceiling; on a ~10-call (~$1-3) experiment these prices are a

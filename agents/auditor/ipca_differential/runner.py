@@ -35,9 +35,9 @@ REGISTRY = REPO_ROOT / "agents" / "quant" / "library" / "configs" / "ipca_instru
 MAXIMAL_PANEL = DEV / "monthly_panel_maximal.parquet"
 
 # The four IPCA signal parquets and their dual-family columns. gamma_illiq.parquet stores its
-# columns as gamma_raw / gamma_corr, but the canonical INSTRUMENT name is gamma_illiq — so we rename
-# on load, and view()'s A9 family resolution then yields the column `gamma_illiq` that to_merged
-# expects (fixing the gamma vs gamma_illiq mismatch at the single point where the name is known).
+# columns as gamma_raw / gamma_corr, but the canonical INSTRUMENT name is gamma_illiq — so the columns
+# are renamed on load, and view()'s A9 family resolution then yields the column `gamma_illiq` that
+# to_merged expects (the rename sits at the single point where the name is known).
 _SIGNAL_COLUMNS: dict[str, tuple[str, str]] = {
     "mom6.parquet": ("mom6_raw", "mom6_corr"),
     "var_5pct.parquet": ("var_5pct_raw", "var_5pct_corr"),
@@ -58,9 +58,9 @@ def load_dev_signals(dev: Path = DEV) -> pd.DataFrame:
         merged = df if merged is None else merged.merge(df, on=["cusip", "date"], how="outer")
     assert merged is not None
     # Per-paper baseline profile signal variants (FL-D21a), if built: the 8
-    # `<signal>_<pid>` columns join the dual-family frame so view()'s (now
-    # family-general) A9 resolver can select a profile OFF-arm family. ADDITIVE —
-    # absent file => raw/corr behaviour is byte-identical.
+    # `<signal>_<pid>` columns join the dual-family frame so view()'s
+    # family-general A9 resolver can select a profile OFF-arm family. ADDITIVE —
+    # absent file => raw/corr columns only.
     prof = dev / "signals" / "profiles_signals.parquet"
     if prof.exists():
         pdf = pd.read_parquet(require_licensed_input(prof, "profile signals"))
@@ -78,9 +78,9 @@ def load_dev_inputs() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
 
     The per-paper baseline profile family columns (FL-D21a), if built, are
     LEFT-JOINED onto the maximal panel here so it carries `*_bbw_2019` /
-    `*_jostova_2013` alongside `*_raw` / `*_corr`. ADDITIVE — the committed
+    `*_jostova_2013` alongside `*_raw` / `*_corr`. ADDITIVE — the on-disk
     `monthly_panel_maximal.parquet` file is never modified, and an absent
-    profiles file leaves the panel byte-identical (raw/corr behaviour unchanged)."""
+    profiles file leaves the panel as raw/corr only."""
     maximal = pd.read_parquet(require_licensed_input(MAXIMAL_PANEL, "maximal development panel"))
     prof = DEV / "monthly_panel_profiles.parquet"
     if prof.exists():
@@ -109,9 +109,12 @@ def run_runnable_pairs(
     pairs: IPCAExecutionPairs | None = None,
     thresholds_path=None,
     bootstrap_seed: int = 20260612,
+    characteristics_maximal: pd.DataFrame | None = None,
 ) -> list:
     """Run the runnable (bias, anchor) pairs through ``run_differential`` (with §5.3 bootstrap).
-    ``subset`` restricts to specific pairs (e.g. the smoke). Returns the IPCADifferentialResult list."""
+    ``subset`` restricts to specific pairs (e.g. the smoke). Returns the IPCADifferentialResult list.
+    ``characteristics_maximal`` is passed through to ``run_differential`` (None ⇒ the single-panel
+    construction)."""
     pairs = pairs or load_ipca_execution_pairs(thresholds_path)
     todo = subset if subset is not None else pairs.runnable_pairs()
     runnable = set(pairs.runnable_pairs())
@@ -123,6 +126,7 @@ def run_runnable_pairs(
             run_differential(
                 bias, anchor, maximal, signals, reg,
                 thresholds_path=thresholds_path, bootstrap_seed=bootstrap_seed,
+                characteristics_maximal=characteristics_maximal,
             )
         )
     return results
@@ -138,10 +142,15 @@ def run_pair_full(
     thresholds_path=None,
     bootstrap_seed: int = 20260612,
     stability_seed: int = 20260612,
+    characteristics_maximal: pd.DataFrame | None = None,
 ):
     """Build one runnable pair ONCE (panels → feeds → anchor) and return both the 2x2 differential
     (with §5.3 bootstrap) and the §5.4 coupling stability diagnostic, reusing the same feeds — so the
-    stability refits are not paid twice for feed construction."""
+    stability refits are not paid twice for feed construction.
+
+    ``characteristics_maximal`` (optional): build every IPCA instrument from this panel's cell states
+    while the IPCA return leg and the fixed anchor come from ``maximal`` (e.g. clean-price instruments
+    with total-return returns). None ⇒ the single-panel construction."""
     lam = load_ipca_lambda(thresholds_path)
     gate = load_ipca_projection_gate(thresholds_path)
     bootstrap = load_ipca_bootstrap_config(thresholds_path)
@@ -150,8 +159,15 @@ def run_pair_full(
 
     p_n, p_b = panel_states(bias, maximal, signals)
     family_b = "raw" if bias == "meas_err" else "corr"
-    feed_n = build_cell_feed(p_n, reg, "corr", recompute_signals=True, thresholds_path=thresholds_path)
-    feed_b = build_cell_feed(p_b, reg, family_b, recompute_signals=True, thresholds_path=thresholds_path)
+    if characteristics_maximal is None:
+        feed_n = build_cell_feed(p_n, reg, "corr", recompute_signals=True, thresholds_path=thresholds_path)
+        feed_b = build_cell_feed(p_b, reg, family_b, recompute_signals=True, thresholds_path=thresholds_path)
+    else:
+        c_n, c_b = panel_states(bias, characteristics_maximal, signals)
+        feed_n = build_cell_feed(c_n, reg, "corr", recompute_signals=True, thresholds_path=thresholds_path,
+                                 return_panel=p_n)
+        feed_b = build_cell_feed(c_b, reg, family_b, recompute_signals=True, thresholds_path=thresholds_path,
+                                 return_panel=p_b)
     anchor_series = _anchor_series(p_n, anchor, thresholds_path=thresholds_path)
 
     result = differential_from_feeds(

@@ -5,11 +5,11 @@ For each anchor {drf, str, mom6} report the factor level as
   mean_pct_per_month + t_stat + n_months
 under the 2x2 grid {price_family: raw, corr} x {basis: clean, total_return}.
 
-This is DESCRIPTIVE CONTEXT for the O5 doc — NO pass/fail weight is attached.
+This is DESCRIPTIVE CONTEXT only — NO pass/fail weight is attached.
 
 FAITHFUL METHOD (reuses each builder, no re-implementation):
-  We REUSE each builder's own run function so every anchor is constructed exactly
-  as its committed builder constructs it, and we vary ONLY
+  Each builder's own run function is REUSED so every anchor is constructed exactly
+  as its builder constructs it, and ONLY these vary:
     (a) the base panel  = basis  (clean | total_return), passed explicitly, and
     (b) price_family     = raw | corr.
   No generic uncorrected()/corrected() RunConfig is forced onto the anchors —
@@ -22,26 +22,29 @@ Reused run units (all return the family factor + its summary; none write):
   * str : build_str.run_family(maximal, family)                  [build_str.py:126-132]
   * drf : build_bbw_factors.run_family(maximal, signals, family) [build_bbw_factors.py:82-109]
           DRF is one of BBW_FACTOR_CONFIGS; run_family runs the audited engine
-          (run_bbw_factor) per factor — we select 'drf' out of its output.
+          (run_bbw_factor) per factor — 'drf' is selected out of its output.
 
 Mean / t / n are read out exactly as each builder's own write_report does, so the
-total_return columns MUST reproduce the committed
-  data/development/factors/{mom6,str,bbw_factors}_report.json  (sanity check).
+total_return columns MUST reproduce the builders' own
+  data/development/factors/{mom6,str,bbw_factors}_report.json (local pipeline output,
+  not shipped with the repository; sanity check).
 
 Output (writes ONLY here — NEVER touches data/development/factors/*):
-  results/quant/descriptive/run_<gitshort>/anchor_descriptive.json
-  (hash-logged with git_commit + thresholds_sha256)
+  results/quant/descriptive/run/anchor_descriptive.json
+  (hash-logged with thresholds_sha256)
 
 Development panel only. NEVER reads /data/holdout/.
 
 Usage:
-  ./.venv/bin/python scripts/run_anchor_descriptive.py
+  ./.venv/bin/python scripts/run_anchor_descriptive.py [--total-return-panel PATH] [--out PATH]
+      defaults: data/development/monthly_panel_total_return.parquet,
+                results/quant/descriptive/run/anchor_descriptive.json
 """
 
+import argparse
 import hashlib
 import json
 import math
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,6 +57,7 @@ sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 # Reuse the builders' own run functions (never re-implement a sort).
+from scripts import basis_inputs  # noqa: E402
 import build_mom6  # noqa: E402
 import build_str  # noqa: E402
 import build_bbw_factors  # noqa: E402
@@ -75,34 +79,45 @@ GAMMA_SIGNAL = REPO_ROOT / "data" / "development" / "signals" / "gamma_illiq.par
 FAMILIES = ("raw", "corr")
 
 
-def _guard_no_holdout() -> None:
-    for p in list(BASES.values()) + [MOM6_SIGNAL, VAR_SIGNAL, GAMMA_SIGNAL]:
-        if "holdout" in p.parts:
+def _guard_no_holdout(bases: dict | None = None) -> None:
+    bases = BASES if bases is None else bases
+    for p in list(bases.values()) + [MOM6_SIGNAL, VAR_SIGNAL, GAMMA_SIGNAL]:
+        if "holdout" in Path(p).parts:
             raise RuntimeError(f"REFUSED: path touches holdout: {p}")
+
+
+def _rel(path: Path) -> str:
+    """Repo-relative path when inside the repo, else the path as given (never raises)."""
+    try:
+        return str(Path(path).relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def resolve_bases(total_return_panel: Path | None = None) -> dict:
+    """The basis panels, with the total_return entry optionally overridden (clean is fixed)."""
+    tr = BASES["total_return"] if total_return_panel is None else Path(total_return_panel)
+    return {"clean": BASES["clean"], "total_return": tr}
+
+
+def default_out() -> Path:
+    """The default output path: results/quant/descriptive/run/anchor_descriptive.json."""
+    return REPO_ROOT / "results" / "quant" / "descriptive" / "run" / "anchor_descriptive.json"
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description="Descriptive-only anchor level comparison.")
+    ap.add_argument("--total-return-panel", type=Path, default=BASES["total_return"],
+                    help="total-return basis panel (default "
+                         "data/development/monthly_panel_total_return.parquet)")
+    ap.add_argument("--out", type=Path, default=None,
+                    help="report path (default results/quant/descriptive/run/"
+                         "anchor_descriptive.json)")
+    return ap.parse_args(argv or [])
 
 
 def thresholds_sha256() -> str:
     return hashlib.sha256(THRESHOLDS_FILE.read_bytes()).hexdigest()
-
-
-def git_commit() -> str:
-    try:
-        return subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
-        ).stdout.strip()
-    except Exception:
-        return "unknown"
-
-
-def git_short() -> str:
-    try:
-        return subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
-        ).stdout.strip()
-    except Exception:
-        return "unknown"
 
 
 def _finite_or_none(x) -> float | None:
@@ -144,8 +159,8 @@ def run_str(maximal: pd.DataFrame) -> dict:
 
 
 # The BBW-2019 family D grades against DRR-2023 Table 1 Panel B (Workstream D):
-# drf (existing), lrf + crf (the new-oracle / composite builders Workstream K's KATs
-# now cover), and mktb (below). One audited run_family per family yields all three sorts.
+# drf, lrf + crf (the oracle / composite builders covered by Workstream K's KATs),
+# and mktb (below). One audited run_family per family yields all three sorts.
 def run_bbw(maximal: pd.DataFrame, signals: pd.DataFrame) -> dict:
     out: dict = {"drf": {}, "lrf": {}, "crf": {}}
     for fam in FAMILIES:
@@ -183,18 +198,18 @@ def published_comparison(table: dict) -> dict:
     """DESCRIPTIVE gross-error catch (contract §7 gates 3-4, NON-GATING, v1.6/D-Q17):
     the built corr/total_return level vs the BBW-2019 published level. Confounded by
     window, universe, weighting (par vs mcap_e) and basis — it catches a grossly-wrong
-    builder, not a fidelity pass/fail. This is the external check on the new oracle
-    builders (lrf, mktb): a grossly-wrong builder shows a grossly-wrong level here."""
+    builder, not a fidelity pass/fail. This is the external check on the oracle builders
+    (lrf, mktb): a grossly-wrong builder shows a grossly-wrong level here."""
     out = {
         "status": "DESCRIPTIVE — no pass/fail weight (contract §7 gates 3-4, v1.6/D-Q17); "
                   "gross-error catch only, confounded by window/universe/weighting/basis",
         "source": PUBLISHED_SOURCE,
         "reach_note": "Reaches the BBW-2019 family (drf/crf/lrf/mktb), whose published "
                       "window (2004:08-2016:12) is inside dev. str and mom6 are EXCLUDED: "
-                      "str's DRR window reaches the holdout (and dev realises momentum, not "
-                      "reversal); mom6's JNPS window opens 1973 (before the panel) and its "
+                      "str's DRR window reaches the holdout; mom6's JNPS window opens 1973 "
+                      "(before the panel) and its "
                       "DRR window reaches the holdout. Of the three RQ3 development anchors "
-                      "(drf/mom6/str) the external grade reaches only drf — see RQ2 §4.9.",
+                      "(drf/mom6/str) the external grade reaches only drf.",
         "compared": {},
     }
     for name, pub in BBW_PUBLISHED.items():
@@ -207,8 +222,10 @@ def published_comparison(table: dict) -> dict:
     return out
 
 
-def main() -> None:
-    _guard_no_holdout()
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
+    bases = resolve_bases(args.total_return_panel)
+    _guard_no_holdout(bases)
 
     # Load the mom6 signal once and the BBW signals once (family-agnostic inputs).
     for sig in (MOM6_SIGNAL, VAR_SIGNAL, GAMMA_SIGNAL):
@@ -220,7 +237,7 @@ def main() -> None:
     bbw_signals = var5.merge(gamma, on=["cusip", "date"], how="outer")
 
     table: dict = {}
-    for basis, panel_path in BASES.items():
+    for basis, panel_path in bases.items():
         if not panel_path.exists():
             raise FileNotFoundError(f"base panel not found: {panel_path}")
         print(f"[{basis}] loading {panel_path.name}")
@@ -248,7 +265,6 @@ def main() -> None:
 
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
-        "git_commit": git_commit(),
         "thresholds_sha256": thresholds_sha256(),
         "purpose": "O5 D-Q3 / Workstream D descriptive-only anchor level comparison "
                    "(2x2 price_family x basis) over the BBW-2019 family (drf/lrf/crf/mktb) "
@@ -259,7 +275,8 @@ def main() -> None:
                   "price_family. No generic uncorrected()/corrected() RunConfig forced "
                   "onto the anchors. mktb t is a NW(0) t via summarize_returns (its "
                   "builder emits mean/sd but no t).",
-        "bases": {k: str(v.relative_to(REPO_ROOT)) for k, v in BASES.items()},
+        "bases": {k: _rel(v) for k, v in bases.items()},
+        "bases_sha256": {k: basis_inputs.sha256(v) for k, v in bases.items()},
         "families": list(FAMILIES),
         "development_only": True,
         "reads_holdout": False,
@@ -267,10 +284,8 @@ def main() -> None:
         "published_comparison": published_comparison(table),
     }
 
-    gs = git_short()
-    out_dir = REPO_ROOT / "results" / "quant" / "descriptive" / f"run_{gs}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_file = out_dir / "anchor_descriptive.json"
+    out_file = default_out() if args.out is None else Path(args.out)
+    out_file.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_file.with_suffix(".json.tmp")
     with open(tmp, "w") as f:
         json.dump(report, f, indent=2, allow_nan=False)
@@ -279,4 +294,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

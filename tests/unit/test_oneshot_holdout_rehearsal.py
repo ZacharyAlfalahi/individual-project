@@ -117,3 +117,37 @@ def test_real_path_state_machine_completes_then_refuses_rerun(tmp_path, monkeypa
     with pytest.raises(RerunRefused):
         run_oneshot_holdout(cfg)
     holdout._reset_single_access_for_tests()
+
+
+def test_real_path_derives_stage2_inputs_from_stage1(tmp_path, monkeypatch):
+    """The stage-2 derivation seam: with ``derive_inputs`` set, the real path evaluates the survivors/benchmarks the
+    deriver returns from the stage-1 result (not the config fields) and records its derivation."""
+    from agents.scientist.experimentalist.oneshot_holdout.gate_checklist import _tag_reachable_from_head
+    _cfg = valid_checklist_cfg(tmp_path)
+    if not _tag_reachable_from_head(_cfg.release_tag, _cfg.repo_root):
+        pytest.skip("release tag not shipped with the repository")
+    holdout._reset_single_access_for_tests()
+    monkeypatch.setattr(holdout, "prereg_tag_present", lambda *a, **k: True)
+    monkeypatch.setattr(holdout, "env_unlock_set", lambda *a, **k: True)
+    win = registered_window(("2022-01", "2025-09", 45))
+    seen = {}
+
+    def derive(stage1):
+        seen["names"] = sorted(a.name for a in stage1.artefacts)
+        survivors = [dataclasses.replace(s, survivor_id=f"derived:{s.survivor_id}") for s in synthetic_survivors(win)]
+        return survivors, synthetic_benchmarks(win), {"note": "derived from stage 1"}
+
+    cfg = OneshotHoldoutConfig(
+        rehearsal=False, ts="2026-08-09T00:00:00",
+        checklist=valid_checklist_cfg(tmp_path, require_rehearsal=True),
+        quarantine_dir=tmp_path / "q", marker_path=tmp_path / "oneshot_marker.jsonl",
+        rehearsal_marker_path=tmp_path / "rehearsal_marker.jsonl",
+        panel_builder=synthetic_panel_builder(), survivors=[], benchmarks={}, priors=PRIORS,
+        holdout_reader_open=lambda: None, derive_inputs=derive,
+    )
+    report = run_oneshot_holdout(cfg)
+    assert seen["names"]                                          # the deriver saw the stage-1 artefacts
+    assert [r.survivor_id for r in report.results] == [f"derived:{s.survivor_id}" for s in synthetic_survivors(win)]
+    assert report.manifest["survivor_ids"] == [r.survivor_id for r in report.results]
+    assert report.manifest["stage2_input_derivation"] == {"note": "derived from stage 1"}
+    holdout._reset_single_access_for_tests()

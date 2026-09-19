@@ -249,7 +249,7 @@ def load_run(run_dir: str | Path, *, strategy_index: int = 0,
         # a re-written dir still trips this at 2x the sum).
         expected = 0
         for tp in sorted(run_dir.glob("trace_*.json")):
-            # Int-suffixed traces only (review hardening, 2026-09-04): a stray
+            # Int-suffixed traces only: a stray
             # trace-named file (trace_backup.json) must not fold into the sum.
             if not tp.stem.removeprefix("trace_").isdigit():
                 continue

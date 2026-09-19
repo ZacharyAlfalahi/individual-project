@@ -47,7 +47,7 @@ def _below_floor_census(n_refuse=2, n_compilable=3, n_excluded=27):
 
 def _prov(n=2):
     return {f"r{i}": {"manifest_phase": "report", "run_dir": "runs/x", "spec_file": "s.json",
-                      "spec_sha256": "0" * 64, "code_commit": "abc1234"} for i in range(n)}
+                      "spec_sha256": "0" * 64, "code_commit": "fixture-commit"} for i in range(n)}
 
 
 # --- the zero-spend below-floor close-out -------------------------------------------

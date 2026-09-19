@@ -81,7 +81,7 @@ PINNED_SPECS: dict[str, PaperPin] = {
     "bbw": PaperPin("BBW_2019", "runs/corpus_anchors_report/bbw", "ok", 1),
     "jnps": PaperPin("JNPS_2013", "runs/corpus_anchors_report/jnps", "ok", 1),
     "bbw2021": PaperPin("BBW_2021", "runs/corpus_corpus_report/bbw2021", "ok", 5,
-                        "run of record for the RQ2 denominator (2026-09-03)"),
+                        "recorded run for the RQ2 denominator"),
     "dfps": PaperPin("DFPS_2026", "runs/corpus_scoped/dfps", "ok", 21,
                      "scoped re-run; events.json carries the per-construction "
                      "assembly reviews (CI-9/CI-10)"),

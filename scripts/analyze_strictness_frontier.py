@@ -42,7 +42,7 @@ Scope and boundaries:
     discipline the relaxed levels waive, so claiming STATED would misstate
     provenance). They exist only inside this analysis and are never written into
     any run directory or coverage artifact.
-  * L2 is cross-pinned: re-adapting the emitted specs must reproduce the committed
+  * L2 is cross-pinned: re-adapting the emitted specs must reproduce the recorded
     coverage artifact's refusal codes exactly (fail-loud drift guard).
   * A must-refuse construction executing at a relaxed level is recorded as a
     frontier FIR event -- a diagnostic about the relaxed rule, never a programme
@@ -180,12 +180,12 @@ def simulate_level(spec_dict: dict, trace: dict, level: str) -> tuple[dict, int,
 
 
 def analyze(panel, subs) -> dict:
-    committed = json.loads(_COVERAGE_ARTIFACT.read_text(encoding="utf-8"))
+    recorded = json.loads(_COVERAGE_ARTIFACT.read_text(encoding="utf-8"))
     # Pin against EVERY observed row (an executed row pins to zero refusal codes),
     # so a legitimately-executed spec never trips a misleading "drift" error.
     committed_codes = {
         (row["paper_id"], row["name"]): sorted(row["refusal_codes"])
-        for row in committed["observed"] if row["outcome"] in ("refused", "executed")
+        for row in recorded["observed"] if row["outcome"] in ("refused", "executed")
     }
     labels = load_coverage_labels()
 
@@ -231,7 +231,7 @@ def analyze(panel, subs) -> dict:
             per_spec.append(row)
 
     if n_pinned != len(committed_codes):
-        raise RuntimeError(f"cross-pinned {n_pinned} specs but the committed "
+        raise RuntimeError(f"cross-pinned {n_pinned} specs but the recorded "
                            f"artifact records {len(committed_codes)} refused rows")
 
     frontier = {}
@@ -363,7 +363,7 @@ def main(argv=None) -> int:
     result = {
         "component": "strictness_frontier_simulation",
         "method": ("per-level spec variants built from recorded traces; real "
-                   "adapter + runner decide; L2 cross-pinned to the committed "
+                   "adapter + runner decide; L2 cross-pinned to the recorded "
                    "coverage artifact; diagnostic only, never a headline"),
         "inputs": [str(p.relative_to(_REPO_ROOT)) for p in _RUN_DIRS]
                   + [str(_COVERAGE_ARTIFACT.relative_to(_REPO_ROOT))],

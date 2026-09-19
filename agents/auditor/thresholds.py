@@ -24,6 +24,7 @@ not-yet-pre-registered numbers.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -190,6 +191,21 @@ def load_bootstrap_config(path: str | Path | None = None) -> BootstrapConfig:
             blk, "auditor.bootstrap.block_length_months", "§6.2"
         ),
     )
+
+
+def load_inert_relative_tol(path: str | Path | None = None) -> float:
+    """The inert-coordinate relative tolerance (§7.1) — registered, never defaulted: it decides
+    whether a DOE coordinate is tested at all."""
+    block = _auditor_block(path)
+    value = _require_number(_require(block, ("inert_relative_tol",), "§7.1"),
+                            "auditor.inert_relative_tol", "§7.1")
+    if not math.isfinite(value) or value <= 0:
+        # A non-finite tolerance would mark EVERY coordinate inert (p = 1, t = 0) and silently
+        # suppress the tests this constant exists to route; a non-positive one is not a tolerance.
+        raise AuditorThresholdError(
+            f"auditor.inert_relative_tol (present but not a finite positive number: {value!r})", "§7.1"
+        )
+    return value
 
 
 def load_primary_metric(path: str | Path | None = None) -> str:

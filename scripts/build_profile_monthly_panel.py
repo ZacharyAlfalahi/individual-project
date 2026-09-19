@@ -10,11 +10,11 @@ lattice OFF-arm reference; the dedup-off + OFAT panels are the sensitivity
 envelope, not the single differential panel — FL-D21g).
 
 CRITICAL — this is ADDITIVE and does NOT touch `monthly_panel_maximal.parquet`.
-The committed maximal panel (its `*_raw`/`*_corr` columns + frozen Phase-1
+The recorded maximal panel (its `*_raw`/`*_corr` columns + frozen Phase-1
 checkpoint hash + the whole downstream corr chain) is preserved bit-for-bit; the
 auditor merges these profile columns in at load time when PROFILES_BUILT (a
 left-join on (cusip, date), so a bond-month absent from a profile is NaN there,
-exactly like a family-missing month today).
+exactly like a family-missing month).
 
 Every family is computed through `build_monthly_panel`'s OWN `aggregate_family`
 and the SAME per-family adjacency-return + rf logic, so the profile columns are

@@ -139,7 +139,7 @@ class BiasClassPartition:
     cross_class_modulation: float | None
     endpoint_gap: float
     reconciliation_residual: float
-    data_quality_present: bool          # any data-quality toggle in the lattice (today: meas_err)
+    data_quality_present: bool          # any data-quality toggle in the lattice (as configured: meas_err)
 
     def to_dict(self) -> dict:
         def _f(v: float | None) -> float | None:

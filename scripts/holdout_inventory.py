@@ -6,16 +6,17 @@ seeded from the FULL development history concatenated with the holdout daily lay
 rolling construction (var_5pct 36-month, mom6, gamma, bond_vol) is warm at 2022-01.
 
 It reads `data/holdout/` ONLY through `load_holdout_inputs`, behind a two-part operator
-confirmation (a token arg AND an env var) that is CLOSED by default (step 3). `main()`
+confirmation (a token arg AND an env var) that is CLOSED by default. `main()`
 default refuses; the runner's real mode opens it only when that confirmation is explicitly
 set. The assembly + signal layer is
 faithful and dev-validated: `selfcheck_on_dev()` rebuilds the recorded dev `monthly_panel_maximal`
-and the four signal parquets from the dev daily layer and asserts EXACT reproduction (0 difference).
+and the four signal parquets from the dev daily layer and asserts reproduction within the
+self-check tolerance (max abs diff <= 1e-9).
 
 Faithful reuse — no re-implemented aggregation/sort. Reuses `build_monthly_panel.aggregate_family`
 /`merge_fisd`, and the signal builders' `compute_dual_family`/`compute_gamma`. The ONLY logic
 reproduced here is `build_panel`'s ~20-line ret/xret adjacency glue (it has no path-parameterised
-entry point), pinned byte-for-byte against the recorded panel by the self-check.
+entry point), pinned against the recorded panel by the self-check (max abs diff <= 1e-9).
 
 SEAM SAFETY: the dev→holdout return continuity is handled by concatenating the DAILY layers and
 computing `ret` once over the continuous per-cusip price series (exactly as `build_panel` does),
@@ -48,6 +49,7 @@ import build_mom6_signal as _M  # noqa: E402
 import build_monthly_panel as _B  # noqa: E402
 import build_profile_monthly_panel as _PM  # noqa: E402
 import build_var_5pct as _V  # noqa: E402
+from shared.licensed_inputs import require_licensed_input  # noqa: E402
 
 DEV_ROOT = _REPO_ROOT / "data" / "development"
 HOLDOUT_FLOOR = pd.Timestamp("2022-01-01")
@@ -59,7 +61,7 @@ PROFILE_IDS = ("bbw_2019", "jostova_2013")
 _PROFILE_DAILY_NAMES = {pid: f"trace_daily_{pid}__dedup_on.parquet" for pid in PROFILE_IDS}
 
 # Two-part operator-confirmation guard. CLOSED by default: both the token arg AND the env var
-# must be set to open the holdout read (step 3). A deliberate confirmation latch, not
+# must be set to open the holdout read. A deliberate confirmation latch, not
 # cryptographic authorization -- both values are in-source; nothing in this repo sets them.
 _GATE_TOKEN = "APPROVED_HOLDOUT_OPEN"
 _GATE_ENV = "HOLDOUT_OOS_OPEN"
@@ -76,13 +78,21 @@ _GAMMA_RENAME = {"gamma_raw": "gamma_illiq_raw", "gamma_corr": "gamma_illiq_corr
 # runner's pre-open guard refuses BEFORE opening the holdout if this is ever set False.
 PROFILE_FAMILIES_SUPPORTED = True
 
-# FISD layer (size, rating, investment_grade, maturity, exit_reason). True now that assemble_maximal
+# FISD layer (size, rating, investment_grade, maturity, exit_reason). True: assemble_maximal
 # attaches FISD via `_merge_fisd_grid` — built OVER THE PANEL'S OWN grid from the shared data/fisd/
 # reference DB (grid-driven build_ratings_monthly clamps to the grid's max month + backward as-of +
 # inline leakage assert), so holdout months get their real as-of rating (drf/lrf control) and static
 # size, not the dev-file NaN. selfcheck_on_dev reproduces the recorded dev size/rating/universe/
 # exit_reason exactly (0-diff, leakage 0). The runner's pre-open guard refuses while this is False.
 FISD_HOLDOUT_LAYER_SUPPORTED = True
+
+# TOTAL-RETURN companion layer (default-flat). True:
+# assemble_total_return_maximal derives the seeded total-return base panel from the SAME seeded pieces
+# via the audited accrual transform (with FISD default_date, so defaulted bonds trade flat), and
+# selfcheck_on_dev proves it reproduces the recorded dev monthly_panel_total_return_default_flat
+# (raw/corr) + monthly_panel_profiles_total_return_default_flat (profiles) EXACTLY. The runner's
+# pre-open guard refuses BEFORE opening the holdout while this is False.
+TOTAL_RETURN_LAYER_SUPPORTED = True
 
 
 class HoldoutGateError(RuntimeError):
@@ -253,19 +263,70 @@ def assemble_profile_signals(profile_monthly: pd.DataFrame, profile_daily_by_pid
     return merged.sort_values(["cusip", "date"]).reset_index(drop=True)
 
 
+FISD_STATIC = DEV_ROOT / "fisd" / "fisd_reference_static.parquet"
+# The recorded DEVELOPMENT total-return artefacts the seeded total-return build must reproduce: the
+# default-flat substrate (a defaulted bond trades flat, AI=C=0 from its default month).
+DEV_TR_PANEL = DEV_ROOT / "monthly_panel_total_return_default_flat.parquet"
+DEV_TR_PROFILES = DEV_ROOT / "monthly_panel_profiles_total_return_default_flat.parquet"
+_FISD_TR_COLUMNS = ["cusip", "coupon", "interest_frequency", "day_count_basis", "maturity",
+                    "default_date"]
+
+
+def _fisd_total_return_schedule() -> pd.DataFrame:
+    """The FISD coupon schedule + ``default_date`` that both total-return builders consume (the
+    columns ``build_total_return_panel.main`` / ``build_profile_total_return_panel.main`` read to
+    produce the recorded default-flat panels). ``default_date`` licenses the trade-flat cutoff.
+    The static file is a per-cusip reference, not a dated panel: it equals the shared
+    ``fisd_reference.build_static`` output row-for-row and carries default dates past the development
+    end, so defaults inside the holdout window are covered without reading ``/data/holdout/``."""
+    return pd.read_parquet(require_licensed_input(FISD_STATIC, "FISD static table"),
+                           columns=_FISD_TR_COLUMNS)
+
+
+def assemble_total_return_maximal(base_maximal: pd.DataFrame,
+                                  profile_monthly: pd.DataFrame | None) -> pd.DataFrame:
+    """The TOTAL-RETURN base maximal for the seeded panel: apply the audited accrual transform to
+    the seeded (dev+holdout) BASE maximal (raw/corr → total return via
+    ``build_total_return_panel.to_total_return``), then LEFT-merge the seeded profile families
+    converted by ``build_profile_total_return_panel.build_total_return_profiles`` — exactly the two
+    base panels the dev-side total-return audit consumes (monthly_panel_total_return_default_flat +
+    monthly_panel_profiles_total_return_default_flat), reconstructed on the seeded grid. Signals are
+    unchanged (the clean sort variable); only the return leg becomes total. No re-implemented accrual:
+    the same kernels that produced the recorded dev artefacts, so the seeded DEV half reproduces them."""
+    import build_profile_total_return_panel as _PTR
+    import build_total_return_panel as _TR
+    fisd = _fisd_total_return_schedule()
+    tr = _TR.to_total_return(base_maximal, fisd)
+    if profile_monthly is not None:
+        rf = pd.read_parquet(require_licensed_input(_B.RF_FILE, "risk-free rate series"))
+        tr_profiles, _diag = _PTR.build_total_return_profiles(profile_monthly, fisd, rf)
+        tr = tr.merge(tr_profiles, on=["cusip", "date"], how="left")
+    return tr
+
+
 def build_inventory_from_daily(raw_daily_path: Path, corr_daily_path: Path,
-                               profile_daily_by_pid: dict | None = None):
+                               profile_daily_by_pid: dict | None = None, *,
+                               with_total_return: bool = False):
     """(maximal, signals) from a raw + corr daily layer — the full dev-validated assembly. When
     ``profile_daily_by_pid`` is given, the per-paper profile families are assembled and merged onto
     maximal (LEFT) and signals (OUTER), exactly as load_dev_inputs/load_dev_signals attach the
-    recorded monthly_panel_profiles / profiles_signals — so the drf/mom6 as-published cells resolve."""
+    recorded monthly_panel_profiles / profiles_signals — so the drf/mom6 as-published cells resolve.
+
+    When ``with_total_return`` is set, ALSO builds the seeded total-return base maximal (from the
+    SAME seeded pieces, before the clean profile merge) and returns ``(maximal, signals, maximal_tr)``
+    — so the descriptive runner reports the clean and total-return substrates from one holdout open."""
     maximal = assemble_maximal(raw_daily_path, corr_daily_path)
     signals = assemble_signals(maximal, raw_daily_path, corr_daily_path)
+    profile_monthly = None
     if profile_daily_by_pid:
         profile_monthly = assemble_profile_monthly(profile_daily_by_pid)
         profile_signals = assemble_profile_signals(profile_monthly, profile_daily_by_pid)
+    maximal_tr = assemble_total_return_maximal(maximal, profile_monthly) if with_total_return else None
+    if profile_daily_by_pid:
         maximal = maximal.merge(profile_monthly, on=["cusip", "date"], how="left")
         signals = signals.merge(profile_signals, on=["cusip", "date"], how="outer")
+    if with_total_return:
+        return maximal, signals, maximal_tr
     return maximal, signals
 
 
@@ -307,17 +368,22 @@ def _require_gate(gate: str | None) -> None:
     if gate != _GATE_TOKEN or os.environ.get(_GATE_ENV) != "1":
         raise HoldoutGateError(
             "Holdout inventory build REFUSED: this reads /data/holdout/ and is the single "
-            f"confirmed open (step 3). It requires gate={_GATE_TOKEN!r} AND env "
+            f"confirmed open. It requires gate={_GATE_TOKEN!r} AND env "
             f"{_GATE_ENV}=1 — both are unset. Build-before-open stops here; the open is a "
-            "separate, explicit action (see the internal holdout pre-registration).")
+            "separate, explicit action.")
 
 
 def load_holdout_inputs(*, holdout_daily_dir: Path, gate: str | None = None,
-                        tmp_dir: Path | None = None, registry: dict | None = None):
+                        tmp_dir: Path | None = None, registry: dict | None = None,
+                        with_total_return: bool = False):
     """GATED. Build the seeded (maximal, signals, registry) inventory over dev+holdout. REFUSES
     unless the explicit gate is set. When open: reads the holdout daily layer
     (`trace_daily_raw` + `trace_daily_corr_filtered`, produced by the gated raw-cleaning
-    prerequisite), concatenates with the full dev daily, and runs the dev-validated assembly."""
+    prerequisite), concatenates with the full dev daily, and runs the dev-validated assembly.
+
+    When ``with_total_return`` is set, returns ``(maximal, maximal_tr, signals, registry)`` — the
+    total-return base maximal is derived in-memory from the SAME seeded inventory (no second holdout
+    read), so the descriptive runner emits both substrates from the single gated open."""
     _require_gate(gate)   # closed by default — nothing past here runs without the gated open
     import shutil
 
@@ -339,10 +405,16 @@ def load_holdout_inputs(*, holdout_daily_dir: Path, gate: str | None = None,
             pid: _concat_daily(DEV_ROOT / name, hold_dir / name, tmp / f"seeded_{name}")
             for pid, name in _PROFILE_DAILY_NAMES.items()
         }
-        maximal, signals = build_inventory_from_daily(raw_cat, corr_cat, profile_daily_by_pid=profile_cat)
+        inv = build_inventory_from_daily(raw_cat, corr_cat, profile_daily_by_pid=profile_cat,
+                                         with_total_return=with_total_return)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    return maximal, signals, (registry if registry is not None else load_registry())
+    reg = registry if registry is not None else load_registry()
+    if with_total_return:
+        maximal, signals, maximal_tr = inv
+        return maximal, maximal_tr, signals, reg
+    maximal, signals = inv
+    return maximal, signals, reg
 
 
 # --------------------------------------------------------------------------------------------
@@ -374,8 +446,8 @@ def _dev_profile_daily() -> dict:
 
 def selfcheck_on_dev(*, atol: float = 1e-9) -> dict:
     """Rebuild the recorded dev maximal, the four base signals, AND the per-paper profile monthly
-    panel + profile signals from the dev daily layers via this module's assembly, and assert EXACT
-    reproduction. Dev-only; proves every layer the holdout build reuses (incl. the drf/mom6
+    panel + profile signals from the dev daily layers via this module's assembly, and assert
+    reproduction within ``atol`` (max abs diff per checked column). Dev-only; proves every layer the holdout build reuses (incl. the drf/mom6
     as-published profile families) is faithful. Raises on any divergence."""
     raw_daily, corr_daily = DEV_ROOT / RAW_DAILY_NAME, DEV_ROOT / CORR_DAILY_NAME
     profile_daily = _dev_profile_daily()
@@ -385,25 +457,25 @@ def selfcheck_on_dev(*, atol: float = 1e-9) -> dict:
     profile_signals = assemble_profile_signals(profile_monthly, profile_daily)
 
     sig_dir = DEV_ROOT / "signals"
-    committed_max = pd.read_parquet(DEV_ROOT / "monthly_panel_maximal.parquet")
+    recorded_max = pd.read_parquet(DEV_ROOT / "monthly_panel_maximal.parquet")
     checks = {}
     # price/ret/xret + the FISD columns the anchors depend on: size (VW weight, all anchors),
     # rating (drf/lrf bivariate control), universe_eligible (view filter). bool casts to 0/1.
     checks["maximal"] = _max_abs_diff(
-        maximal, committed_max,
+        maximal, recorded_max,
         ["price_eom_raw", "price_eom_corr", "ret_raw", "ret_corr", "xret_raw", "xret_corr",
          "size", "rating", "investment_grade", "universe_eligible"])
     # exit_reason is object (matured/defaulted/defeased/NA — survivorship filter): string equality.
     _rex = maximal.set_index(["cusip", "date"]).sort_index()["exit_reason"].fillna("__NA__")
-    _cex = committed_max.set_index(["cusip", "date"]).sort_index()["exit_reason"].fillna("__NA__")
+    _cex = recorded_max.set_index(["cusip", "date"]).sort_index()["exit_reason"].fillna("__NA__")
     checks["exit_reason_equal"] = bool(_rex.index.equals(_cex.index)
                                        and (_rex.to_numpy() == _cex.to_numpy()).all())
     for name, cols in (("var_5pct", ["var_5pct_raw", "var_5pct_corr"]),
                        ("mom6", ["mom6_raw", "mom6_corr"]),
                        ("bond_vol", ["bond_vol_raw", "bond_vol_corr"])):
         checks[name] = _max_abs_diff(signals, pd.read_parquet(sig_dir / f"{name}.parquet"), cols)
-    gamma_committed = pd.read_parquet(sig_dir / "gamma_illiq.parquet").rename(columns=_GAMMA_RENAME)
-    checks["gamma_illiq"] = _max_abs_diff(signals, gamma_committed,
+    gamma_recorded = pd.read_parquet(sig_dir / "gamma_illiq.parquet").rename(columns=_GAMMA_RENAME)
+    checks["gamma_illiq"] = _max_abs_diff(signals, gamma_recorded,
                                           ["gamma_illiq_raw", "gamma_illiq_corr"])
     # Per-paper profile families (the drf/mom6 as-published layer).
     checks["profile_monthly"] = _max_abs_diff(
@@ -412,12 +484,31 @@ def selfcheck_on_dev(*, atol: float = 1e-9) -> dict:
     checks["profile_signals"] = _max_abs_diff(
         profile_signals, pd.read_parquet(sig_dir / "profiles_signals.parquet"),
         [f"{s}_{pid}" for s in ("var_5pct", "mom6", "bond_vol", "gamma_illiq") for pid in PROFILE_IDS])
+    # Total-return companion: validate the two building blocks assemble_total_return_maximal
+    # composes, each against its recorded dev artefact on its OWN grid (strict, apples-to-apples,
+    # exactly as the clean maximal + standalone profile_monthly are checked above). The LEFT-merge
+    # that composes them onto the maximal grid is the SAME pattern validated for clean above.
+    import build_profile_total_return_panel as _PTR
+    import build_total_return_panel as _TR
+    # Default-flat substrate: the schedule carries default_date, and the targets are
+    # the recorded *_default_flat dev panels — the same artefacts the total-return audit consumes.
+    _fisd_sched = _fisd_total_return_schedule()
+    tr_base = _TR.to_total_return(maximal, _fisd_sched)
+    tr_profiles, _ = _PTR.build_total_return_profiles(
+        profile_monthly, _fisd_sched,
+        pd.read_parquet(require_licensed_input(_B.RF_FILE, "risk-free rate series")))
+    checks["total_return_maximal"] = _max_abs_diff(
+        tr_base, pd.read_parquet(require_licensed_input(DEV_TR_PANEL, "total-return development panel")),
+        ["ret_raw", "ret_corr", "xret_raw", "xret_corr"])
+    checks["total_return_profiles"] = _max_abs_diff(
+        tr_profiles, pd.read_parquet(require_licensed_input(DEV_TR_PROFILES, "total-return profile panel")),
+        [f"{b}_{pid}" for b in ("ret", "xret") for pid in PROFILE_IDS])
 
     def _passes(res: dict, *, strict_index: bool) -> bool:
         # Every recorded key must be reproduced with exact values. Strict-index artefacts (maximal,
         # the standalone profile frames) must match the recorded index exactly; the merged base
         # signals frame is legitimately a superset (outer merge over signals with different key
-        # coverage — sparse gamma), so we allow rebuilt-only keys but never a missing recorded key.
+        # coverage — sparse gamma), so rebuilt-only keys are allowed but never a missing recorded key.
         if res["committed_only"] > 0:
             return False
         if strict_index and (not res["index_equal"] or res["rebuilt_only"] > 0):
@@ -429,6 +520,8 @@ def selfcheck_on_dev(*, atol: float = 1e-9) -> dict:
              and checks["exit_reason_equal"]
              and _passes(checks["profile_monthly"], strict_index=True)
              and _passes(checks["profile_signals"], strict_index=True)
+             and _passes(checks["total_return_maximal"], strict_index=True)
+             and _passes(checks["total_return_profiles"], strict_index=True)
              and all(_passes(checks[n], strict_index=False)
                      for n in ("var_5pct", "mom6", "bond_vol", "gamma_illiq")))
     if not exact:

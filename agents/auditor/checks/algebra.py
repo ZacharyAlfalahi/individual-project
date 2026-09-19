@@ -172,7 +172,7 @@ def bias_class_partition(
 
     NOTE: the classes are read from the registry (`construction_toggles()` /
     `data_quality_toggles()`), so a future third class extends here with no design
-    change. Today `data_quality_toggles()` is exactly `("meas_err",)`."""
+    change. As configured, `data_quality_toggles()` is `("meas_err",)`."""
     present = set(toggles)
     m_set = set(construction_toggles()) & present
     d_set = set(data_quality_toggles()) & present

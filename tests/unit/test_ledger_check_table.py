@@ -60,7 +60,7 @@ def test_verify_hash():
     assert not t.verify_hash("0" * 64)
 
 
-# The finalised content_hash of the v1 table (2026-07-10). Recorded in the
+# The finalised content_hash of the v1 table. Recorded in the
 # YAML header; a silent edit to any row breaks this pin.
 _PINNED_SHA256 = "1f0f583db67913115be6f8b1ccb03b7a29af9d2596f88794cd5d421bfb752635"
 

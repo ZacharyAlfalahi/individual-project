@@ -44,7 +44,7 @@ REDACTED_KEYS: tuple[str, ...] = ("claimed_headline_metric",)
 
 class GenerationBlockedError(RuntimeError):
     """Raised by the default client: generation requires Phase-F credentials
-    plus the frozen, signed mini-contract (E3)."""
+    plus the frozen, approved mini-contract (E3)."""
 
 
 class ModelClient(Protocol):
@@ -61,7 +61,7 @@ class BlockedModelClient:
 
     def generate(self, prompt: str, *, seed: int) -> str:
         raise GenerationBlockedError(
-            "P1 generation is blocked: Phase-F credentials and the signed frozen "
+            "P1 generation is blocked: Phase-F credentials and the approved frozen "
             "mini-contract are required before any generation call (E3/I5). "
             "Run with --dry-run."
         )
@@ -145,7 +145,19 @@ def generate_once(
     """Cache-first single-shot generation. A cache hit performs ZERO client
     calls; a miss performs exactly one and persists it immutably — re-running
     the ablation can never spend twice on the same (prompt, model, seed)."""
-    prompt = build_prompt(strategy)
+    return generate_from_prompt(build_prompt(strategy), model_id, client, cache, seed=seed)
+
+
+def generate_from_prompt(
+    prompt: str,
+    model_id: str,
+    client: ModelClient,
+    cache: ResponseCache,
+    *,
+    seed: int = 0,
+) -> str:
+    """``generate_once`` for a prebuilt prompt (e.g. the paper-arm prompt); same
+    cache-first, count-not-retry discipline."""
     cached = cache.get(prompt, model_id, seed)
     if cached is not None:
         return cached
@@ -186,7 +198,7 @@ def archive_run(
     root: Path | None = None,
 ) -> ArchiveEntry:
     """Content-addressed archive of one generation run. Code, stdout and meta
-    are small text artefacts (committed); return-series CSVs go under
+    are small text artefacts; return-series CSVs go under
     data/development/codegen/ (gitignored) with their sha recorded in meta."""
     code_sha = hashlib.sha256(code.encode("utf-8")).hexdigest()
     base = (root or (_REPO_ROOT / "runs" / "p1_codegen")) / strategy / model_id / code_sha[:12]

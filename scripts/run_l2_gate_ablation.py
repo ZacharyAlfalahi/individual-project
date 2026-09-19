@@ -2,23 +2,23 @@
 """
 The L2-gate ablation (DIAGNOSTIC; never a headline).
 
-Guided by the locator census finding that a substantial share of gate-failing
+Tests whether gate-failing
 quotes locate VERBATIM at ladder level L2 (de-hyphenation) and fail only at
-the recorded L1 operating point. Reads the run archives and committed metrics
+the recorded L1 operating point. Reads the run archives and recorded metrics
 reports, which are gitignored and not shipped; a clean clone cannot run this
 until they are regenerated locally.
 
 Replays the archived responses through the recorded D9 merge rule with exactly
 one change: the located test runs at ``level="L2"`` instead of the canonical
-text's recorded level. L2 is a frozen level of the committed normalisation
+text's recorded level. L2 is a frozen level of the normalisation
 ladder — there is no tunable constant anywhere in this instrument, no
 calibration, and no bar. The production gate's level is a registered contract
 and is NOT changed here.
 
 Cross-pins (fail-loud, abort before writing): the recorded-level arm must
-byte-reproduce the committed shipped/abstained sets and metric
+byte-reproduce the recorded shipped/abstained sets and metric
 numerators/denominators for every archive.
-One publish-as-found pass, terminal.
+Results are published as found.
 """
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ def _triple(anchor: str, run_dir: Path, variant: RunArtefacts) -> dict:
     }
 
 
-def ablate_anchor(anchor: str, run_dir: Path, committed_anchor: dict,
+def ablate_anchor(anchor: str, run_dir: Path, recorded_anchor: dict,
                   *, allow_non_reportable: bool, index: int | None = None) -> dict:
     """``index`` pins the strategy where label matching cannot work (the masked
     archive); the cross-pin fails loud if the pinned index is wrong."""
@@ -124,7 +124,7 @@ def ablate_anchor(anchor: str, run_dir: Path, committed_anchor: dict,
     ct = canonical_text_for(run_dir)
 
     variant_off = replay_at_level(art, raw_a, raw_b, ct, None)
-    pin_triple = cross_pin_anchor(anchor, variant_off, art, committed_anchor, run_dir)
+    pin_triple = cross_pin_anchor(anchor, variant_off, art, recorded_anchor, run_dir)
 
     variant_l2 = replay_at_level(art, raw_a, raw_b, ct, "L2")
     newly_shipped, agree_qgf = assert_newly_shipped_within_qgf(anchor, variant_l2, variant_off)
@@ -167,18 +167,38 @@ def _transition_counts(per_anchor: dict) -> dict:
     return dict(sorted(counts.items()))
 
 
-def run_section(anchors_dirs: list[tuple[str, Path]], committed_path: Path,
+def _four_anchor(primary: dict, robustness_4anchor: dict) -> dict:
+    """The RQ1 reference-set pool over the four anchor golds
+    (str + drf + mom6 + crf), scored at the same L2 de-hyphenation gate.
+
+    str/drf/mom6 come straight from the ``primary`` section (their recorded
+    ``corpus_anchors_report`` runs + PRIMARY_G3 golds); crf is grafted from the
+    ``robustness_4anchor`` section (its ``bbw_4anchor_report`` run + FOURANCHOR_G3
+    gold). No re-scoring — this pools the already-cross-pinned per-anchor triples,
+    so the four-anchor number is byte-consistent with the two source sections."""
+    per_anchor = {a: primary["per_anchor"][a] for a in ("str", "drf", "mom6")}
+    per_anchor["crf"] = robustness_4anchor["per_anchor"]["crf"]
+    return {
+        "anchors": ["str", "drf", "mom6", "crf"],
+        "per_anchor": per_anchor,
+        "pooled_off": _pool(per_anchor, "triple_off"),
+        "pooled_l2": _pool(per_anchor, "triple_l2"),
+        "transition_counts": _transition_counts(per_anchor),
+    }
+
+
+def run_section(anchors_dirs: list[tuple[str, Path]], recorded_path: Path,
                 *, allow_non_reportable: bool,
                 index_map: dict[str, int] | None = None) -> dict:
-    committed = json.loads(committed_path.read_text(encoding="utf-8"))
+    recorded = json.loads(recorded_path.read_text(encoding="utf-8"))
     per_anchor = {
-        anchor: ablate_anchor(anchor, run_dir, committed["anchors"][anchor],
+        anchor: ablate_anchor(anchor, run_dir, recorded["anchors"][anchor],
                               allow_non_reportable=allow_non_reportable,
                               index=(index_map or {}).get(anchor))
         for anchor, run_dir in anchors_dirs
     }
     return {
-        "committed_report": str(committed_path.relative_to(_REPO_ROOT)),
+        "recorded_report": str(recorded_path.relative_to(_REPO_ROOT)),
         "per_anchor": per_anchor,
         "pooled_off": _pool(per_anchor, "triple_off"),
         "pooled_l2": _pool(per_anchor, "triple_l2"),
@@ -206,6 +226,22 @@ def _render_md(result: dict) -> str:
         + (", ".join(f"{k}: {v}" for k, v in p["transition_counts"].items()) or "none"),
         "",
     ]
+    fa = result.get("four_anchor")
+    if fa is not None:
+        lines += [
+            "## four_anchor (RQ1 reference set: str + drf + mom6 + crf)",
+            "",
+            "| arm | coverage | sel. accuracy | over-claim |",
+            "|---|---|---|---|",
+            f"| recorded level (pin) | {pct(fa['pooled_off']['coverage'])} | "
+            f"{pct(fa['pooled_off']['selective_accuracy'])} | {pct(fa['pooled_off']['over_claim'])} |",
+            f"| L2 gate | {pct(fa['pooled_l2']['coverage'])} | "
+            f"{pct(fa['pooled_l2']['selective_accuracy'])} | {pct(fa['pooled_l2']['over_claim'])} |",
+            "",
+            "Outcome transitions (off -> L2): "
+            + (", ".join(f"{k}: {v}" for k, v in fa["transition_counts"].items()) or "none"),
+            "",
+        ]
     for section in ("robustness_4anchor", "robustness_masked"):
         r = result.get(section)
         if r is None:
@@ -246,6 +282,8 @@ def main(argv=None) -> int:
             [("drf", masked_dir)], _REPO_ROOT / MASKED_G3,
             allow_non_reportable=args.allow_non_reportable,
             index_map=MASKED_INDEX_MAP)
+        result["four_anchor"] = _four_anchor(
+            result["primary"], result["robustness_4anchor"])
 
     out = Path(args.json_out)
     if not out.is_absolute():

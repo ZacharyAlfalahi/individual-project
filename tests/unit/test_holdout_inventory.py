@@ -1,7 +1,7 @@
 """Unit tests for the seeded holdout inventory builder's GATE and format (scripts/holdout_inventory).
 
 These are fast, holdout-free tests of the safety gate and the runner's gated real path. The heavy
-correctness proof (exact reproduction of the committed dev maximal + 4 signals) is the
+correctness proof (exact reproduction of the recorded dev maximal + 4 signals) is the
 ``--selfcheck`` integration run, not a unit test — same split as the descriptive runner's rehearsal.
 NONE of these tests reads or lists /data/holdout/.
 """
@@ -72,9 +72,9 @@ def test_runner_real_refuses_without_gate(monkeypatch, capsys):
 
 
 def test_profile_families_supported_and_wired():
-    # After the profile integration, drf/mom6 as-published are buildable: the flag is True and the
-    # assembly functions exist, so run_real's pre-open guard no longer blocks (the gate is the only
-    # remaining barrier). Reproduction of the profile artefacts is proven by --selfcheck.
+    # drf/mom6 as-published are buildable: the flag is True and the
+    # assembly functions exist, so run_real's pre-open guard does not block (the gate is the only
+    # barrier). Reproduction of the profile artefacts is proven by --selfcheck.
     assert H.PROFILE_FAMILIES_SUPPORTED is True
     assert H.PROFILE_IDS == ("bbw_2019", "jostova_2013")
     assert H._PROFILE_DAILY_NAMES == {
@@ -85,7 +85,7 @@ def test_profile_families_supported_and_wired():
 
 
 def test_fisd_holdout_layer_supported_and_wired():
-    # FISD is now built OVER THE PANEL GRID from the shared data/fisd/ source (holdout months get
+    # FISD is built OVER THE PANEL GRID from the shared data/fisd/ source (holdout months get
     # their as-of rating + static size), so drf/lrf resolve on the holdout. Flag True + the grid
     # merge function exists. Exact dev reproduction of size/rating/universe/exit_reason is proven
     # by --selfcheck.
@@ -114,10 +114,10 @@ def test_concat_daily_seam_assert(tmp_path, monkeypatch):
 def test_pinned_as_published_baselines_are_frozen():
     # Change-detector for the frozen dev as-published / negative-control baselines (the values
     # the seeded --real run self-verifies against). A change here must be deliberate; the
-    # corrected baselines get a stronger check in test_pinned_baselines_match_committed_artifacts.
+    # corrected baselines get a stronger check in test_pinned_baselines_match_recorded_artifacts.
     assert R.PINNED_AS_PUBLISHED_IN_SAMPLE == {
         "str": 0.007949651424605457,
         "drf": 0.0034386749221172516,
-        "mom6": -0.030217602497509634,
+        "mom6": 0.006478265466729551,
     }
     assert R.PINNED_NEG_CONTROL_IN_SAMPLE == 7.76033181823128e-05

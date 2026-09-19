@@ -173,12 +173,14 @@ def test_config_from_thresholds_reads_full_block(tmp_path):
               small: 0.01
               moderate: 0.05
               large: 0.10
+          inert_relative_tol: 1.0e-12
     """))
     cfg = AuditorConfig.from_thresholds(path)
     assert cfg.vartheta == 0.05
     assert cfg.fdr_q == 0.1
     assert cfg.gap_bands.large == 0.10
     assert cfg.vartheta_grid == (0.025, 0.05, 0.075, 0.1)
+    assert cfg.inert_relative_tol == 1.0e-12
 
 
 def test_config_from_thresholds_fails_loud_on_missing_vartheta(tmp_path):

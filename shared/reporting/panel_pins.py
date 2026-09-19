@@ -1,4 +1,4 @@
-"""Frozen SHA-256 pins for the committed core panel artefacts.
+"""Frozen SHA-256 pins for the core panel artefacts (built locally; the pins are committed).
 
 The core monthly panel artefacts are large binary parquet files held out of
 git (the whole ``/data/`` tree is ``.gitignore``d) but are stable, built-once
@@ -23,7 +23,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# repo-relative path -> frozen sha256 of the committed panel bytes.
+# repo-relative path -> frozen sha256 of the pinned panel bytes.
 # Values recomputed from the on-disk artefacts on 2026-09-10 and cross-checked
 # against monthly_panel_endpoint_reports.json (see test_panel_pins.py).
 FROZEN_PANEL_SHA256: dict[str, str] = {

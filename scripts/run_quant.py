@@ -3,6 +3,12 @@ scripts/run_quant.py — the RQ2 "B1" end-to-end StrategySpec -> run orchestrati
 
   ./.venv/bin/python scripts/run_quant.py --anchor mom6
   ./.venv/bin/python scripts/run_quant.py --anchor all
+  ./.venv/bin/python scripts/run_quant.py --anchor all --basis clean   # consistent-basis run
+
+`--basis {total_return,clean}` swaps the base panel for `scripts/basis_inputs.PANELS[basis][0]` and
+(unless `--out` is given) writes under `results/consistent_basis/<basis>/quant/`; the
+run_log then also records the basis and the base panel's sha256. No `--basis` => the default
+base panel, output dir and run_log below.
 
 This is the deterministic compilation spine RQ2 asks for: a supported anchor strategy
 compiles StrategySpec -> adapter -> QuantConfig -> audited
@@ -23,7 +29,7 @@ Design choices (flagged in the run_log, single point of truth):
     endpoint export).
   * run_config  = `run_config.corrected()`, but ONLY its `panel_view` is consumed —
     `views.view()` reads `panel_view` alone (corr family + stale mask on + terminal rows
-    kept). The construction block (signal_lag / expost_trim) is NOT applied: for B1 we run
+    kept). The construction block (signal_lag / expost_trim) is NOT applied: B1 runs
     each anchor's OWN compiled QuantConfig (the un-overridden construction), which is the
     key difference from `cell_runner._override_construction` (the lattice path). So a run
     here uses e.g. str's signal_lag=0 and mom6's H=6 exactly as the gold compiles them.
@@ -43,7 +49,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,6 +77,7 @@ from agents.quant.config.runner import StrategyResult, run_strategy  # noqa: E40
 from agents.quant.library.run_config import RunConfig, corrected  # noqa: E402
 from agents.quant.library.views import view  # noqa: E402
 from evaluation.gold_specs.gold_loader import load_gold_spec  # noqa: E402
+from scripts import basis_inputs  # noqa: E402
 from shared.reporting.run_manifest import (  # noqa: E402
     build_run_manifest,
     write_run_manifest,
@@ -86,6 +92,32 @@ RUN_CONFIG_LABEL = (
     "corrected (panel_view only: corr family + stale_mask on + terminal rows kept); "
     "construction is each anchor's own compiled config, NOT overridden"
 )
+
+
+def resolve_base_panel(basis: str | None) -> Path:
+    """The base panel for a run: ``BASE_PANEL`` when no basis is named (the default),
+    else the consistent-basis maximal-format panel ``basis_inputs.PANELS[basis][0]``."""
+    if basis is None:
+        return BASE_PANEL
+    return basis_inputs.PANELS[basis_inputs.check_basis(basis)][0]
+
+
+def default_out_dir(basis: str | None) -> Path:
+    """``results/quant/run`` without a basis; with one, the same leaf under
+    ``results/consistent_basis/<basis>/quant/`` so a basis run never overwrites a default
+    run dir."""
+    leaf = "run"
+    if basis is None:
+        return REPO_ROOT / "results" / "quant" / leaf
+    return basis_inputs.basis_dir(basis, "quant", leaf)
+
+
+def _repo_rel(path: Path) -> str:
+    """Repo-relative path string where possible (run_log convention), else the absolute path."""
+    try:
+        return str(Path(path).relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
 
 
 # --------------------------------------------------------------------------
@@ -119,12 +151,15 @@ def materialise_panel(
     return view(base_panel, run_config, signals=signals)
 
 
-def load_inputs(run_config: RunConfig) -> tuple[pd.DataFrame, StandingSubstitutionTable]:
-    """(view'd engine-shape panel, verified standing-subs). Reads the total-return dev panel +
-    the 4 dev signal parquets (`load_dev_signals`), views them once, and verifies the standing
-    table. Every path is under data/development/ — the holdout is never opened."""
+def load_inputs(
+    run_config: RunConfig, *, base_panel: Path | None = None
+) -> tuple[pd.DataFrame, StandingSubstitutionTable]:
+    """(view'd engine-shape panel, verified standing-subs). Reads the base dev panel
+    (`base_panel`, default `BASE_PANEL`) + the 4 dev signal parquets (`load_dev_signals`), views
+    them once, and verifies the standing table. Every path is under data/development/ — the
+    holdout is never opened."""
     subs = load_standing_subs_verified()
-    base = pd.read_parquet(require_licensed_input(BASE_PANEL, "development panel"))
+    base = pd.read_parquet(require_licensed_input(BASE_PANEL if base_panel is None else base_panel, "development panel"))
     signals = load_dev_signals()
     panel = materialise_panel(base, signals, run_config)
     return panel, subs
@@ -194,8 +229,9 @@ def record_anchor(
     # D28/D29 ledger gate: a strategy that COMPILED but whose STATED Part-2 fields contradict
     # a silently-fixed engine assumption REFUSES (ASSUMPTION_MISMATCH) rather than running a
     # different assumption and calling it a replication. `ledger_refusals` is empty for the
-    # three anchors (they compile clean); it lands in the coverage denominator like any refusal.
-    # Threaded here so check_assumptions (ledger_check.py, D28/D29) is no longer exported-but-uncalled.
+    # strategy whose stated fields match the engine assumptions; it lands in the coverage
+    # denominator like any refusal.
+    # Threaded here so check_assumptions (ledger_check.py, D28/D29) gates every compiled strategy.
     if ledger_refusals:
         return {
             "anchor": anchor_id,
@@ -257,13 +293,6 @@ def build_coverage(records: list[dict]) -> dict:
 # Serialisation + run identity (mirrors run_auditor.py write_results / run_log).
 # --------------------------------------------------------------------------
 
-def _git(*args: str) -> str:
-    try:
-        return subprocess.check_output(["git", *args], cwd=REPO_ROOT).decode().strip()
-    except Exception:
-        return "unknown"
-
-
 def _thresholds_sha256() -> str:
     import hashlib
 
@@ -271,15 +300,18 @@ def _thresholds_sha256() -> str:
 
 
 def build_run_log(
-    subs: StandingSubstitutionTable, run_config: RunConfig, anchors: Iterable[str], records: list[dict]
+    subs: StandingSubstitutionTable, run_config: RunConfig, anchors: Iterable[str], records: list[dict],
+    *, basis: str | None = None,
 ) -> dict:
-    return {
-        "git_commit": _git("rev-parse", "HEAD"),
-        "git_short": _git("rev-parse", "--short", "HEAD"),
+    """The run identity record. Without a basis it is exactly the default run_log (so the
+    recorded-run comparators see no additional keys); with one it additionally records the basis
+    and the base panel's sha256 beside its path."""
+    base_panel = resolve_base_panel(basis)
+    log = {
         "standing_subs_version": subs.version,
         "standing_subs_sha256": STANDING_SUBS_V1_SHA256,
         "thresholds_sha256": _thresholds_sha256(),
-        "base_panel": str(BASE_PANEL.relative_to(REPO_ROOT)),
+        "base_panel": _repo_rel(base_panel),
         "run_config_label": RUN_CONFIG_LABEL,
         "run_config_panel_view": {
             "price_family": run_config.panel_view.price_family,
@@ -299,6 +331,10 @@ def build_run_log(
         "anchors_run": [r["anchor"] for r in records if r["status"] == "run"],
         "anchors_refused": [r["anchor"] for r in records if r["status"] == "refused"],
     }
+    if basis is not None:
+        log["basis"] = basis
+        log["base_panel_sha256"] = basis_inputs.sha256(base_panel)
+    return log
 
 
 def write_results(out_dir: Path, records: list[dict], coverage: dict, run_log: dict) -> None:
@@ -313,17 +349,19 @@ def write_results(out_dir: Path, records: list[dict], coverage: dict, run_log: d
 # Orchestration.
 # --------------------------------------------------------------------------
 
-def run_all(anchors: Iterable[str], *, out_dir: Path | None = None) -> int:
+def run_all(anchors: Iterable[str], *, out_dir: Path | None = None, basis: str | None = None) -> int:
     """Load inputs once, compile+run every requested anchor, write per-anchor JSON + coverage
     + run_log, print a summary. Exit 0 iff every requested anchor reached a terminal typed
-    outcome AND (as all anchors are supported) every one RAN with a finite mean and 0 refusals."""
+    outcome AND (as all anchors are supported) every one RAN with a finite mean and 0 refusals.
+    `basis` (None = the default) selects the base panel and the default output dir."""
     anchors = list(anchors)
     run_config = corrected()
-    panel, subs = load_inputs(run_config)
+    base_panel = resolve_base_panel(basis)
+    panel, subs = load_inputs(run_config, base_panel=base_panel)
 
-    # D28/D29 ledger gate, wired for the corpus set: a compiled anchor whose STATED fields
-    # contradict a silently-fixed engine assumption refuses. Loaded once; the three supported
-    # anchors produce zero mismatches, so the anchor run is unchanged.
+    # D28/D29 ledger gate for the corpus set: a compiled anchor whose STATED fields
+    # contradict a silently-fixed engine assumption refuses. Loaded once; an anchor whose
+    # stated fields match the engine assumptions runs as compiled.
     ledger_table = load_ledger_check_table()
     records = []
     for a in anchors:
@@ -331,9 +369,9 @@ def run_all(anchors: Iterable[str], *, out_dir: Path | None = None) -> int:
         ledger_refs = () if result.refused else check_assumptions(load_gold_spec(a), ledger_table)
         records.append(record_anchor(a, result, panel, ledger_refusals=ledger_refs))
     coverage = build_coverage(records)
-    run_log = build_run_log(subs, run_config, anchors, records)
+    run_log = build_run_log(subs, run_config, anchors, records, basis=basis)
 
-    out_dir = out_dir or (REPO_ROOT / "results" / "quant" / f"run_{_git('rev-parse', '--short', 'HEAD')}")
+    out_dir = out_dir or default_out_dir(basis)
     write_results(out_dir, records, coverage, run_log)
     # WS-8 (O11): a unified per-run execution manifest sidecar — timestamp + code/data/config/
     # output hashes + an operational profile. A SIDECAR: never hashed into a result artefact.
@@ -341,7 +379,7 @@ def run_all(anchors: Iterable[str], *, out_dir: Path | None = None) -> int:
         run_id=out_dir.name,
         driver="run_quant",
         timestamp=datetime.now(timezone.utc).isoformat(),
-        inputs=[str(BASE_PANEL.relative_to(REPO_ROOT))],
+        inputs=[_repo_rel(base_panel)],
         configs=["docs/thresholds.yaml", "agents/quant/config/data/ledger_check_table.yaml"],
         outputs=[str(out_dir / "run_log.json"), str(out_dir / "coverage.json")],
     ))
@@ -373,7 +411,7 @@ def run_all(anchors: Iterable[str], *, out_dir: Path | None = None) -> int:
     return 0 if all_pass else 1
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument(
         "--anchor", choices=(*ANCHORS, "all"), default="all",
@@ -381,11 +419,21 @@ def main() -> int:
     )
     ap.add_argument(
         "--out", type=Path, default=None,
-        help="output dir (default results/quant/run_<gitshort>)",
+        help="output dir (default results/quant/run; with --basis, "
+             "results/consistent_basis/<basis>/quant/run)",
     )
-    args = ap.parse_args()
+    ap.add_argument(
+        "--basis", choices=basis_inputs.BASES, default=None,
+        help="consistent-basis base panel (basis_inputs.PANELS[basis][0]); "
+             "omit for the default monthly_panel_total_return.parquet",
+    )
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     anchors = ANCHORS if args.anchor == "all" else (args.anchor,)
-    return run_all(anchors, out_dir=args.out)
+    return run_all(anchors, out_dir=args.out, basis=args.basis)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
-RQ1 scoring CLI (B3): one committed entry point from an extraction run root to the
-reportable RQ1 table -- the G3 harness chain that until now ran only inside tests.
+RQ1 scoring CLI (B3): the entry point from an extraction run root to the
+reportable RQ1 table -- the G3 harness chain, driven from the command line.
 
     ./.venv/bin/python scripts/run_g3_score.py --run-root runs/g3_v3
     ./.venv/bin/python scripts/run_g3_score.py --run-root runs/report_final \

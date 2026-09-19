@@ -33,6 +33,7 @@ from ..thresholds import (
     load_compression_dmax,
     load_economic_gap_bands,
     load_fdr_q,
+    load_inert_relative_tol,
     load_primary_metric,
     load_shapley_pct_denominator_min,
     load_support_gate,
@@ -45,7 +46,7 @@ from .bootstrap import run_bootstrap
 from .compression import run_compression
 from .economic import EconomicBands, run_economic
 from .fdr import run_fdr
-from .inference import infer_doe_effects
+from .inference import INERT_RELATIVE_TOL, infer_doe_effects
 from .metrics import metric_set_on
 from .orchestrator import audit_spine
 from .support import common_support, primary_metric_vector
@@ -71,6 +72,9 @@ class AuditorConfig:
     # §8.2.3/§9 neighbouring-threshold sensitivity grid (must contain the headline vartheta);
     # empty () skips the sweep, so tests that build the config explicitly are unaffected.
     vartheta_grid: tuple = ()
+    #: Inert-coordinate relative tolerance (§7.1). Registered in thresholds.yaml and required by
+    #: `from_thresholds`; the default keeps directly-constructed synthetic configs working.
+    inert_relative_tol: float = INERT_RELATIVE_TOL
     holding_period: int = 1
     months_per_year: int = 12
     lib_gap_lags: tuple[int, int] = (0, 1)
@@ -101,6 +105,7 @@ class AuditorConfig:
             bayes=load_bayes_params(path),
             gap_bands=load_economic_gap_bands(path),
             vartheta_grid=load_vartheta_grid(path),
+            inert_relative_tol=load_inert_relative_tol(path),
         )
 
 
@@ -182,6 +187,7 @@ def run_full_audit(
         lattice.cells, common, toggles, bootstrap,
         metric=config.primary_metric, coordinates=coords,
         months_per_year=config.months_per_year, alpha=config.alpha,
+        inert_relative_tol=config.inert_relative_tol,
     )
     # WITHIN-STRATEGY diagnostic multiplicity control — NOT the §7.2 confirmatory
     # verdict. The pre-registered confirmatory family is the UNION across the locked

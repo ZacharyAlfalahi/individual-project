@@ -68,6 +68,7 @@ class AuditReport:
             subset_label(T): {
                 "point": r.point, "method": r.method, "p_value": r.p_value,
                 "ci_low": r.ci_low, "ci_high": r.ci_high, "t_stat": r.t_stat,
+                "inert": r.inert,
             }
             for T, r in self.inference.items()
         }

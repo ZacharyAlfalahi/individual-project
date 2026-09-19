@@ -53,7 +53,7 @@ method_summary:       Each month bonds are ranked on the short-term reversal sig
                                        quote: "For example, cs denotes credit spread, str denotes short-term reversal, and mom6_1 denotes six-month momentum.",
                                        page: 10}
                         # Concept resolution: registry v1 alias 'short-term reversal' → prior_1m_excess_return.
-                        # Confirmed by the 2026-07-11 rename ruling: the engine's reversal column takes
+                        # Confirmed by the rename ruling: the engine's reversal column takes
                         # exactly this concept id as its canonical name.
                         # The main text never prints an explicit formula for str; the one-month structure is
                         # corroborated by the theory section's reversal-signal treatment

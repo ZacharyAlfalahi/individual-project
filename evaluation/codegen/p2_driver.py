@@ -22,6 +22,7 @@ from ``p2_metrics.compute_p2_metrics`` once real return series exist.
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -35,6 +36,7 @@ from evaluation.codegen.p2_selector import ArmSelection
 from evaluation.codegen.runner import (
     BlockedModelClient,
     ModelClient,
+    archive_run,
     extract_code,
     load_models,
     prompt_sha256,
@@ -47,6 +49,9 @@ _THRESHOLDS = _REPO_ROOT / "docs" / "thresholds.yaml"
 #: The census-selection status that unlocks number emission (mirrors the
 #: auditor.ipca_differential.status convention: draft => proposals only).
 FROZEN_STATUS = "frozen"
+
+#: How much of a failed run's stderr the run record carries (the full tail is archived).
+_DIAGNOSTIC_CHARS = 600
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +104,18 @@ def _generate_from_prompt(
 # ---------------------------------------------------------------------------
 # Gating.
 # ---------------------------------------------------------------------------
+
+def sandbox_bounds(thresholds_path: Path | None = None) -> tuple[int, int]:
+    """``(wall_clock_seconds, memory_mb)`` from ``p1_codegen.sandbox`` — read at runtime,
+    never hard-coded, so one thresholds edit moves P1 and P2 together (fail-loud)."""
+    doc = yaml.safe_load((thresholds_path or _THRESHOLDS).read_text(encoding="utf-8"))
+    try:
+        block = doc["p1_codegen"]["sandbox"]
+        return int(block["wall_clock_seconds"]), int(block["memory_mb"])
+    except (KeyError, TypeError) as exc:
+        raise KeyError("thresholds.yaml has no p1_codegen.sandbox block "
+                       "(wall_clock_seconds / memory_mb)") from exc
+
 
 def corpus_selection_status(thresholds_path: Path | None = None) -> str:
     """``corpus.selection.status`` read at runtime (fail-loud). Only ``'frozen'``
@@ -170,17 +187,26 @@ def run_p2_driver(
         out["emitted_numbers"] = False
         return out
 
-    # --- gated execute path (blocked until the census exists and the zoo-list is frozen) --------------
+    # --- gated execute path ---------------------------------------------------
     cache = ResponseCache(cache_root or (_REPO_ROOT / "runs" / "p2_codegen" / "cache"))
     factory = client_factory or (lambda m: BlockedModelClient(m["model_id"]))
     bin_path = Path(python_bin) if python_bin is not None else Path(sys.executable)
     jail_root = Path(sandbox_root) if sandbox_root is not None else (
         _REPO_ROOT / "runs" / "p2_codegen" / "sandbox"
     )
+    if panel_path is not None and "holdout" in Path(panel_path).parts:
+        raise RuntimeError(f"codegen panel path touches the holdout partition: {panel_path}")
+    wall_clock_s, memory_mb = sandbox_bounds(thresholds_path)
+    # ONE client per model, not one per (member, model): a fresh client resets the vendor
+    # pacing clock (``LiveCodegenClient._last_call_ts``), which would defeat ``min_interval_s``
+    # and turn a vendor rate-limit into a recorded codegen failure at the boundary.
+    clients = {m["model_id"]: factory(m) for m in models}
+    arm_of = {pid: "A" for pid in selection.arm_a}
+    arm_of.update({pid: "B" for pid in selection.arm_b})
     for pid in selection.members():
         prompt = prompts[pid]
         for model in models:
-            client = factory(model)
+            client = clients[model["model_id"]]
             # Infrastructure failure (vendor rate-limit exhaustion) is a typed generation_error,
             # never a silent drop and never an abort of the whole coverage loop; a budget breach
             # still HALTS. Mirrors evaluation/codegen/ablation.run_scored_ablation.
@@ -193,29 +219,66 @@ def run_p2_driver(
                     "paper_id": pid, "model_id": model["model_id"],
                     "error": f"{type(exc).__name__}: {exc}"[:300]})
                 out["runs"].append({
-                    "paper_id": pid, "model_id": model["model_id"],
+                    "paper_id": pid, "arm": arm_of[pid], "model_id": model["model_id"],
                     "code_extracted": False, "sandbox_status": "generation_error",
-                    "sandbox_reason": f"{type(exc).__name__}"})
+                    "sandbox_reason": f"{type(exc).__name__}",
+                    "output_path": None, "output_sha256": None,
+                    "returned_model_version": getattr(client, "last_model_version", None)})
                 continue
             code = extract_code(response)
             record: dict = {
                 "paper_id": pid,
+                "arm": arm_of[pid],
                 "model_id": model["model_id"],
                 "response_chars": len(response),
                 "code_extracted": code is not None,
+                # A response with no single fenced block never reaches the sandbox; it is the
+                # same WONT_RUN(malformed_response) datum the P1 path records, typed here
+                # so the key is never absent (count-not-retry, I3).
+                "sandbox_status": "wont_run",
+                "sandbox_reason": "malformed_response",
+                "output_path": None,
+                "output_sha256": None,
             }
+            stdout_tail = ""
+            stderr_tail = ""
             if code is not None:
+                jail_dir = jail_root / pid / model["model_id"]
+                # A jail is content-blind: generated code that exits 0 WITHOUT writing leaves
+                # any earlier run's out/portfolio_returns.csv in place, and it would be read
+                # back (and hashed) as this run's series. Clear the jail first — a stale
+                # series scored as a fresh one is fabricated data.
+                shutil.rmtree(jail_dir, ignore_errors=True)
                 sb: SandboxResult = run_sandboxed(
                     code,
                     SandboxSpec(
                         python_bin=bin_path,
-                        jail_dir=jail_root / pid / model["model_id"],
+                        jail_dir=jail_dir,
                         panel_path=panel_path,
+                        wall_clock_s=wall_clock_s,
+                        memory_mb=memory_mb,
                     ),
                 )
+                stdout_tail = sb.stdout_tail
+                stderr_tail = sb.stderr_tail
                 record["sandbox_status"] = sb.status
                 record["sandbox_reason"] = sb.reason
                 record["output_sha256"] = sb.output_sha256
+                record["output_path"] = None if sb.output_path is None else str(sb.output_path)
+            # The failure diagnostic the taxonomy reads: WHY a run would not execute. Kept
+            # short in the record (the full tail is archived beside the code).
+            record["stderr_tail"] = stderr_tail[-_DIAGNOSTIC_CHARS:] if stderr_tail else ""
+            record["returned_model_version"] = getattr(client, "last_model_version", None)
+            if hasattr(client, "operational_usage"):
+                record["operational_usage"] = client.operational_usage()
+            archive_run(
+                pid, model["model_id"], code or "", stdout_tail,
+                {**{k: record[k] for k in (
+                    "arm", "code_extracted", "sandbox_status", "sandbox_reason",
+                    "output_sha256", "returned_model_version")},
+                 "stderr_tail": stderr_tail},
+                root=jail_root.parent / "archive",
+            )
             out["runs"].append(record)
 
     out["emitted_numbers"] = True

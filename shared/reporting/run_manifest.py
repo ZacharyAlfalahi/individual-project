@@ -5,8 +5,8 @@ A unified sidecar every ``scripts/run_*.py`` driver can emit: execution timestam
 code hash + input-data hashes + config hashes + output hashes + a per-run
 *operational profile* (model calls, tokens in/out, wall-clock, retries, human
 interventions, and a cost slot). This is the per-run EXECUTION record the corpus /
-Phase-F runs need so the cost / capability-table data actually exists — the gap the
-data-layer register flags as O11 ("no unified per-run manifest, no shared run_id").
+Phase-F runs need so the cost / capability-table data exists: one unified per-run
+manifest with a shared run_id (the data-layer register's O11 requirement).
 
 Cost discipline: ``cost_usd`` is left ``None`` and DERIVED post-hoc from the stored
 token counts times a CITED per-model rate — the mechanical figures (tokens, calls,

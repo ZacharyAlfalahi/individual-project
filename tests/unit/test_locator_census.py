@@ -159,7 +159,7 @@ def test_census_classifier_cascade():
 
 def test_census_count_cross_pin_fails_loud(tmp_path):
     # A valid run dir whose recomputed agree_qgf count (1) mismatches a fake
-    # committed report (5) -> RuntimeError before any canonical text is loaded.
+    # recorded report (5) -> RuntimeError before any canonical text is loaded.
     run_dir = tmp_path / "drr"
     run_dir.mkdir()
     trace = {"header": {"paper_id": "STUB"},

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """System-level integration arms: a clean-variant integration null and an integrated known-error
-positive control. Both reuse existing (tested) machinery; no module is modified. Deterministic,
+positive control. Both reuse the tested engine and auditor machinery. Deterministic,
 dev/synthetic only (no data/holdout/, no LLM).
 
 Arm A -- clean-variant integration null: the zero-injection synthetic scenario is run through the
@@ -12,7 +12,7 @@ Arm A -- clean-variant integration null: the zero-injection synthetic scenario i
 Arm B -- integrated known-error positive control: the BBW factors are built LIVE through the Quant
   executor (view -> run_bbw_factor) on the dev panel, the documented DRR lead/lag defect is injected,
   and the pre-registered gate grades the live output. This differs from the component-level control
-  (`run_leadlag_gate.py`), which grades a committed parquet. NOTE: it is a Quant->Auditor integration,
+  (`run_leadlag_gate.py`), which grades the pre-built factor parquet. NOTE: it is a Quant->Auditor integration,
   NOT the full Librarian->Quant->Auditor path -- BBW factors are driven by hardcoded rulebooks, not a
   Librarian extraction (documented limitation).
 
@@ -46,6 +46,14 @@ from agents.quant.library.run_config import (  # noqa: E402
 )
 from agents.quant.library.views import view  # noqa: E402
 from agents.reporter.format import to_bps  # noqa: E402
+from scripts import basis_inputs  # noqa: E402
+
+_DEFAULT_OUT = _REPO_ROOT / "results" / "scientist" / "integration_arms.json"
+
+
+def default_out(basis: str | None = None) -> Path:
+    """The default output without a basis; the consistent-basis location with one (never the default file)."""
+    return _DEFAULT_OUT if basis is None else basis_inputs.basis_dir(basis, "scientist", "integration_arms.json")
 
 
 # --- Arm A: clean-variant integration null -------------------------------------------------
@@ -72,7 +80,7 @@ def run_clean_null(*, seed: int = 2026, replicates: int = 200) -> dict:
             "all_ci_cover_zero": bool(all_cover0), "passed": bool(all_quiet and all_cover0),
             "toggles": toggles,
             "note": "clean synthetic panel through the T4b engine spine; the instrument "
-                    "manufactures no effect (counterpart of the planted-survivorship positive)."}
+                    "must manufacture no effect (counterpart of the planted-survivorship positive)."}
 
 
 # --- Arm B: integrated known-error positive control (live Quant->Auditor) -------------------
@@ -83,7 +91,7 @@ _CRF_SUBFACTORS = ("crf_illiq", "crf_rev", "crf_var")   # CRF = compose_crf over
 def _prep_panel(maximal: pd.DataFrame, signals: pd.DataFrame) -> pd.DataFrame:
     """The corrected dev panel viewed for the BBW factor build, prepared exactly as the canonical
     build_bbw_factors.run_family: gamma_illiq -> gamma, and rev/xret aliased to the raw prior-month
-    return (BBW's reversal signal). Reused, not modified."""
+    return (BBW's reversal signal)."""
     cfg = RunConfig(panel_view=PanelViewConfig(price_family="corr", stale_mask=False,
                                                include_terminal_rows=False),
                     construction=ConstructionConfig(signal_lag=0, expost_trim="none"),
@@ -113,9 +121,17 @@ def _window_corr(correct: pd.DataFrame, other: pd.DataFrame, window) -> tuple[fl
     return float(j["correct"].corr(j["other"])), int(len(j))
 
 
-def run_integrated_leadlag_positive() -> dict:
-    from agents.auditor.ipca_differential.runner import load_dev_inputs
-    maximal, signals, _registry = load_dev_inputs()
+def _load_dev_inputs(basis: str | None = None):
+    """(maximal, signals, registry): the default dev loader (load_dev_inputs) without a basis,
+    else the basis loader."""
+    if basis is None:
+        from agents.auditor.ipca_differential.runner import load_dev_inputs
+        return load_dev_inputs()
+    return basis_inputs.load_basis_inputs(basis)
+
+
+def run_integrated_leadlag_positive(basis: str | None = None) -> dict:
+    maximal, signals, _registry = _load_dev_inputs(basis)
     panel = _prep_panel(maximal, signals)
     import yaml
     ll = yaml.safe_load((_REPO_ROOT / "docs" / "thresholds.yaml").read_text())["bias_toggles"]["lead_lag"]
@@ -136,15 +152,20 @@ def run_integrated_leadlag_positive() -> dict:
                       "corr_correct_vs_defective": corr_defect,
                       "corr_correct_vs_restored": corr_restored}
     verdict = evaluate_known_error_control({"arms": arms})
-    return {"arm": "integrated_known_error_positive_control", "pipeline": "quant_to_auditor_live",
-            "passed": bool(verdict.passed), "detail": verdict.detail, "arms": arms,
-            "note": "BBW factors built live through the Quant executor (not the committed parquet); "
-                    "Quant->Auditor integration, not the full Librarian->Quant->Auditor path."}
+    result = {"arm": "integrated_known_error_positive_control", "pipeline": "quant_to_auditor_live",
+              "passed": bool(verdict.passed), "detail": verdict.detail, "arms": arms,
+              "note": "BBW factors built live through the Quant executor (not the pre-built factor parquet); "
+                      "Quant->Auditor integration, not the full Librarian->Quant->Auditor path."}
+    if basis is not None:
+        result["basis"] = basis
+        result["basis_provenance"] = basis_inputs.basis_provenance(basis).to_dict()
+    return result
 
 
-def run_integration_arms(replicates: int = 200) -> dict:
+def run_integration_arms(replicates: int = 200, basis: str | None = None) -> dict:
+    """Arm A is synthetic (basis-free); ``basis`` selects Arm B's dev panel (None = the default dev loader)."""
     a = run_clean_null(replicates=replicates)
-    b = run_integrated_leadlag_positive()
+    b = run_integrated_leadlag_positive() if basis is None else run_integrated_leadlag_positive(basis=basis)
     return {"component": "system_integration_arms", "reads_holdout": False, "cost_usd": 0.0,
             "clean_variant_null": a, "integrated_known_error_positive_control": b}
 
@@ -152,9 +173,17 @@ def run_integration_arms(replicates: int = 200) -> dict:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--replicates", type=int, default=200)
+    ap.add_argument("--basis", choices=basis_inputs.BASES, default=None,
+                    help="return basis of Arm B's dev panel (default: the dev loader load_dev_inputs)")
+    ap.add_argument("--out", type=Path, default=None,
+                    help=f"output JSON (default {_DEFAULT_OUT.relative_to(_REPO_ROOT)}; with --basis "
+                         "results/consistent_basis/<basis>/scientist/integration_arms.json)")
     args = ap.parse_args(argv)
-    result = run_integration_arms(replicates=args.replicates)
-    out = _REPO_ROOT / "results" / "scientist" / "integration_arms.json"
+    if args.basis is None:
+        result = run_integration_arms(replicates=args.replicates)
+    else:
+        result = run_integration_arms(replicates=args.replicates, basis=args.basis)
+    out = args.out if args.out is not None else default_out(args.basis)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, sort_keys=True, default=str), encoding="utf-8")
     a, b = result["clean_variant_null"], result["integrated_known_error_positive_control"]

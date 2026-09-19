@@ -21,8 +21,7 @@ Design conventions, deliberately fixed:
   leg has zero bonds.
 - Result shape: plain dict with keys monthly_returns / summary /
   relationship_to_benchmark / settings_used / bookkeeping.
-- Rulebook: plain dict argument; no thresholds.yaml dependency on the
-  initial build.
+- Rulebook: plain dict argument; no thresholds.yaml dependency.
 - Benchmark regression SEs: hand-rolled OLS + Bartlett-kernel NW HAC using
   the SAME nw_lags choice as the strategy luck-check.
 - Stats dependency: numpy + pandas only. No statsmodels, no scipy.
@@ -135,7 +134,7 @@ def _apply_defaults(rulebook: dict) -> dict:
         if tr.get("target", "return") != "return":
             raise NotImplementedError(
                 f"trim_rule.target={tr.get('target')!r} not implemented; "
-                "only 'return' is supported in this build."
+                "only 'return' is supported."
             )
         bounds = tr.get("bounds", {})
         if not isinstance(bounds, dict):
@@ -144,7 +143,7 @@ def _apply_defaults(rulebook: dict) -> dict:
         if btype not in ("absolute", "percentile"):
             raise NotImplementedError(
                 f"trim_rule.bounds.type={btype!r} not supported; only 'absolute' "
-                "and 'percentile' are implemented in this build."
+                "and 'percentile' are implemented."
             )
         if bounds.get("lo") is None and bounds.get("hi") is None:
             raise ValueError("trim_rule.bounds must set at least one of lo/hi")
@@ -167,8 +166,8 @@ def _apply_defaults(rulebook: dict) -> dict:
                     )
         if tr.get("sample", "full_sample") != "full_sample":
             raise NotImplementedError(
-                "trim_rule.sample='by_month_cross_section' not implemented "
-                "in this build; only 'full_sample' is supported."
+                "trim_rule.sample='by_month_cross_section' not implemented; "
+                "only 'full_sample' is supported."
             )
 
     return settings
@@ -342,20 +341,27 @@ def _form_legs(
 
 def _apply_trim_rule(eligible: pd.DataFrame, trim_rule: dict) -> pd.DataFrame:
     """
-    Apply the lab_trim post-realisation trim per A2 of the registry
-    amendments.
+    Apply the lab_trim post-realisation trim (registered amendment A2).
 
     method='truncate': drop rows whose next_ret falls outside [lo, hi].
     method='winsorise': clip next_ret values to [lo, hi] in-place on the
                        returned frame.
     method='none': no-op (caller should short-circuit).
 
-    Only `target='return'`, `bounds.type='absolute'`, `sample='full_sample'`
-    are supported in this build; the other variations raise at
-    _apply_defaults validation time.
+    Only `target='return'` and `sample='full_sample'` are supported (other
+    values raise at _apply_defaults validation time); bounds must be absolute
+    here. A `bounds.type='percentile'` rule must be
+    resolved to absolute bounds first (`_resolve_percentile_trim` /
+    `resolve_trim_rule`); passing one unresolved raises, so a percentile LEVEL
+    can never be applied as an absolute return bound.
     """
     method = trim_rule["method"]
     bounds = trim_rule.get("bounds", {})
+    if bounds.get("type", "absolute") == "percentile":
+        raise ValueError(
+            "_apply_trim_rule received an unresolved percentile trim (level "
+            f"{bounds.get('lo')!r}/{bounds.get('hi')!r}); resolve it to absolute bounds first"
+        )
     lo = bounds.get("lo")
     hi = bounds.get("hi")
     col = "next_ret"
@@ -400,10 +406,10 @@ def _resolve_percentile_trim(work: pd.DataFrame, settings: dict) -> tuple[dict, 
     """Resolve a percentile ``trim_rule`` to absolute bounds ONCE per cell, over
     the full-sample eligible ``next_ret`` (via ``_eligibility_mask`` — same series
     the per-month trim operates on). Returns ``(settings, realised)`` where
-    ``settings`` carries an absolute-bounds trim (so ``_apply_trim_rule`` is
-    unchanged) and ``realised`` records the method, n_obs, and the realised
+    ``settings`` carries an absolute-bounds trim (which ``_apply_trim_rule``
+    applies directly) and ``realised`` records the method, n_obs, and the realised
     absolute threshold per level (spec E condition 4). Non-percentile trims (and
-    ``method='none'``) pass through untouched (condition 6: no regression)."""
+    ``method='none'``) pass through untouched (spec E condition 6)."""
     tr = settings["trim_rule"]
     if tr.get("method", "none") == "none":
         return settings, None
@@ -429,10 +435,30 @@ def _resolve_percentile_trim(work: pd.DataFrame, settings: dict) -> tuple[dict, 
             abs_bounds[k] = thr
             realised[k] = {"level": lvl, "threshold": thr}
     new_tr = dict(tr)
-    new_tr["bounds"] = abs_bounds  # now absolute; _apply_trim_rule unchanged
+    new_tr["bounds"] = abs_bounds  # absolute bounds, as _apply_trim_rule requires
     new_settings = dict(settings)
     new_settings["trim_rule"] = new_tr
     return new_settings, realised
+
+
+def resolve_trim_rule(panel: pd.DataFrame, rulebook: dict) -> tuple[dict, dict | None]:
+    """Public, read-only: the rulebook's ``trim_rule`` with any percentile level resolved to an
+    absolute bound, plus the realised-threshold record (``None`` for ``none``/absolute trims).
+
+    Uses the SAME series and the SAME resolver as ``run_characteristic_sort`` (the full-sample
+    eligible ``next_ret``, ``_resolve_percentile_trim``), so every caller — the H=1 engine, the
+    overlapping-hold wrapper, and any driver that must record the cutoff — sees one threshold per
+    cell. ``none`` and absolute trims return immediately without building the lagged panel."""
+    settings = _apply_defaults(rulebook)
+    tr = settings["trim_rule"]
+    if tr.get("method", "none") == "none" or tr.get("bounds", {}).get("type", "absolute") != "percentile":
+        return tr, None
+    _validate_panel(panel, settings)
+    panel = panel.copy()
+    panel["date"] = panel["date"].astype("datetime64[ns]")
+    work = _build_lagged_panel(panel, settings["score"], settings["signal_lag"])
+    resolved, realised = _resolve_percentile_trim(work, settings)
+    return resolved["trim_rule"], realised
 
 
 # ---------------------------------------------------------------------------
@@ -472,7 +498,7 @@ def _month_step(
     # lab_trim per A2 — applied post-realisation (next_ret is observed at
     # this stage), before group assignment so the trim affects which bonds
     # contribute to each group's leg return. Default trim_rule.method='none'
-    # is a no-op so existing tests retain bit-exact behaviour.
+    # is a no-op (bit-exact with an untrimmed sort).
     if settings["trim_rule"]["method"] != "none":
         eligible = _apply_trim_rule(eligible, settings["trim_rule"])
         if len(eligible) < settings["min_bonds"]:
@@ -545,9 +571,9 @@ def extract_monthly_selections(
     calls this and holds for H=1 reproduces `run_characteristic_sort`'s
     output exactly.
 
-    v1 limitation: single-sort only. Passing `control` in the rulebook
+    Limitation: single-sort only. Passing `control` in the rulebook
     raises NotImplementedError — control would require a stripe-keyed
-    return structure that the wrapper does not yet model.
+    return structure that the wrapper does not model.
 
     Returns
     -------
@@ -561,7 +587,7 @@ def extract_monthly_selections(
     if settings["control"] is not None:
         raise NotImplementedError(
             "extract_monthly_selections does not support control "
-            "(double-sort) in this build. Use run_characteristic_sort "
+            "(double-sort). Use run_characteristic_sort "
             "directly or omit 'control' from the rulebook."
         )
     _validate_panel(panel, settings)
@@ -570,6 +596,12 @@ def extract_monthly_selections(
     panel["date"] = panel["date"].astype("datetime64[ns]")
 
     work = _build_lagged_panel(panel, settings["score"], settings["signal_lag"])
+
+    # Resolve a percentile trim_rule to absolute bounds over the full-sample eligible next_ret —
+    # the same resolver and series as run_characteristic_sort — so a percentile LEVEL is never
+    # applied as an absolute bound on this path (no-op for none/absolute trims, and for the
+    # already-resolved rulebook overlap.run_with_holding_period passes in).
+    settings, _realised = _resolve_percentile_trim(work, settings)
 
     selections: dict[pd.Timestamp, dict[str, pd.DataFrame]] = {}
     for formation_date, month_df in work.groupby("date", sort=True):
@@ -876,8 +908,8 @@ def run_characteristic_sort(
                  rulebook specifies one -- a control column.
       rulebook : settings dict. See `_apply_defaults` for the supported keys
                  and defaults. Required key: 'score'.
-      safe_rate: optional DataFrame with date + rf. Accepted but unused in
-                 this build (long-short nets out the safe rate).
+      safe_rate: optional DataFrame with date + rf. Accepted but unused
+                 (long-short nets out the safe rate).
       benchmark: optional wide DataFrame with date + one column per factor.
 
     Returns a dict:
@@ -899,11 +931,10 @@ def run_characteristic_sort(
     _validate_panel(panel, settings)
 
     if safe_rate is not None:
-        # This build produces only long-short strategies; the safe rate cancels
+        # The engine produces only long-short strategies; the safe rate cancels
         # out of the spread (spec section 2.2 / section 6). The argument is
-        # accepted on the signature so callers can already supply it ahead
-        # of a future long-only summary code path, but its shape is
-        # validated now so that future code path can rely on the invariant.
+        # accepted on the signature and its shape is validated, so a long-only
+        # summary path can rely on the invariant.
         if not isinstance(safe_rate, pd.DataFrame):
             raise TypeError("safe_rate must be a pandas DataFrame when provided")
         missing_rf = {"date", "rf"} - set(safe_rate.columns)
@@ -923,8 +954,8 @@ def run_characteristic_sort(
     work = _build_lagged_panel(panel, settings["score"], settings["signal_lag"])
 
     # Resolve a percentile trim_rule to absolute bounds ONCE per cell, over the
-    # full-sample eligible next_ret (spec E). No-op for absolute / none trims, so
-    # every existing strategy is byte-identical (condition 6).
+    # full-sample eligible next_ret (spec E). No-op for absolute / none trims
+    # (condition 6).
     settings, realised_trim = _resolve_percentile_trim(work, settings)
 
     bookkeeping: dict = {

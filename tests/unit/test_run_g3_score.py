@@ -3,7 +3,7 @@
 The heavy scoring logic is the already-tested G3 harness; these tests pin the
 CLI's own responsibilities: anchor->run-dir resolution, the reportability gate,
 lrf's exclusion from the aggregate, and the end-to-end drive against the
-committed dev run when it is on disk (runs/ is gitignored -> skipif)."""
+recorded dev run when it is on disk (runs/ is gitignored -> skipif)."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from scripts import run_g3_score as cli                                  # noqa:
 _RUNS = _REPO_ROOT / "runs" / "g3_v3"
 _have_runs = (_RUNS / "bbw" / "trace_0.json").exists()
 
-needs_runs = pytest.mark.skipif(not _have_runs, reason="committed dev run not on disk")
+needs_runs = pytest.mark.skipif(not _have_runs, reason="recorded dev run not on disk")
 
 
 def test_default_dir_map_covers_the_scoreable_sort_anchors():
@@ -39,7 +39,7 @@ def test_phase_d_refuses_without_the_opt_in(capsys):
 
 
 @needs_runs
-def test_end_to_end_against_the_committed_dev_run(tmp_path):
+def test_end_to_end_against_the_recorded_dev_run(tmp_path):
     md_out = tmp_path / "report.md"
     js_out = tmp_path / "report.json"
     rc = cli.main(["--run-root", str(_RUNS), "--allow-non-reportable",
@@ -64,7 +64,7 @@ def test_end_to_end_against_the_committed_dev_run(tmp_path):
 @needs_runs
 def test_lrf_never_enters_the_aggregate():
     """--include-lrf scores lrf per-anchor only; the aggregate stays 3-anchor.
-    (lrf shares the bbw run dir; the committed dev run predates the lrf gold, so
+    (lrf shares the bbw run dir; the recorded dev run predates the lrf gold, so
     resolution may fail on label mismatch -- either outcome must keep lrf out of
     the aggregate rather than crash into it.)"""
     try:

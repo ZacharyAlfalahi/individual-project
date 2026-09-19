@@ -10,7 +10,7 @@ tuple) is looked up in the Quant-side concept->column table:
   * no row / unknown concept -> ``Binding(MISSING, ...)``
 
 A MISSING binding rides into ``build_quant_config`` unchanged, which emits the one
-``MISSING_BINDING`` refusal (P4: one refusal owner). The adapter NEVER emits
+``MISSING_BINDING`` refusal (P4: a single emitter). The adapter NEVER emits
 ``AMBIGUOUS`` -- the table is a function (one column per (concept, params)), so a
 resolved bind is always BOUND (the mirror rule; the concept->column loader rejects
 duplicate keys, making AMBIGUOUS structurally impossible).

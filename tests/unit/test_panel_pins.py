@@ -1,10 +1,10 @@
-"""Guarded pin for the committed core panel artefacts.
+"""Guarded pin for the core panel artefacts (built locally; the pins are committed).
 
 Recomputes the SHA-256 of each core panel from its on-disk bytes and asserts
 it still matches the frozen pin in ``shared/reporting/panel_pins.py``. The
 panels are large gitignored artefacts, so each check skips (rather than fails)
 when the file is absent locally -- the established idiom for tests over the
-committed ``/data/development/`` artefacts (cf. test_ipca_feed_builder.py).
+locally built ``/data/development/`` artefacts (cf. test_ipca_feed_builder.py).
 """
 
 import hashlib
@@ -31,7 +31,7 @@ def _recompute(path: Path) -> str:
 def test_frozen_panel_sha_matches_on_disk(rel_path, pinned):
     path = REPO_ROOT / rel_path
     if not path.exists():
-        pytest.skip(f"committed panel not present locally: {rel_path}")
+        pytest.skip(f"pinned panel not present locally: {rel_path}")
     live = _recompute(path)
     assert live == pinned, (
         f"{rel_path} changed without re-pinning: on-disk sha256 {live} != "

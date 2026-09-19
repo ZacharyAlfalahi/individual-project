@@ -8,11 +8,10 @@ own span contain nothing that qualifies?
 
 Canonical mapping rule: the deterministic default-config rule
 `sources._first_config` (spec §8.1 — "first reachable (template, variable) in
-canonical order, first lag, first form"), committed as part of the retrieval rung
-BEFORE any funnel performance run. This driver post-dates the recorded funnel runs
-and exercises that rule verbatim, so no per-mechanism choice is made after results
-were observed; every canonical implementation is a pure function of the frozen
-mechanism library and the pre-existing rule.
+canonical order, first lag, first form"), fixed as part of the retrieval rung
+independently of any performance result. This driver exercises that rule verbatim,
+so no per-mechanism choice depends on results; every canonical implementation is a
+pure function of the frozen mechanism library and the pre-existing rule.
 
 Constraints honoured STRUCTURALLY, not by convention:
   * not another significance family: no BH-FDR is computed (run_fdr is never
@@ -26,17 +25,28 @@ Generative arms replay from the immutable content-addressed cache
 call is impossible and the run costs nothing. Development window only; the
 holdout is never read.
 
-Output:
+Inputs (no flag = the recorded run):
+  --basis {total_return,clean}  maximal panel via scripts/basis_inputs.load_basis_inputs; the flags
+                                below then default under results/consistent_basis/<basis>/.
+  --audit-report PATH           corrected str AuditReport (default
+                                results/auditor/str_corrected/str_report.json;
+                                with --basis: <basis>/audit/full_run/str_report.json).
+  --factors-dir DIR             BBW-4 factors dir (default data/development/factors; with --basis:
+                                <basis>/factors).
+  --out DIR                     writes both the JSON and the md into DIR (default: the recorded
+                                split below; with --basis: <basis>/rq4/exhaustive_benchmark).
+
+Output (recorded default):
   results/scientist/rq4_exhaustive_benchmark.json
   results/rq4_exhaustive_benchmark.md
 """
 
 from __future__ import annotations
 
+import argparse
 import datetime as _dt
 import hashlib
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -80,14 +90,6 @@ class CacheOnlyClient:
             f"cache miss for {self.name!r} seed {seed} — live calls are forbidden in the "
             "exhaustive benchmark (replay-only)"
         )
-
-
-def _git_commit() -> str:
-    try:
-        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=_REPO_ROOT,
-                              capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:
-        return "unknown"
 
 
 def _thresholds_sha256() -> str:
@@ -196,8 +198,43 @@ def rank_within(canonical_rows: list[dict], alpha_t: float) -> int:
     return better + 1
 
 
-def main() -> None:
-    case, params = F.build_case()
+def resolve_exhaustive_paths(basis: str | None = None, *, audit_report=None, factors_dir=None,
+                             out=None) -> dict:
+    """{'basis', 'audit', 'factors_dir', 'out', 'out_json', 'out_md'} —
+    explicit flag > basis default > recorded default (the recorded json/md split)."""
+    p = F.resolve_basis_paths(basis, audit=audit_report, factors_dir=factors_dir, out=out,
+                              default_audit=F._STR_AUDIT, default_out=None,
+                              audit_leaf="str_report.json", out_leaf="exhaustive_benchmark")
+    stem = "rq4_exhaustive_benchmark"
+    if p["out"] is None:
+        out_json = _REPO_ROOT / "results" / "scientist" / f"{stem}.json"
+        out_md = _REPO_ROOT / "results" / f"{stem}.md"
+    else:
+        out_json, out_md = p["out"] / f"{stem}.json", p["out"] / f"{stem}.md"
+    return {**p, "out_json": out_json, "out_md": out_md}
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--basis", choices=F.BI.BASES, default=None,
+                    help="return basis of the maximal panel (default: recorded clean run)")
+    ap.add_argument("--audit-report", default=None, help="corrected str AuditReport path")
+    ap.add_argument("--factors-dir", default=None, help="dir with bbw_factors/mktb parquets")
+    ap.add_argument("--out", default=None, help="output dir for both the JSON and the md")
+    return ap
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_arg_parser().parse_args(argv)
+    paths = resolve_exhaustive_paths(args.basis, audit_report=args.audit_report,
+                                     factors_dir=args.factors_dir, out=args.out)
+    recorded = F.is_recorded_inputs(args.basis, args.audit_report, args.factors_dir)
+    if recorded:
+        case, params = F.build_case()
+    else:
+        case, params = F.build_case(paths["audit"],
+                                    corrected_run_ref=F.repo_relative(paths["audit"].parent))
     if not case.failed_check_ids:
         print("str did not enter — no correction cleared entry; nothing to benchmark")
         sys.exit(0)
@@ -209,10 +246,10 @@ def main() -> None:
                        available_variables=available) for mm in library.mechanisms]
     n_eligible = sum(1 for r in elig if r.eligible)
 
-    panel, base_rulebook, parent_returns, direction = F.corrected_str_parent()
+    panel, base_rulebook, parent_returns, direction = F.corrected_str_parent(args.basis)
     parent_mean_bp = float(parent_returns.mean()) * 1e4
     macros = F.load_macro_series(panel["date"].min(), panel["date"].max())
-    bbw4 = F.bbw4_frame()
+    bbw4 = F.bbw4_frame(paths["factors_dir"])
     reporting_delays = load_reporting_delays()
 
     kw = dict(case=case, library=library, panel=panel, base_rulebook=base_rulebook, bbw4=bbw4,
@@ -257,7 +294,6 @@ def main() -> None:
 
     report = {
         "run_timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-        "git_commit": _git_commit(),
         "thresholds_sha256": _thresholds_sha256(),
         "design": "exhaustive canonical-mechanism benchmark — descriptive diagnostic ranking "
                   "each proposal source inside the full eligible-mechanism distribution",
@@ -278,8 +314,10 @@ def main() -> None:
         },
         "sources": source_reports,
     }
+    if not recorded:
+        report["inputs"] = F.inputs_record(args.basis, paths["audit"], paths["factors_dir"])
 
-    out_json = _REPO_ROOT / "results" / "scientist" / "rq4_exhaustive_benchmark.json"
+    out_json = paths["out_json"]
     out_json.parent.mkdir(parents=True, exist_ok=True)
     out_json.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(f"written: {out_json}")
@@ -293,14 +331,16 @@ def main() -> None:
                 f"| {r['mean_bp_per_month']:+.1f} | {r['alpha_bp_per_month']:+.1f} "
                 f"| {r['alpha_t']:+.2f} | {r['rank_in_canonical']} | evaluated |")
 
+    basis_note = f", basis {args.basis}" if args.basis is not None else ""
     lines = [
         "# RQ4 exhaustive canonical-mechanism benchmark",
         "",
-        f"**Mapping rule:** {MAPPING_RULE}. The rule pre-dates every funnel performance run;",
-        "this driver post-dates them and exercises the rule verbatim, so no per-mechanism",
-        "choice is made after results were observed. **Constraints:** " + CONSTRAINTS + ".",
+        f"**Mapping rule:** {MAPPING_RULE}. The rule is fixed independently of any performance",
+        "result and exercised verbatim, so no per-mechanism choice depends on observed results.",
+        "**Constraints:** " + CONSTRAINTS + ".",
         "",
-        f"Corrected parent (str, all-ON): {parent_mean_bp:+.1f} bp/mo, direction {direction:+d}. "
+        f"Corrected parent (str, all-ON{basis_note}): {parent_mean_bp:+.1f} bp/mo, direction "
+        f"{direction:+d}. "
         f"Eligible mechanisms: {n_eligible}; canonical proposals: {len(canon)}; evaluated distinct: "
         f"{len(evaluated)}; excluded/collided: {len(excluded)}.",
         "",
@@ -318,7 +358,8 @@ def main() -> None:
         lines += [_fmt(r) for r in rep["rows"]]
     lines += ["", "Raw p-values live in the JSON as descriptive annotations only; no BH family was",
               "formed and nothing here can nominate a holdout candidate.", ""]
-    out_md = _REPO_ROOT / "results" / "rq4_exhaustive_benchmark.md"
+    out_md = paths["out_md"]
+    out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text("\n".join(lines), encoding="utf-8")
     print(f"written: {out_md}")
 

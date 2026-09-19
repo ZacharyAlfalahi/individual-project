@@ -9,10 +9,11 @@ pre-registered entry rule (D14 / R3), and emits a magnitude-free `ScientistCase`
 downstream of here ever sees a Sharpe gap, effect size or p-value again — that is the wall.
 
 The entry-rule numbers (theta, q) are INJECTED, never hardcoded (prohibition 1). They belong
-to the `scientist:` block of `docs/thresholds.yaml`, which references `auditor.theta` /
-`auditor.fdr.q` (R3, stated once in the auditor block, never restated). That block does not
-exist yet, so `load_entry_rule_params` is FAIL-LOUD (mirrors `agents/auditor/thresholds.py`):
-it raises rather than defaulting a post-hoc constant. `apply_entry_rule` itself takes theta/q
+to the `scientist:` block of `docs/thresholds.yaml`, which references
+`auditor.practical_significance.vartheta` / `auditor.fdr.q` (R3, stated once in the auditor
+block, never restated). `load_entry_rule_params` is FAIL-LOUD (mirrors
+`agents/auditor/thresholds.py`): a missing block or an unresolvable ref raises rather than
+defaulting a post-hoc constant. `apply_entry_rule` itself takes theta/q
 as plain parameters and knows nothing about where they came from — it is a pure function, fully
 unit-testable with synthetic stats.
 """
@@ -220,10 +221,11 @@ class ScientistThresholdError(KeyError):
         self._dotted_key = dotted_key
         super().__init__(
             f"scientist entry-rule constant '{dotted_key}' is missing from "
-            f"{THRESHOLDS_FILE.name}. The `scientist:` block references auditor.theta / "
+            f"{THRESHOLDS_FILE.name}. The `scientist:` block references "
+            f"auditor.practical_significance.vartheta / "
             f"auditor.fdr.q (R3) and must be pre-registered and git-tagged before the first "
-            f"generation run — the Scientist never defaults it. (Until the block is committed, "
-            f"this loader raises by design; inject theta/q explicitly in tests.)"
+            f"generation run — the Scientist never defaults it. (The loader raises rather than "
+            f"defaulting; inject theta/q explicitly in tests.)"
         )
 
 
@@ -264,8 +266,8 @@ def load_entry_rule_params(path: str | Path | None = None) -> EntryRuleParams:
     expected to carry *references* — `scientist.entry_rule.materiality_threshold_ref` and
     `.fdr_q_ref` (dotted paths, e.g. 'auditor.practical_significance.vartheta',
     'auditor.fdr.q'), which this loader resolves against the same file. If a literal `theta`/`q`
-    is provided instead of a ref, it is accepted as a fallback. Until the `scientist:` block is
-    committed this ALWAYS raises — by design. NOT the runtime path (tests inject theta/q into
+    is provided instead of a ref, it is accepted as a fallback. A missing `scientist:` block or
+    an unresolvable ref ALWAYS raises — by design. NOT the runtime path (tests inject theta/q into
     `apply_entry_rule` directly); this exists so a caller that asks for the numbers gets a loud
     failure, never a silent default."""
     p = Path(path) if path is not None else THRESHOLDS_FILE

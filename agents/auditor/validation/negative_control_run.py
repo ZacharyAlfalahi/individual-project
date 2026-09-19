@@ -6,7 +6,7 @@ The ``traded_liquidity`` negative control maps to the existing LRF (gamma-illiqu
 This module computes LRF's CORRECTED-vs-UNCORRECTED monthly-premium differential and its
 pre-registered confirmatory bootstrap CI, then grades it with the separated-mode gate.
 
-**Committed estimand (run ONCE, report as-is):**
+**Pre-registered estimand (run once, report as-is):**
   * differential = LRF premium under the ``meas_err`` / DRR price-cleaning correction
     (``price_family`` raw→corr, ALL other toggles held) — the universal data-layer correction,
     directly comparable to the ``drf`` anchor (whose dominant bias IS meas_err). NOT the full
@@ -134,11 +134,26 @@ def _series_of(monthly_returns: pd.DataFrame, col: str) -> pd.Series:
                      index=pd.DatetimeIndex(monthly_returns["date"])).sort_index()
 
 
-def run_negative_control_from_dev(*, seed: int = 0, thresholds_path=None) -> dict:
+def run_negative_control_from_dev(
+    *,
+    seed: int = 0,
+    thresholds_path=None,
+    maximal: pd.DataFrame | None = None,
+    signals: pd.DataFrame | None = None,
+    return_basis: str | None = None,
+) -> dict:
     """Orchestrate the dev-data negative-control run: LRF raw vs corr on the maximal panel →
-    pre-registered bootstrap CI → separated-mode gate. Deterministic, dev-only, $0."""
+    pre-registered bootstrap CI → separated-mode gate. Deterministic, dev-only, $0.
+
+    ``maximal``/``signals`` inject a basis-specific dev panel and its signals (both or neither);
+    omitted, ``load_dev_inputs()`` supplies the clean maximal dev panel. ``return_basis`` labels the
+    injected panel's return basis in the output; omitted, the output carries no return_basis key and
+    estimand.panel is maximal_clean_dev."""
     from agents.auditor.ipca_differential.runner import load_dev_inputs
 
+    if (maximal is None) != (signals is None):
+        raise NegativeControlRunError(
+            "inject maximal AND signals together, or neither (then load_dev_inputs supplies both)")
     hyp = load_hypothesis_registry()[NEG_CONTROL_FACTOR]
     if hyp.magnitude_mode != "separated":
         raise NegativeControlRunError(
@@ -147,7 +162,8 @@ def run_negative_control_from_dev(*, seed: int = 0, thresholds_path=None) -> dic
     cfg = AuditorConfig.from_thresholds(thresholds_path)
     vartheta = cfg.vartheta          # the canonical auditor.practical_significance.vartheta (one source)
 
-    maximal, signals, _registry = load_dev_inputs()
+    if maximal is None:
+        maximal, signals, _registry = load_dev_inputs()
     # LRF sorts on score "gamma" (the illiquidity measure). load_dev_inputs names it
     # "gamma_illiq_<family>"; LRF's rulebook + view expect "gamma". Pass ONLY the gamma raw/corr
     # columns (renamed), so view() resolves gamma_<family>->gamma cleanly — passing the other
@@ -164,7 +180,7 @@ def run_negative_control_from_dev(*, seed: int = 0, thresholds_path=None) -> dic
         min_effective_blocks=cfg.min_effective_blocks, seed=seed,
         n_bonds_off=_series_of(raw_mr, "n_bonds"), n_bonds_on=_series_of(corr_mr, "n_bonds"))
 
-    return {
+    result = {
         "control": "negative_control_specificity",
         "factor": NEG_CONTROL_FACTOR,
         "basis": "real_dev_data",
@@ -174,7 +190,7 @@ def run_negative_control_from_dev(*, seed: int = 0, thresholds_path=None) -> dic
                             "price-cleaning correction (price_family raw->corr; all other toggles held)",
             "scope_note": "the meas_err/price-cleaning correction ONLY, NOT the full bias envelope — "
                           "comparable to the drf anchor's dominant bias",
-            "panel": "maximal_clean_dev",
+            "panel": f"maximal_{return_basis or 'clean'}_dev",
             "interval": "pre-registered confirmatory block bootstrap (auditor.bootstrap), 95% gap CI",
             "run_once": True,
         },
@@ -190,3 +206,6 @@ def run_negative_control_from_dev(*, seed: int = 0, thresholds_path=None) -> dic
                       ("n_months_common", "native_max_months", "block_length_months",
                        "effective_blocks", "n_replicates", "seed")},
     }
+    if return_basis is not None:
+        result["return_basis"] = return_basis
+    return result

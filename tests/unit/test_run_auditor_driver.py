@@ -284,7 +284,7 @@ def test_meas_err_off_family_axis(monkeypatch):
     # Default 'raw' (the default behaviour) — existing configs byte-identical.
     assert build_run_config(all_off).panel_view.price_family == "raw"
 
-    # The per-anchor mapping is now ACTIVE (PROFILES_BUILT flipped True 2026-08-08,
+    # The per-anchor mapping is ACTIVE (PROFILES_BUILT is True,
     # profiles built): meas_err OFF selects each anchor's baseline profile.
     assert load_anchor_meas_err_off_family("drf") == "bbw_2019"
     assert load_anchor_meas_err_off_family("crf") == "bbw_2019"

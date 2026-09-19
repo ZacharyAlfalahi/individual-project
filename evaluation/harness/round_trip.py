@@ -110,7 +110,7 @@ _CRF_COMPONENTS = ("crf_var", "crf_illiq", "crf_rev")
 def expected_composite_rulebook(anchor_id: str) -> dict:
     """The golden composite ``R_paper`` for a multi-leg equal_average anchor: each
     component's independently hand-authored golden rulebook, keyed by its control
-    column, plus the equal_average combiner instruction. CRF only, today."""
+    column, plus the equal_average combiner instruction. CRF only."""
     if anchor_id != "crf":
         raise HarnessError(f"no composite golden rulebook for anchor_id {anchor_id!r}")
     legs: dict[str, dict] = {}

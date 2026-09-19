@@ -124,7 +124,7 @@ def construction_toggles() -> tuple[ToggleId, ...]:
 
 
 def data_quality_toggles() -> tuple[ToggleId, ...]:
-    """The data-quality-correction toggles, in canonical order (today: meas_err)."""
+    """The data-quality-correction toggles, in canonical order (as configured: meas_err)."""
     return tuple(
         t for t in TOGGLE_IDS
         if TOGGLE_BIAS_CLASS[t] == "data_quality_correction"

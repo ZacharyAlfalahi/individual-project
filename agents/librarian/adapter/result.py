@@ -4,8 +4,8 @@ Adapter output types (D25/D28).
 ``adapt_spec`` returns an ``AdaptResult``: the per-leg factory calls, the combiner
 instruction, and the collected refusals/flags. The adapter assembles the wrapped
 factory kwargs and *forwards the call* to ``build_quant_config`` per leg -- it
-never constructs a ``QuantConfig`` itself (D25: the factory keeps sole ownership
-of representability refusals and default-filling). Each ``LegCall`` therefore
+never constructs a ``QuantConfig`` itself (D25: only the factory emits
+representability refusals and fills defaults). Each ``LegCall`` therefore
 carries both the assembled ``kwargs`` (the G1 attribution surface -- exactly what
 the adapter produced) and the factory's ``QuantConfig | ConfigRefusal`` return
 (the G2 round-trip surface -- ``to_rulebook`` diffs against the golden rulebooks).

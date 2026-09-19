@@ -76,9 +76,7 @@ def test_zero_coupon_invariance():
 
 def test_no_accrual_after_maturity_month():
     # A bond is dead after it redeems: rows whose month-end falls AFTER the
-    # maturity month must return AI = C = 0. Before the maturity guard, a
-    # 2010-05-15 maturity fabricated AI=0.333/C=4.0 at 2010-06-30 and AI=2.333
-    # at 2010-09-30 — accrual running months past redemption.
+    # maturity month must return AI = C = 0 — no accrual or coupon past redemption.
     dates = ["2010-06-30", "2010-09-30", "2011-01-31"]
     ai, c = accrued_and_coupon(_d(dates), _d(["2010-05-15"] * 3),
                                coupon=[8.0] * 3, frequency=[2] * 3)
@@ -88,12 +86,50 @@ def test_no_accrual_after_maturity_month():
 
 def test_maturity_month_still_accrues():
     # The maturity month itself is NOT dead: the final coupon is paid and AI
-    # accrues to month-end per the existing month-end convention (guard is
+    # accrues to month-end per the month-end convention (guard is
     # date_index <= maturity_index, inclusive of the maturity month).
     ai, c = accrued_and_coupon(_d(["2010-05-31"]), _d(["2010-05-15"]),
                                coupon=[8.0], frequency=[2])
     assert c[0] == pytest.approx(4.0, abs=1e-9)
     assert ai[0] == pytest.approx(8.0 * 15 / 360, abs=1e-9)
+
+
+def test_trade_flat_from_default_month():
+    # A defaulted bond trades FLAT: AI = C = 0 from the default month onward, like
+    # the maturity cutoff but triggered by the default date. 8% semiannual, maturity
+    # 2012-05-15, defaults 2010-05-10. Feb 2010 (pre-default) accrues; May 2010 (the
+    # default month) and Aug 2010 (after) are flat.
+    dates = ["2010-02-28", "2010-05-31", "2010-08-31"]
+    ai, c = accrued_and_coupon(_d(dates), _d(["2012-05-15"] * 3),
+                               coupon=[8.0] * 3, frequency=[2] * 3,
+                               default=_d(["2010-05-10"] * 3))
+    assert ai[0] > 0.0                       # pre-default month accrues normally
+    assert ai[1] == 0.0 and c[1] == 0.0      # default month: flat
+    assert ai[2] == 0.0 and c[2] == 0.0      # post-default month: flat
+
+
+def test_default_cutoff_noop_without_default_or_nat():
+    # default=None and a NaT (never-defaulted) default date both leave accrual
+    # unchanged — the cutoff only fires for a real per-bond default date.
+    ai_none, c_none = accrued_and_coupon(_d(["2010-02-28"]), _d(["2012-05-15"]),
+                                         coupon=[8.0], frequency=[2])
+    ai_nat, c_nat = accrued_and_coupon(_d(["2010-02-28"]), _d(["2012-05-15"]),
+                                       coupon=[8.0], frequency=[2],
+                                       default=_d([pd.NaT]))
+    assert ai_none[0] > 0.0
+    assert ai_nat[0] == pytest.approx(ai_none[0], abs=1e-12)
+    assert c_nat[0] == c_none[0]
+
+
+def test_default_in_mixed_batch_isolated():
+    # In a mixed batch, the cutoff touches ONLY the defaulted row: a NaT sibling in
+    # the same (later) month keeps its accrual.
+    dates = ["2010-08-31", "2010-08-31"]
+    ai, c = accrued_and_coupon(_d(dates), _d(["2012-05-15"] * 2),
+                               coupon=[8.0] * 2, frequency=[2] * 2,
+                               default=_d(["2010-05-10", pd.NaT]))
+    assert ai[0] == 0.0 and c[0] == 0.0      # defaulted → flat
+    assert ai[1] > 0.0                       # never-defaulted → accrues
 
 
 def test_quarterly_frequency():

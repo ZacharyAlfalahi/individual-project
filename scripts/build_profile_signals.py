@@ -15,7 +15,7 @@ both baseline profiles, reusing each production builder's own `compute_*` core:
 <pid> in {bbw_2019, jostova_2013}; each family = that profile's DEDUP-ON baseline
 (the lattice OFF-arm reference). Output: a SEPARATE
 `data/development/signals/profiles_signals.parquet` (cusip, date, and the 8
-`<signal>_<pid>` columns). ADDITIVE — the committed per-signal parquets are NOT
+`<signal>_<pid>` columns). ADDITIVE — the recorded per-signal parquets are NOT
 touched; `load_dev_signals` outer-merges this file so the profile columns join
 the dual-family frame the resolver already understands.
 

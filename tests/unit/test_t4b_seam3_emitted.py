@@ -54,7 +54,7 @@ def test_spec_less_run_dir_stays_not_graded(tmp_path):
     reason="live synth run dir absent (machine-local)",
 )
 def test_live_synth_run_unchanged_by_the_wiring():
-    """The 2026-09-03 live run emitted no spec (Guard-1 refusal): the new wiring
+    """A live run that emits no spec (Guard-1 refusal): the emitted-spec wiring
     must leave its seam-3 verdict exactly as recorded."""
     s = grade_seam_3(_REPO_ROOT / "runs" / "corpus_synth_report" / "synth", _key())
     assert _status(s, "emitted_spec.adapt") == "NOT_GRADED"

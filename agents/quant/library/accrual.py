@@ -9,13 +9,13 @@ the month. This module computes AI_t and C_t per (bond, month-end) from the FISD
 coupon schedule.
 
 Conventions (scoped against the eligible FISD universe):
-  * Day-count: US 30/360 for ALL bonds (99.8% are genuinely 30/360). The ~0.08%
+  * Day-count: US 30/360 for ALL bonds (nearly all are genuinely 30/360). The few
     on ACT/* bases use 30/360 as a flagged approximation — `day_count_fallback`
     marks them so the approximation is queryable at the factor level (did a
     fallback bond land in a leg in a surprising month?), not buried per-bond.
   * Coupon schedule derived BACKWARD from maturity (always populated) by
     12/frequency months, on maturity's day-of-month (clamped to month length).
-  * Zero-coupon bonds (coupon == 0, the 57% Z control group) get AI = C = 0, so
+  * Zero-coupon bonds (coupon == 0, the Z control group) get AI = C = 0, so
     their total return is byte-identical to the clean-price return — the
     invariance regression that guards the accrual path.
 
@@ -74,6 +74,7 @@ def accrued_and_coupon(
     maturity,
     coupon,
     frequency,
+    default=None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Vectorised accrued interest and coupon-paid-this-month, per row.
 
@@ -83,12 +84,18 @@ def accrued_and_coupon(
     maturity : bond maturity date.
     coupon : annual coupon rate, in PERCENT of par (price units; e.g. 8.0).
     frequency : coupons per year (1, 2, 4, 12). 0/NaN → treated as no coupon.
+    default : optional per-bond default date (NaT where the bond never defaulted).
+        When supplied, a defaulted bond TRADES FLAT from its default month on —
+        AI = C = 0 for every month-end in or after the default month — mirroring
+        the maturity cutoff below. Pre-default months are unaffected; a NaT (never
+        defaulted) carries no cutoff. Omit (None) to disable the default cutoff.
 
     Returns (ai, coupon_paid), both in price units (per 100 par). Zero-coupon
     bonds (coupon == 0), rows with no valid schedule (NaT maturity / freq not in
-    {1,2,4,12}), and rows whose month-end falls AFTER the maturity month (the
-    bond has redeemed) return AI = C = 0 — their return stays the clean-price
-    return.
+    {1,2,4,12}), rows whose month-end falls AFTER the maturity month (the bond has
+    redeemed), and — when `default` is given — rows in or after the default month
+    return AI = C = 0; their return stays the clean-price return (a defaulted bond
+    trades flat).
 
     A coupon of `coupon/frequency` is paid in a month iff that month is a coupon
     month (the schedule's day-of-month lands in it); AI accrues 30/360 from the
@@ -112,6 +119,14 @@ def accrued_and_coupon(
         & ~np.asarray(mat.isna())
         & (date_index <= mat_index)           # dead past maturity: no accrual/coupon after the maturity month
     )
+    if default is not None:
+        dflt = pd.DatetimeIndex(pd.to_datetime(default))
+        defaulted = ~np.asarray(dflt.isna())
+        # NaT → year NaN → month index NaN; comparisons against it are False, and the mask
+        # additionally gates on `defaulted`, so never-defaulted bonds are untouched.
+        dflt_index = _month_index(dflt)
+        flat_on_default = defaulted & (date_index >= dflt_index)  # in/after the default month
+        valid = valid & ~flat_on_default
     if not valid.any():
         return ai, coupon_paid
 

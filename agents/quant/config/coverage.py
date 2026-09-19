@@ -19,7 +19,7 @@ TAXONOMY NOTE (D27): the contract §5.2 names "unrecognised-concept → semantic
 but there is no `UNRECOGNISED_CONCEPT` code — per D27 every concept→column miss
 (unrecognised concept, parameter mismatch, no row) rides `MISSING_BINDING`
 (→ binding). So the semantic layer is populated only by `REVIEW_REQUIRED` /
-`REFUSED_ON_SILENCE` today; splitting an unrecognised concept out of
+`REFUSED_ON_SILENCE`; splitting an unrecognised concept out of
 `MISSING_BINDING` would require inspecting the refusal's structured evidence, a
 deferred refinement recorded here rather than silently mis-mapped.
 """

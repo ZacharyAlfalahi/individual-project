@@ -149,7 +149,7 @@ def compare_signal(gold_signal, run_concept) -> CompareOutcome:
 
     # D34: SignalRef = concept_id + canonical parameters. Every v1 registry
     # concept has an EMPTY parameter schema, so concept equality is the whole
-    # comparison today. The run side's parameters are not reconstructable from
+    # comparison. The run side's parameters are not reconstructable from
     # this call anyway -- fill_signal_ref emits them as SEPARATE trace records
     # under bare parameter names -- so rather than compare against a silently
     # empty tuple (which would read as "parameters matched" when nothing was

@@ -3,8 +3,8 @@ The importable in-memory feed builder ``agents/quant/library/ipca_feed.py``.
 
 Two jobs: (1) the pure composition ``build_ipca_feed`` + the matrix stacker ``feed_matrices``
 behave correctly on a small in-memory frame; (2) the refactor is transparent — rebuilding the
-real corrected feed through the relocated functions reproduces the committed
-``ipca_panel_corr.parquet`` bit-for-bit (skipped when the dev inputs are absent).
+real corrected feed through the relocated functions reproduces the recorded
+``ipca_panel_corr.parquet`` exactly (skipped when the dev inputs are absent).
 """
 
 from __future__ import annotations
@@ -96,15 +96,15 @@ def test_feed_matrices_matches_disk_loader_convention():
 
 
 # ---------------------------------------------------------------------------
-# Bit-for-bit regression: the relocated functions reproduce the committed parquet.
+# Bit-for-bit regression: the relocated functions reproduce the recorded parquet.
 # Skipped when the dev inputs are absent (e.g. CI without the 153MB maximal panel).
 # ---------------------------------------------------------------------------
 
-def test_refactor_reproduces_committed_parquet_bitforbit():
+def test_refactor_reproduces_recorded_parquet():
     import importlib
 
     bip = importlib.import_module("build_ipca_panel")
-    committed = bip.DEV / "ipca_panel_corr.parquet"
+    recorded = bip.DEV / "ipca_panel_corr.parquet"
     inputs = [
         bip.PANEL_FILE,
         bip.DEV / "signals" / "mom6.parquet",
@@ -112,15 +112,16 @@ def test_refactor_reproduces_committed_parquet_bitforbit():
         bip.DEV / "signals" / "gamma_illiq.parquet",
         bip.DEV / "signals" / "bond_vol.parquet",
     ]
-    if not committed.exists() or not all(p.exists() for p in inputs):
-        pytest.skip("dev inputs / committed ipca_panel_corr.parquet not present")
+    if not recorded.exists() or not all(p.exists() for p in inputs):
+        pytest.skip("dev inputs / recorded ipca_panel_corr.parquet not present")
 
     reg = bip.load_registry()
     merged = bip.assemble("corr", reg)
     rebuilt, _ = build_ipca_feed(merged, reg, "corr")
-    expected = pd.read_parquet(committed)
-    # Column order + dtypes + values must match exactly (the parquet is the frame `out`).
+    expected = pd.read_parquet(recorded)
+    # Column order, dtypes AND values must match exactly: the parquet IS the frame `out`, so a
+    # round-trip preserves float64 bit patterns. check_exact makes this the regression its name claims.
     pd.testing.assert_frame_equal(
         rebuilt.reset_index(drop=True), expected.reset_index(drop=True),
-        check_like=False, check_dtype=True,
+        check_like=False, check_dtype=True, check_exact=True,
     )

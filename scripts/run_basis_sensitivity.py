@@ -3,7 +3,7 @@ evidence into a single citeable results JSON.
 
 Bond returns can be measured on a *clean-price* basis (price change only) or a *total-return*
 basis (price + accrued interest + coupon). This driver does NO new computation: it reads the two
-already-committed development headline artefacts —
+already-recorded development headline artefacts —
 
   * ``data/development/monthly_panel_total_return_report.json`` → the ZERO-COUPON IDENTITY check
     (a coupon-free bond has AI=C=0, so its total return equals its clean return EXACTLY), and
@@ -20,7 +20,7 @@ and consolidates the basis-sensitivity story:
      depend on the basis).
 
 Deterministic, offline, DEV-ONLY (both inputs are under ``/data/development/``; the holdout is
-never read). Emits ``results/rq2_basis_sensitivity_<date>.json``.
+never read). Emits ``results/rq2_basis_sensitivity.json``.
 """
 
 from __future__ import annotations
@@ -190,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--tr-report", default=str(_TR_REPORT))
     ap.add_argument("--accrual", default=str(_ACCRUAL))
-    ap.add_argument("--out", default=None, help="output path (default results/rq2_basis_sensitivity_<date>.json)")
+    ap.add_argument("--out", default=None, help="output path (default results/rq2_basis_sensitivity.json)")
     args = ap.parse_args(argv)
 
     tr_path, accrual_path = Path(args.tr_report), Path(args.accrual)

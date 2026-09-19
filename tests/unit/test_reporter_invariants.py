@@ -1,6 +1,6 @@
 """One test per invariant (docs/reporter/reporter_spec_v0.2.md §2, INV-1..INV-15). Each fails if its invariant is removed.
 
-Uses synthetic bundles so the suite does not depend on committed artefacts.
+Uses synthetic bundles so the suite does not depend on recorded artefacts.
 """
 
 from __future__ import annotations

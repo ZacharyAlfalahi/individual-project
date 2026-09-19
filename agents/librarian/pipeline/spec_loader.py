@@ -14,7 +14,7 @@ Design rules:
   * The round-trip law is ``to_dict(spec_from_dict(d)) == d`` for every emitted
     spec dict (pinned over the real on-disk runs by tests/unit/test_spec_loader).
     NOTE the law is DICT-level: JSON has no tuples, so a tuple-valued
-    ``Inherited.value`` (none exist in the sort schema today) would come back as
+    ``Inherited.value`` (none exist in the sort schema) would come back as
     a list — values pass through untouched in both directions.
   * Construction happens through the schema constructors, so every schema
     ``__post_init__`` shape guard (and the provenance layer's tag/evidence

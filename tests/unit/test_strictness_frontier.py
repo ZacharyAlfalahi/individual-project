@@ -170,7 +170,7 @@ def test_never_emitted_fails_loud_on_event_count_mismatch(tmp_path):
     or not (_REPO_ROOT / "results" / "strictness_frontier.json").exists(),
     reason="scoped-extraction run archives / frontier artifact absent on this machine",
 )
-def test_committed_frontier_artifact_pins():
+def test_recorded_frontier_artifact_pins():
     d = json.loads((_REPO_ROOT / "results" / "strictness_frontier.json")
                    .read_text(encoding="utf-8"))
     assert d["cross_pin"]["n_specs"] == 23

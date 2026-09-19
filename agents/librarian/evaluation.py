@@ -30,8 +30,8 @@ import yaml
 
 from .errors import LibrarianSchemaError
 
-#: The default fixtures directory, relative to the repo root. Absent today (the
-#: bake-off has not run); a human lands ``.yaml`` fixtures here (D34).
+#: The default fixtures directory, relative to the repo root. Absent until the
+#: bake-off runs; a human lands ``.yaml`` fixtures here (D34).
 DEFAULT_FIXTURE_DIR = "evaluation/quote_fixtures"
 
 

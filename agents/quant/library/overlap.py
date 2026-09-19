@@ -10,6 +10,14 @@ Lets a factor be held for H months via staggered cohorts:
     ret) are dropped; surviving weights are renormalised within the leg.
   * The factor's return at calendar month m = simple average across all
     cohorts still alive at m (up to H cohorts, formed in m-1, m-2, ..., m-H).
+  * A return trim (lab_trim, `rulebook["trim_rule"]`) is resolved ONCE per call
+    by the engine's own resolver (`resolve_trim_rule`: a percentile level becomes
+    an absolute bound over the full-sample eligible next_ret, exactly as at H=1)
+    and applied to EVERY return the cohorts earn — at formation and in every held
+    month. truncate eliminates the return observation (the bond is dropped from
+    that month's leg and weights renormalise); winsorise clips it. This is the
+    sample-wide elimination of return observations the trim specifies (spec
+    E1/E2a; JNPS fn.16).
 
 H=1 short-circuits to `run_characteristic_sort` -- regression invariant the
 spec demands.
@@ -26,6 +34,7 @@ import pandas as pd
 from .characteristic_sort import (
     _apply_defaults,
     extract_monthly_selections,
+    resolve_trim_rule,
     run_characteristic_sort,
 )
 
@@ -88,16 +97,22 @@ def run_with_holding_period(
             mr["n_cohorts_alive"] = pd.Series(dtype=int)
         return mr
 
+    # Resolve the trim ONCE, with the engine's own resolver, so formation and every held month use
+    # the same absolute bounds (a no-op for method='none' / absolute bounds).
+    trim_rule, _realised = resolve_trim_rule(panel, rulebook)
+    rulebook = {**rulebook, "trim_rule": trim_rule}
+
     settings = _apply_defaults(rulebook)
     weighting = settings["weighting"]
 
     selections = extract_monthly_selections(panel, rulebook)
 
-    # Fast (cusip, date) -> ret lookup. Built once per call.
+    # Fast (cusip, date) -> ret lookup, with the trim applied to every return observation the
+    # cohorts can earn (held months included). Built once per call.
     panel_lookup = dict(
         zip(
             zip(panel["cusip"].values, panel["date"].values),
-            panel["ret"].values,
+            _trimmed_returns(panel["ret"].to_numpy(dtype=float, copy=True), trim_rule),
         )
     )
 
@@ -156,6 +171,39 @@ def run_with_holding_period(
             }
         )
     return pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
+
+
+def _trimmed_returns(rets: np.ndarray, trim_rule: dict) -> np.ndarray:
+    """Apply an ABSOLUTE-bounds trim to a return array (the caller resolves percentiles first).
+
+    truncate  -> observations outside [lo, hi] become NaN, which `_leg_return_at` drops
+                 (renormalising the leg) — the same keep-rule as `_apply_trim_rule`
+                 (lo <= r <= hi).
+    winsorise -> observations clipped to [lo, hi]; NaN stays NaN.
+    none      -> unchanged.
+    """
+    method = trim_rule.get("method", "none")
+    if method == "none":
+        return rets
+    bounds = trim_rule.get("bounds", {})
+    if bounds.get("type", "absolute") != "absolute":
+        raise ValueError(
+            "overlap._trimmed_returns received an unresolved percentile trim; resolve it with "
+            "resolve_trim_rule before building held-month returns"
+        )
+    lo, hi = bounds.get("lo"), bounds.get("hi")
+    if method == "truncate":
+        outside = np.zeros(len(rets), dtype=bool)
+        if lo is not None:
+            outside = outside | (rets < lo)
+        if hi is not None:
+            outside = outside | (rets > hi)
+        out = rets.copy()
+        out[outside] = np.nan
+        return out
+    if method == "winsorise":
+        return np.clip(rets, -np.inf if lo is None else lo, np.inf if hi is None else hi)
+    raise ValueError(f"Unknown trim_rule.method: {method!r}")
 
 
 def _leg_return_at(

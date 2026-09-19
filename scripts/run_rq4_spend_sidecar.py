@@ -120,7 +120,7 @@ def reconstruct_spend(cache_records: list[dict], prices: dict) -> dict:
             "cache_dir": str(_RQ4_CACHE.relative_to(REPO_ROOT)),
         },
         "governance": {
-            "enforced_signoff_gate_at_runtime": False,
+            "enforced_authorization_gate_at_runtime": False,
             "usage_metered_at_runtime": False,
             "reconstruction": True,
             "note": ("The RQ4 Phase-F run did not record runtime authorization or token usage. "
@@ -134,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--cache", default=str(_RQ4_CACHE))
     ap.add_argument("--out", default=None,
-                    help="output path (default results/scientist/rq4_funnel/rq4_spend_sidecar_<date>.json)")
+                    help="output path (default results/scientist/rq4_funnel/rq4_spend_sidecar.json)")
     args = ap.parse_args(argv)
 
     cache_dir = Path(args.cache)

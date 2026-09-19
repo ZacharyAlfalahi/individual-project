@@ -170,7 +170,7 @@ def _apply_stale_mask(panel: pd.DataFrame, theta_days: int) -> pd.DataFrame:
     # predecessor is a gap-month away does not derive from the stale price, so
     # a positional shift(1) would over-mask. Gate the propagation on the
     # per-cusip month gap == 1 (same adjacency notion the monthly-panel build
-    # uses for ret). Harmless today (gap-spanning ret is already NaN from
+    # uses for ret). Harmless as the panel stands (gap-spanning ret is already NaN from
     # build-time adjacency) but correct under any future time-varying row
     # filter applied before this mask.
     panel["_stale_t"] = self_stale.values

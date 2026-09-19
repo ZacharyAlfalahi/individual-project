@@ -5,7 +5,7 @@ mom6 look-ahead (LAB) gate — the §8 mom6 bias-gap reproduction
 Runs mom6 three ways on the corr family, differing only in how the realised
 holding return is winsorized:
 
-  none     — no winsorization (the Chunk-2 baseline, ≈0).
+  none     — no winsorization (the un-winsorized baseline, ≈0).
   ex_post  — single full-sample 99.5th right-tail clip (embeds future info → the
              biased momentum premium ≈ +0.30%/mo DRR report).
   ex_ante  — per-month expanding past-only 99.5th threshold (the repair → ≈0).
@@ -18,18 +18,21 @@ measured look-ahead bias.
 Gate (direction + collapse, sign-aware): ex_post premium > ex_ante premium, and
 ex_ante collapses to ≈ the un-winsorized baseline (the bias is created by the
 ex-post clip and removed by ex-ante). Absolute +0.30 is not required (clean-price
-/ universe divergences); the COLLAPSE is the verdict.
+/ universe divergences); the DIRECTION is the verdict (collapse is a soft diagnostic).
 
 Output: data/development/headlines/mom6_lab_gate.json
 
 Usage:
-  python scripts/run_mom6_lab_gate.py
+  python scripts/run_mom6_lab_gate.py [--basis {total_return,clean}] [--out PATH]
+      --basis reads basis_inputs.PANELS[basis][0] (default: BBW_ANCHOR_PANEL / total-return / maximal);
+      --out defaults to data/development/headlines/mom6_lab_gate.json, or with --basis to
+      results/consistent_basis/<basis>/headlines/mom6_lab_gate.json
 """
 
+import argparse
 import hashlib
 import json
 import os
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,7 +51,8 @@ from agents.quant.library.views import view  # noqa: E402
 from agents.quant.library.winsorize import winsorize_returns  # noqa: E402
 
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
-from build_mom6 import mom6_rulebook  # noqa: E402
+from scripts import basis_inputs  # noqa: E402
+from build_mom6 import basis_provenance, mom6_rulebook  # noqa: E402
 
 _TOTAL = REPO_ROOT / "data" / "development" / "monthly_panel_total_return.parquet"
 _CLEAN = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
@@ -71,12 +75,31 @@ def thresholds_sha256() -> str:
     return hashlib.sha256(THRESHOLDS_FILE.read_bytes()).hexdigest()
 
 
-def git_commit() -> str:
-    try:
-        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT,
-                              capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:
-        return "unknown"
+def resolve_panel(basis: str | None = None) -> Path:
+    """No basis => the default PANEL_FILE (BBW_ANCHOR_PANEL honoured); a basis => its PANELS entry."""
+    return PANEL_FILE if basis is None else basis_inputs.PANELS[basis][0]
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description="mom6 look-ahead (LAB) gate.")
+    ap.add_argument("--basis", choices=basis_inputs.BASES, default=None,
+                    help="return basis: read basis_inputs.PANELS[basis][0] "
+                         "(default: the BBW_ANCHOR_PANEL / total-return / maximal panel)")
+    ap.add_argument("--out", type=Path, default=None,
+                    help="report path (default data/development/headlines/mom6_lab_gate.json; with --basis "
+                         "results/consistent_basis/<basis>/headlines/mom6_lab_gate.json)")
+    return ap.parse_args(argv or [])
+
+
+def resolve_out(basis: str | None = None, out: Path | None = None) -> Path:
+    """--out wins; else the default OUT without a basis, or the basis's headlines dir with one. A basis run never
+    writes the default headline: naming it as --out with --basis is refused."""
+    if out is None:
+        return OUT if basis is None else basis_inputs.basis_dir(basis, "headlines", OUT.name)
+    out = Path(out)
+    if basis is not None and out.resolve() == OUT.resolve():
+        raise SystemExit(f"ERROR: --basis {basis} would overwrite the default headline {OUT}; pass another --out")
+    return out
 
 
 def _premium(panel: pd.DataFrame, mom6_cfg: dict) -> dict:
@@ -88,8 +111,12 @@ def _premium(panel: pd.DataFrame, mom6_cfg: dict) -> dict:
             "n_months": int(s["n_months"]), "series": ser}
 
 
-def main():
-    for f in (PANEL_FILE, SIGNAL_FILE):
+def main(argv: list[str] | None = None):
+    args = parse_args(argv)
+    panel_file, out = resolve_panel(args.basis), resolve_out(args.basis, args.out)
+    if args.basis is not None and "BBW_ANCHOR_PANEL" in os.environ:
+        print("WARNING: BBW_ANCHOR_PANEL is ignored when --basis is given", file=sys.stderr)
+    for f in (panel_file, SIGNAL_FILE):
         if not f.exists():
             print(f"ERROR: required input not found: {f}", file=sys.stderr)
             sys.exit(1)
@@ -99,7 +126,7 @@ def main():
     level, loc = float(lab["level"]), str(lab["loc"])
     print(f"Config: mom6 H={mom6_cfg['holding_months']}, winsorize level={level}, loc={loc}")
 
-    maximal = pd.read_parquet(PANEL_FILE)
+    maximal = pd.read_parquet(panel_file)
     signal = pd.read_parquet(SIGNAL_FILE)
     cfg = RunConfig(PanelViewConfig("corr", False, False),
                     ConstructionConfig(int(mom6_cfg["skip_months"]), "none"), EvaluationConfig())
@@ -122,10 +149,10 @@ def main():
     gap = summarize_returns(gap_ser, nw_lags=None, months_per_year=12)
     gap_mean = float(gap_ser.mean() * 100)
 
-    # Sample-split test (closes the partial-collapse soft gate). The ex-ante
+    # Sample-split test (convergence diagnostic for the soft collapse check). The ex-ante
     # threshold is an EXPANDING past-only percentile, so it differs most from the
     # full-sample (ex-post) threshold EARLY (small history) and converges to it
-    # LATE. If the partial collapse is genuinely convergence — not a failure —
+    # LATE. If any residual gap is convergence rather than a construction failure,
     # the EP−EA gap should be larger in the early half and shrink in the late
     # half, and ex-ante should sit closer to the un-winsorized baseline early.
     joined = pd.concat([expost["series"].rename("ep"), exante["series"].rename("ea"),
@@ -147,16 +174,15 @@ def main():
         sample_split["early_half"]["ep_minus_ea_pct"] > sample_split["late_half"]["ep_minus_ea_pct"]
     )
 
-    # The gate has two parts, reported separately for honesty:
+    # The gate has two parts, reported separately:
     #  * DIRECTION (robust): ex-post is the more positive, biased premium; the
     #    EP−EA gap is positive — the look-ahead bias has the right sign.
-    #  * FULL COLLAPSE (partial here): ex-ante should fall back to the
-    #    un-winsorized baseline (≈0). It only partly does, because an EXPANDING
-    #    past-only 99.5th percentile converges to the full-sample threshold after
-    #    ~100 months, so ex-ante ≈ ex-post over the back half of the 2002–2021
-    #    sample. The §7.1 spec fixes the signal as un-winsorized (ranking
-    #    unaffected), which we honour, so the residual is a sample-length /
-    #    universe effect, not a construction choice we can flip.
+    #  * FULL COLLAPSE (soft): ex-ante should fall back to the
+    #    un-winsorized baseline (≈0). An EXPANDING past-only 99.5th percentile
+    #    converges to the full-sample threshold as history accumulates, so ex-ante
+    #    can approach ex-post late in the sample. The §7.1 spec fixes the signal
+    #    as un-winsorized (ranking unaffected), so any residual is a sample-length /
+    #    universe effect, not a tunable construction choice.
     direction_reproduced = (expost["mean_pct"] > exante["mean_pct"]) and (gap_mean > 0)
     expost_matches_drr = drr_lo <= expost["mean_pct"] <= drr_hi  # DRR ≈ +0.30%/mo band
     ea_closer_to_baseline = (
@@ -166,8 +192,8 @@ def main():
 
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
-        "git_commit": git_commit(),
         "thresholds_sha256": thresholds_sha256(),
+        **basis_provenance(args.basis, panel_file),
         "family": "corr",
         "winsorize": {"level": level, "loc": loc, "adj": lab["adj"]},
         "none_baseline": {k: none[k] for k in ("mean_pct", "t_stat", "n_months")},
@@ -182,7 +208,7 @@ def main():
             "criterion": "direction is the HARD gate (D-Q1: anchor_criterion = "
                          "bias_attribution; direction_pass = direction_reproduced). "
                          "Magnitude/band checks are SOFT descriptive diagnostics, "
-                         "never gating (the full ex-ante collapse is partial by "
+                         "never gating (full ex-ante collapse can be incomplete under "
                          "expanding-window convergence).",
             "direction_reproduced": bool(direction_reproduced),
             "direction_pass": bool(gate_pass),
@@ -190,35 +216,33 @@ def main():
                 "status": "soft_diagnostic_descriptive_per_D-Q1",
                 "ex_post_in_drr_band": bool(expost_matches_drr),
                 "ex_ante_closer_to_baseline_than_ex_post": bool(ea_closer_to_baseline),
-                "full_collapse_to_baseline": False,
+                # Measured, never asserted: the residual the "full collapse" question asks about.
+                "ex_ante_minus_baseline_pct": float(exante["mean_pct"] - none["mean_pct"]),
             },
-            "status": "PARTIAL — ex-post reproduces DRR's biased ≈+0.30%/mo and the "
-                      "EP−EA gap is positive (look-ahead direction confirmed), but "
-                      "ex-ante only partly collapses: an expanding past-only "
-                      "percentile converges to the full-sample threshold over a "
-                      "20-year sample, so ex-ante≈ex-post in the back half.",
+            "status": "direction is the hard gate (direction_pass); magnitude and the "
+                      "ex-ante residual are soft diagnostics (see magnitude_diagnostics).",
         },
         "note": "Signal + portfolio membership identical across arms; only the "
                 "realised return is clipped (§7.1, ranking unaffected — honoured). "
-                "The biased ex-post premium and the bias DIRECTION reproduce; the "
-                "incomplete ex-ante collapse is an expanding-window convergence / "
-                "sample-length effect, sharpest in DRR's framing on a different "
-                "universe. The EP−EA gap is the conservative measured bias.",
+                "An incomplete ex-ante collapse reflects expanding-window convergence / "
+                "sample length rather than construction. The EP−EA gap is the "
+                "conservative measured bias.",
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    tmp = OUT.with_suffix(".json.tmp")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(".json.tmp")
     with open(tmp, "w") as f:
         json.dump(report, f, indent=2)
-    os.replace(tmp, OUT)
+    os.replace(tmp, out)
 
     print("\nmom6 LAB gate (corr):")
     print(f"  none (baseline) : {none['mean_pct']:+.3f}%/mo (t {none['t_stat']:+.2f})")
     print(f"  ex_post (biased): {expost['mean_pct']:+.3f}%/mo (t {expost['t_stat']:+.2f})  [target ≈ +0.30]")
-    print(f"  ex_ante (fixed) : {exante['mean_pct']:+.3f}%/mo (t {exante['t_stat']:+.2f})  [target ≈ 0]")
+    print(f"  ex_ante (corrected): {exante['mean_pct']:+.3f}%/mo (t {exante['t_stat']:+.2f})  [target ≈ 0]")
     print(f"  EP − EA gap     : {gap_mean:+.3f}%/mo (t {gap['t_stat']:+.2f}) = the look-ahead bias")
     print(f"  direction reproduced (EP>EA, gap>0): {'YES' if direction_reproduced else 'NO'}")
     print(f"  ex-post in DRR +0.30 band: {'YES' if expost_matches_drr else 'NO'}; "
-          f"full ex-ante collapse to baseline: NO (expanding-window convergence)")
+          f"ex-ante − baseline: {exante['mean_pct'] - none['mean_pct']:+.3f}%/mo "
+          f"(residual; an expanding past-only percentile converges toward the full-sample threshold)")
     eh, lh = sample_split["early_half"], sample_split["late_half"]
     print("  sample-split (convergence test):")
     print(f"    early {eh['first']}..{eh['last']}: EP {eh['ex_post_pct']:+.3f}  "
@@ -227,9 +251,9 @@ def main():
           f"EA {lh['ex_ante_pct']:+.3f}  gap {lh['ep_minus_ea_pct']:+.3f}%")
     print(f"    convergence confirmed (early gap > late gap): "
           f"{'YES' if convergence_confirmed else 'NO'}")
-    print(f"  GATE: {'PASS' if gate_pass else 'FAIL'} (direction reproduced)  → {OUT}")
+    print(f"  GATE: {'PASS' if gate_pass else 'FAIL'} (direction reproduced)  → {out}")
     sys.exit(0 if gate_pass else 1)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

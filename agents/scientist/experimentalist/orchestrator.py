@@ -31,7 +31,7 @@ from .audit_checks import audit_g2, load_reporting_delays
 from .compiler import compile_g1a
 from .execution_verifier import execute_g1b
 from .inference import two_sided_p
-from .robustness import robustness_g4
+from .robustness import load_registered_sr_std, robustness_g4
 from .selector import select_g5
 from .validator import validate_g0
 from ..schemas.outcomes import RefusalCode
@@ -43,7 +43,7 @@ class ExperimentReport:
     advanced: tuple                      # proposal_ids advanced to holdout (G5)
     funnel: dict                         # final_outcome -> count (denominators visible, §12)
     wrong_signed: int = 0                # SC-SCI-8: BH-rejected but wrong-signed (worsened) — a
-                                         #   reported RQ4 finding, NOT a separate outcome label
+                                         #   reported RQ4 count, NOT a separate outcome label
 
 
 def _booleans(g0_bools=None, **over) -> Booleans:
@@ -90,18 +90,30 @@ def run_experimentalist(
                                       # mixes baa_aaa_spread / vix / term_spread). A single shared
                                       # series would condition every proposal on ONE variable.
     m: int = 6,
-    sr_std: float = 0.5,
+    sr_std: float | None = None,      # None => the REGISTERED monthly cross-trial Sharpe SD
+                                      # (auditor.dsr.<strategy>.sr_std), in the same per-period
+                                      # units as the Sharpe G4 deflates; never an unregistered
+                                      # constant.
     q: float = 0.10,
-    cap: int | None = None,           # SC-SCI-14: cap removed (was 3) -> advance ALL CPCV survivors
+    cap: int | None = None,           # SC-SCI-14: no advancement cap -> advance ALL CPCV survivors
     direction: int = 1,               # gating sign, DERIVED from the realised parent premium sign,
-                                      # NOT the paper's claim (str realises +1 momentum, not DRR's -1)
+                                      # NOT the paper's claim (the realised sign can differ from
+                                      # the published one)
     crowding_config=None,
     crowding_factors=None,
     reporting_delays=None,
     nw_lags: int | None = None,
     months_per_year: int = 12,
+    collect_returns: dict | None = None,   # OPTIONAL sink: proposal_id -> candidate returns.
+                                           # Purely additive and read by nobody here — the
+                                           # supplementary diagnostics (PBO, regimes) need the
+                                           # series, which the report deliberately does not
+                                           # retain. Filled only when a dict is passed; no
+                                           # gate reads it and no record changes.
 ) -> ExperimentReport:
     reporting_delays = reporting_delays if reporting_delays is not None else load_reporting_delays()
+    if sr_std is None:
+        sr_std = load_registered_sr_std(getattr(case, "strategy_id", None))
     seen: set = set()
     seen_transforms: set = set()         # compiled-transform fingerprints (BH-family dedup)
     stored: dict = {}                    # proposal_id -> (Booleans, refusal_code, Measurements)
@@ -144,6 +156,8 @@ def run_experimentalist(
                                                audit_clean=False), g2.refusal_code, Measurements())
             continue
         audit_clean.append((p, exec_res.candidate_returns, compiled, dict(g0.booleans)))
+        if collect_returns is not None:
+            collect_returns[p.proposal_id] = exec_res.candidate_returns
 
     # ---- Phase B: G3 JOINT BH-FDR over all audit-clean proposals ----------------------------
     reg_by_id: dict = {}

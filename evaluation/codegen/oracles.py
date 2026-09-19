@@ -31,22 +31,25 @@ ORACLES: dict[str, tuple[str, str]] = {
 }
 
 
-def oracle_path(strategy: str) -> Path:
+def oracle_path(strategy: str, factors_dir: Path | None = None) -> Path:
+    """The oracle parquet. ``factors_dir`` relocates it to ``<factors_dir>/<same file name>``
+    (a basis's own factor series, e.g. ``basis_inputs.factors_dir(basis)``); ``None`` keeps the
+    registry path above."""
     if strategy not in ORACLES:
         raise KeyError(f"unknown oracle strategy {strategy!r}; expected one of {sorted(ORACLES)}")
     rel, _ = ORACLES[strategy]
-    path = _REPO_ROOT / rel
+    path = _REPO_ROOT / rel if factors_dir is None else Path(factors_dir) / Path(rel).name
     if "holdout" in path.parts:
         raise RuntimeError(f"oracle path {path} touches the holdout partition")
     return path
 
 
-def load_oracle_series(strategy: str) -> pd.Series:
+def load_oracle_series(strategy: str, factors_dir: Path | None = None) -> pd.Series:
     """The oracle monthly return series, date-indexed, warm-up NaNs dropped.
     Fail-loud when the parquet or column is absent — a silently empty oracle
     would score every candidate WONT_RUN and read as a codegen failure."""
     rel, column = ORACLES[strategy]
-    path = oracle_path(strategy)
+    path = oracle_path(strategy, factors_dir)
     if not path.exists():
         raise FileNotFoundError(
             f"oracle parquet missing: {path} — run the builder chain documented in "
@@ -63,11 +66,11 @@ def load_oracle_series(strategy: str) -> pd.Series:
     return series.sort_index()
 
 
-def export_oracle_csv(strategy: str, path: Path) -> Path:
+def export_oracle_csv(strategy: str, path: Path, factors_dir: Path | None = None) -> Path:
     """Write the oracle in the sandbox output contract's exact shape
     (columns ``date, portfolio_return``) — the round-trip input for the
     oracle-vs-oracle sanity check."""
-    series = load_oracle_series(strategy)
+    series = load_oracle_series(strategy, factors_dir)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     frame = pd.DataFrame({

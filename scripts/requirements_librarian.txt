@@ -11,6 +11,6 @@ google-genai>=1.0.0        # Gemini — client.models.generate_content, JSON out
 mistralai>=1.0.0           # Mistral — client.chat.complete, JSON output (v1 + v2 SDKs supported)
 
 # Phase F (reported figures, gated on SKU/cost authorization, D33): Claude Sonnet 4.6 + Gemini 3.5-flash.
-# Uncommented 2026-08-03 (phase_f prep). The live run is still gated on ANTHROPIC_API_KEY + Gemini
+# Enabled for phase_f. The live run is gated on ANTHROPIC_API_KEY + Gemini
 # quota + the D33 authorization; installing the SDK runs nothing on its own.
 anthropic>=0.40.0

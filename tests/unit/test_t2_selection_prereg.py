@@ -94,10 +94,10 @@ def test_status_is_valid():
     assert _selection()["status"] in _VALID_STATUS
 
 
-def test_frozen_status_has_no_unset_owner_fields():
+def test_frozen_status_has_no_unset_fields():
     # The REAL block: a 'frozen' rule cannot still carry TO_SET sentinels
-    # anywhere (recursive). Silent today because the block is a draft — the
-    # parametrized test below proves the gate fires once frozen.
+    # anywhere (recursive). The configured block is frozen, so this asserts the
+    # live gate; the parametrized test below pins the fires-only-when-frozen rule.
     assert _frozen_gate_violations(_selection()) == []
 
 

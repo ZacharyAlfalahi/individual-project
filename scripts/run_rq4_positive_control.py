@@ -46,7 +46,7 @@ _MONTHS = pd.date_range("2004-08-31", periods=120, freq="ME")   # long enough fo
 _N = 60                                                         # 30 IG (even idx) + 30 HY (odd idx)
 _BETA = 0.00020     # planted per-score-unit monthly return in the investment-grade segment (default)
 _SIGMA = 0.020      # idiosyncratic noise (default)
-_SEED = 20260906    # panel RNG seed (default; historical run of record)
+_SEED = 20260906    # panel RNG seed (default; matches the recorded run)
 
 # Realised anchor for the beta <-> bp/mo mapping (see module docstring): the historical default
 # config (_BETA, _SEED) realises a planted mean monthly extension return of 44 bp/mo.
@@ -170,7 +170,7 @@ def run_sweep(ladder_bp=_DEFAULT_LADDER_BP, n_seeds: int = 20, base_seed: int = 
     """Magnitude ladder x seeds through the SAME funnel path as the single positive control.
 
     For each (magnitude, seed): the identical two-proposal (planted + noise) funnel call, so the
-    BH-FDR family structure matches the run of record; the PLANTED row is what the curve records.
+    BH-FDR family structure matches the recorded run; the PLANTED row is what the curve records.
     Seeds are base_seed + i, i in 0..n_seeds-1 (recorded per cell). Deterministic."""
     per_magnitude = []
     for bp in ladder_bp:

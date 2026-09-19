@@ -76,32 +76,52 @@ def _load_signals() -> pd.DataFrame:
     return signals
 
 
-def build_codegen_panel() -> pd.DataFrame:
-    """Materialise the corr-family engine panel via the canonical ``view()`` interface —
-    the exact input the frozen oracle builders consumed — projected to SCHEMA_COLUMNS.
+def source_panel_path(source_panel: Path | None = None) -> Path:
+    """The base panel the codegen export will actually read, resolved. Callers that must read
+    the SAME panel (the P2 Arm-B compiler) resolve it through here rather than repeating the
+    resolution, which honours ``$BBW_ANCHOR_PANEL`` and would otherwise differ."""
+    return Path(source_panel) if source_panel is not None else _maximal_panel_path()
 
-    Fail-loud on a missing schema column (a silently absent ``rating`` / signal would make the
-    sandbox panel diverge from the oracle panel and mis-score every candidate)."""
+
+def codegen_run_config():
+    """THE source of the codegen panel's view: corr family, no stale mask, terminal rows
+    dropped, signal_lag 0, no ex-post trim.
+
+    Anything that must see the same panel the generated code sees — the P2 Arm-B compiler,
+    and ``scripts/run_p2_codegen.compiler_view_record``, which asserts both sides share a
+    view — imports this rather than mirroring the literal, so the two cannot drift apart."""
     from agents.quant.library.run_config import (  # lazy: keeps import light for tests
         ConstructionConfig,
         EvaluationConfig,
         PanelViewConfig,
         RunConfig,
     )
-    from agents.quant.library.views import view
-
-    panel_path = _maximal_panel_path()
-    if "holdout" in panel_path.parts:
-        raise RuntimeError(f"codegen panel source touches the holdout partition: {panel_path}")
-    maximal = pd.read_parquet(require_licensed_input(panel_path, "development panel"))
-    signals = _load_signals()
-
-    cfg = RunConfig(
+    return RunConfig(
         panel_view=PanelViewConfig(
             price_family="corr", stale_mask=False, include_terminal_rows=False),
         construction=ConstructionConfig(signal_lag=0, expost_trim="none"),
         evaluation=EvaluationConfig(),
     )
+
+
+def build_codegen_panel(source_panel: Path | None = None) -> pd.DataFrame:
+    """Materialise the corr-family engine panel via the canonical ``view()`` interface —
+    the exact input the frozen oracle builders consumed — projected to SCHEMA_COLUMNS.
+
+    ``source_panel`` pins the maximal-format input explicitly (a basis-pinned caller passes
+    ``scripts/basis_inputs.PANELS[basis][0]``); ``None`` keeps the builders' own resolution.
+
+    Fail-loud on a missing schema column (a silently absent ``rating`` / signal would make the
+    sandbox panel diverge from the oracle panel and mis-score every candidate)."""
+    from agents.quant.library.views import view
+
+    panel_path = Path(source_panel) if source_panel is not None else _maximal_panel_path()
+    if "holdout" in panel_path.parts:
+        raise RuntimeError(f"codegen panel source touches the holdout partition: {panel_path}")
+    maximal = pd.read_parquet(require_licensed_input(panel_path, "development panel"))
+    signals = _load_signals()
+
+    cfg = codegen_run_config()
     panel = (
         view(maximal, cfg, signals=signals)
         .drop_duplicates(subset=["cusip", "date"])
@@ -128,9 +148,10 @@ def build_codegen_panel() -> pd.DataFrame:
     )
 
 
-def export_codegen_panel(out_path: Path = CODEGEN_PANEL) -> tuple[Path, str]:
+def export_codegen_panel(out_path: Path = CODEGEN_PANEL, *,
+                         source_panel: Path | None = None) -> tuple[Path, str]:
     """Write the codegen panel and return (path, sha256). Deterministic; overwrite-safe."""
-    panel = build_codegen_panel()
+    panel = build_codegen_panel(source_panel)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     panel.to_parquet(out_path, index=False)

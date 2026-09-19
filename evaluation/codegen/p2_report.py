@@ -36,7 +36,7 @@ AGREEMENT_CAVEAT = (
 #: The census carve-out — P2 produces no performance data, so RQ3's census
 #: arithmetic is untouched (echoed from contract §11).
 CENSUS_CARVE_OUT = (
-    "P2 produces no performance data; RQ3's census arithmetic (N=6-7) is unaffected."
+    "P2 produces no performance data; RQ3's census arithmetic is unaffected."
 )
 
 
@@ -108,6 +108,91 @@ def _taxonomy_section(sample: TaxonomySample) -> list[str]:
     return lines
 
 
+def _runs_section(runs: tuple[dict, ...]) -> list[str]:
+    """Every generation run, typed. A run that produced no series is VISIBLE here rather
+    than absent from the agreement table."""
+    lines = [
+        "## Generation runs (typed — one row per member × model)",
+        "",
+        "| paper | arm | model | code extracted | sandbox status | reason | months | "
+        "returned model |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for r in runs:
+        months = r.get("n_months")
+        lines.append(
+            f"| {r.get('paper_id')} | {r.get('arm') or '—'} | {r.get('model_id')} | "
+            f"{r.get('code_extracted')} | {r.get('sandbox_status') or '—'} | "
+            f"{r.get('sandbox_reason') or '—'} | {months if months is not None else '—'} | "
+            f"{r.get('returned_model_version') or '—'} |"
+        )
+    return lines
+
+
+def _failure_diagnostics_section(runs: tuple[dict, ...]) -> list[str]:
+    """The last stderr line of every run that produced no series — the typed "why" behind a
+    status. A generation failure, never a correctness claim (P2 has no oracle)."""
+    failed = [r for r in runs if r.get("sandbox_status") not in (None, "ok")]
+    lines = [
+        "## Failure diagnostics (runs that produced no series)",
+        "",
+        "_The last stderr line of each failed run. These are generation failures; with no "
+        "oracle at the coverage boundary they are never correctness failures._",
+        "",
+        "| paper | model | reason | last stderr line |",
+        "|---|---|---|---|",
+    ]
+    for r in failed:
+        tail = [ln.strip() for ln in (r.get("stderr_tail") or "").splitlines() if ln.strip()]
+        last = tail[-1].replace("|", r"\|")[:200] if tail else "—"
+        lines.append(
+            f"| {r.get('paper_id')} | {r.get('model_id')} | {r.get('sandbox_reason') or '—'} | "
+            f"`{last}` |"
+        )
+    return lines
+
+
+def _compiler_view_lines(config: dict) -> list[str]:
+    """State which panel view the compiler side ran under, beside the one the models saw.
+    When they differ, any Arm-B divergence mixes implementation difference with panel
+    difference — said here rather than left for a reader to discover."""
+    compiler, codegen = config.get("compiler_view"), config.get("codegen_panel_view")
+    if not compiler or not codegen:
+        return []
+    lines = ["", f"- Compiler panel view: `{compiler}`", f"- Panel the models saw: `{codegen}`"]
+    if config.get("views_match"):
+        lines.append("- The two sides saw the SAME panel view, so a divergence is an "
+                     "implementation difference.")
+    else:
+        lines.append("- **The two sides saw DIFFERENT panel views**, so any divergence below "
+                     "mixes implementation difference with panel difference and cannot be "
+                     "read as implementation fidelity alone.")
+    return lines
+
+
+def _compiler_attempts_section(
+    attempts: tuple[dict, ...], compiler_run_config: dict | None = None
+) -> list[str]:
+    """The Arm-B third implementation. A refused member has NO compiler series, so its
+    codegen-vs-compiler comparison does not exist — stated, never quietly omitted."""
+    lines = [
+        "## Arm-B deterministic-compiler attempts (the third implementation)",
+        "",
+        "| paper | outcome | refusal codes | months | note |",
+        "|---|---|---|---|---|",
+    ]
+    for a in attempts:
+        codes = ", ".join(a.get("refusal_codes") or []) or "—"
+        months = a.get("n_months")
+        lines.append(
+            f"| {a.get('paper_id')} | **{a.get('outcome')}** | {codes} | "
+            f"{months if months is not None else '—'} | {a.get('note') or '—'} |"
+        )
+    if compiler_run_config:
+        lines.extend(_compiler_view_lines(compiler_run_config))
+    return lines
+
+
 def render_report(
     metrics: P2Metrics | None,
     selection: ArmSelection | None,
@@ -116,10 +201,15 @@ def render_report(
     taxonomy: TaxonomySample | None = None,
     eligibility: EligibilityAccounting | None = None,
     meta: dict | None = None,
+    runs: tuple[dict, ...] | None = None,
+    compiler_attempts: tuple[dict, ...] | None = None,
+    compiler_run_config: dict | None = None,
 ) -> str:
     """Render the P2 agreement report from a results object. Below floor (or with
     no metrics), only the census fate table + eligibility accounting + caveat are
-    emitted — never an agreement number, never a Sharpe."""
+    emitted — never an agreement number, never a Sharpe. ``runs`` and
+    ``compiler_attempts`` add the executed-run tables (typed run outcomes and the
+    Arm-B compiler attempts) when a run produced them."""
     out: list[str] = ["# P2 coverage-boundary agreement report", ""]
 
     out.append(
@@ -130,6 +220,16 @@ def render_report(
     out.append("")
     out.append(f"_{CENSUS_CARVE_OUT}_")
     out.append("")
+
+    if metrics is not None and metrics.floor_override:
+        out.append(
+            f"> **BELOW-FLOOR DEPARTURE — {metrics.floor_override}.** At this arm size the "
+            "registered under-power rule SUPPRESSES the agreement and divergence numbers. "
+            "They are computed here under an authorised departure and are "
+            "DESCRIPTIVE ONLY — never a registered result. The registered rule at this arm size "
+            "is suppression."
+        )
+        out.append("")
 
     # The §6 caveat — verbatim, always.
     out.append("## Agreement caveat (contract §6, verbatim)")
@@ -167,6 +267,12 @@ def render_report(
         out.append(f"_SUPPRESSED: {reason}. Only the census fate table + taxonomy are "
                    "emitted (the below-floor rule)._")
         out.append("")
+        if runs:
+            out.extend(_runs_section(runs))
+            out.append("")
+        if compiler_attempts:
+            out.extend(_compiler_attempts_section(compiler_attempts))
+            out.append("")
         if taxonomy is not None:
             out.extend(_taxonomy_section(taxonomy))
         else:
@@ -184,9 +290,13 @@ def render_report(
     dist = metrics.distribution
     out.append("## Inter-model correlation distribution (PRIMARY)")
     out.append("")
-    out.append(f"- n members scored: {dist.get('n_members', 0)} "
-               f"(finite correlations: {dist.get('n_finite_correlations', 0)}; "
+    n_finite = dist.get("n_finite_correlations", 0)
+    out.append(f"- n members in the selection: {dist.get('n_members', 0)} "
+               f"(measurable correlations: {n_finite}; "
                f"insufficient overlap: {dist.get('n_insufficient_overlap', 0)})")
+    if not n_finite:
+        out.append("- **No correlation was measurable for any member**, so the distribution "
+                   "and strata below carry no measured divergence.")
     out.append(f"- correlation min / median / max: {_fmt(dist.get('correlation_min'))} / "
                f"{_fmt(dist.get('correlation_median'))} / {_fmt(dist.get('correlation_max'))}")
     out.append("")
@@ -208,6 +318,9 @@ def render_report(
     sc = dist.get("strata_counts", {})
     out.append(f"- divergence strata — high: {sc.get('high', 0)}, "
                f"medium: {sc.get('medium', 0)}, low: {sc.get('low', 0)}")
+    if not dist.get("n_finite_correlations", 0):
+        out.append("  (every member sits in `high` by the non-finite-correlation rule — an "
+                   "UNMEASURABLE pair, not an observed high divergence)")
     out.append("")
 
     if metrics.divergences:
@@ -223,6 +336,22 @@ def render_report(
                 f"{m.get('n_overlap', 0)} |"
             )
         out.append("")
+    elif compiler_attempts is not None:
+        out.append("## Arm-B codegen-vs-compiler divergence (neither side is truth)")
+        out.append("")
+        if census is not None and not census.compilable_set():
+            out.append(
+                "_ARM B IS EMPTY: the router compiled no member of this corpus, so there is no "
+                "compiler implementation to compare against. The absent arm is the result, not "
+                "a gap in the table._"
+            )
+        else:
+            out.append(
+                "_NOT COMPUTABLE: no Arm-B member has a deterministic-compiler series (see the "
+                "compiler-attempt table below), so this comparison does not exist for this run. "
+                "No stand-in implementation is substituted._"
+            )
+        out.append("")
 
     if metrics.mde:
         out.append("## MDE by arm size (power guard)")
@@ -236,6 +365,17 @@ def render_report(
     if taxonomy is not None:
         out.extend(_taxonomy_section(taxonomy))
         out.append("")
+
+    if compiler_attempts:
+        out.extend(_compiler_attempts_section(compiler_attempts, compiler_run_config))
+        out.append("")
+
+    if runs:
+        out.extend(_runs_section(runs))
+        out.append("")
+        if any(r.get("sandbox_status") not in (None, "ok") for r in runs):
+            out.extend(_failure_diagnostics_section(runs))
+            out.append("")
 
     _append_provenance(out, meta)
     return "\n".join(out)

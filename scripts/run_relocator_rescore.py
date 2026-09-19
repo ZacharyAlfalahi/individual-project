@@ -4,7 +4,7 @@ The single relocate-then-certify re-scoring pass.
 
 DIAGNOSTIC; NEVER A HEADLINE. One publish-as-found pass per frozen bar,
 terminal — no second attempt at a different bar, ever. Reads the run archives
-and committed metrics reports, which are gitignored and not shipped; a clean
+and recorded metrics reports, which are gitignored and not shipped; a clean
 clone cannot run this until they are regenerated locally.
 
 Replays the archived reportable run through the recorded D9 merge rule with
@@ -14,11 +14,11 @@ exactly one widening: a model quote passes the located test iff it EXACT-locates
 null, so this script structurally cannot run before calibration). Everything
 else — normalisation, agreement, ship rule, scoring — is byte-identical to
 ``scripts/run_rq1_ablation.py``'s full-system replay, which reproduces the
-committed g3 headline exactly.
+recorded g3 headline exactly.
 
 Cross-pins (fail-loud, abort before writing anything): the relocation-OFF arm
 must reproduce, per archive, (1) every replayed field's shipped/abstained bit
-and (2) the committed coverage / selective-accuracy / over-claim numerators and
+and (2) the recorded coverage / selective-accuracy / over-claim numerators and
 denominators. Primary = ``runs/corpus_anchors_report`` vs
 ``results/g3_report.json``; robustness = ``runs/bbw_4anchor_report``
 (drf/crf/lrf) and ``runs/bbw_masked_report`` (drf, masked canonical text — the
@@ -61,7 +61,7 @@ from scripts.run_p6a_replay import _normalise_or_none                      # noq
 
 BANNER = "Relocate-then-certify — labelled diagnostic; never a headline"
 
-# (section, run location, anchors, committed record). The primary section's
+# (section, run location, anchors, recorded record). The primary section's
 # anchors live in per-paper subdirs of the run root; the robustness archives
 # are single multi-spec dirs shared by their anchors.
 PRIMARY_G3 = "results/g3_report.json"
@@ -73,7 +73,7 @@ TRIPLE_KEYS = (("coverage", "coverage"), ("selective_accuracy", "selective_accur
 
 # The masked archive's strategy labels are entity-masked by design (the drf row
 # reads "Downside Risk Factor (XF1)"), so gold-label matching cannot resolve it;
-# the drf strategy sits at spec index 0, and the committed-report cross-pin
+# the drf strategy sits at spec index 0, and the recorded-report cross-pin
 # fails loud if this pin were ever the wrong strategy.
 MASKED_INDEX_MAP: dict[str, int] = {"drf": 0}
 
@@ -272,37 +272,37 @@ def assert_newly_shipped_within_qgf(anchor: str, variant_on: RunArtefacts,
 
 
 def cross_pin_anchor(anchor: str, variant_off: RunArtefacts, recorded: RunArtefacts,
-                     committed: dict, run_dir: Path) -> dict:
+                     recorded_report: dict, run_dir: Path) -> dict:
     """The relocation-OFF arm must reproduce the recorded run exactly."""
     assert_shipped_set_matches(anchor, variant_off, recorded, run_dir)
     bundle = compute_metrics(score_anchor(anchor, run_dir, artefacts=variant_off), variant_off)
     triple = {}
     for ours, theirs in TRIPLE_KEYS:
         got = getattr(bundle, "over_claim_rate" if ours == "over_claim" else ours)
-        want = committed[theirs]
+        want = recorded_report[theirs]
         if (got.numerator, got.denominator) != (want["numerator"], want["denominator"]):
             raise RuntimeError(
                 f"cross-pin failed for {anchor!r}: replayed {ours} "
-                f"{got.numerator}/{got.denominator} vs committed "
+                f"{got.numerator}/{got.denominator} vs recorded "
                 f"{want['numerator']}/{want['denominator']} — do not report"
             )
         triple[ours] = [got.numerator, got.denominator]
 
-    # Incidence pin in the SAME universe the committed report used: the scored
+    # Incidence pin in the SAME universe the recorded report used: the scored
     # (gold-paired) field set of compute_metrics — NOT the raw trace field set,
     # which for a multi-leg anchor (crf) is strictly larger.
-    committed_qgf = (committed.get("condition_incidence") or {}).get("agree_quote_gate_failed")
-    if committed_qgf is None:
+    recorded_qgf = (recorded_report.get("condition_incidence") or {}).get("agree_quote_gate_failed")
+    if recorded_qgf is None:
         raise RuntimeError(
-            f"cross-pin cannot run for {anchor!r}: the committed record carries no "
+            f"cross-pin cannot run for {anchor!r}: the recorded report carries no "
             "condition_incidence.agree_quote_gate_failed — a silently skipped pin is "
             "no pin; do not report"
         )
     replayed_qgf = bundle.condition_incidence.get("agree_quote_gate_failed", 0)
-    if replayed_qgf != committed_qgf:
+    if replayed_qgf != recorded_qgf:
         raise RuntimeError(
             f"cross-pin failed for {anchor!r}: replayed agree_quote_gate_failed "
-            f"incidence {replayed_qgf} vs committed {committed_qgf} — do not report"
+            f"incidence {replayed_qgf} vs recorded {recorded_qgf} — do not report"
         )
     return triple
 
@@ -317,7 +317,7 @@ def _triple_of(anchor: str, run_dir: Path, variant: RunArtefacts) -> dict:
     }
 
 
-def rescore_anchor(anchor: str, run_dir: Path, committed_anchor: dict,
+def rescore_anchor(anchor: str, run_dir: Path, recorded_anchor: dict,
                    cfg: RelocatorConfig, *, allow_non_reportable: bool,
                    index: int | None = None) -> dict:
     """``index`` pins the strategy explicitly where label matching cannot work
@@ -332,11 +332,11 @@ def rescore_anchor(anchor: str, run_dir: Path, committed_anchor: dict,
     ct = canonical_text_for(run_dir)
 
     variant_off, _ = replay_relocated(art, raw_a, raw_b, ct, None)
-    pin_triple = cross_pin_anchor(anchor, variant_off, art, committed_anchor, run_dir)
+    pin_triple = cross_pin_anchor(anchor, variant_off, art, recorded_anchor, run_dir)
 
     variant_on, reloc_log = replay_relocated(art, raw_a, raw_b, ct, cfg)
     # NB: this set lives in the RAW trace-field universe (the ship-rule
-    # invariant's domain); the committed-report incidence pin runs inside
+    # invariant's domain); the recorded-report incidence pin runs inside
     # cross_pin_anchor in the scored universe.
     newly_shipped, agree_qgf = assert_newly_shipped_within_qgf(anchor, variant_on, variant_off)
 
@@ -395,18 +395,18 @@ def _transition_counts(per_anchor: dict) -> dict:
     return dict(sorted(counts.items()))
 
 
-def run_section(anchors_dirs: list[tuple[str, Path]], committed_path: Path,
+def run_section(anchors_dirs: list[tuple[str, Path]], recorded_path: Path,
                 cfg: RelocatorConfig, *, allow_non_reportable: bool,
                 index_map: dict[str, int] | None = None) -> dict:
-    committed = json.loads(committed_path.read_text(encoding="utf-8"))
+    recorded = json.loads(recorded_path.read_text(encoding="utf-8"))
     per_anchor = {}
     for anchor, run_dir in anchors_dirs:
         per_anchor[anchor] = rescore_anchor(
-            anchor, run_dir, committed["anchors"][anchor], cfg,
+            anchor, run_dir, recorded["anchors"][anchor], cfg,
             allow_non_reportable=allow_non_reportable,
             index=(index_map or {}).get(anchor))
     return {
-        "committed_report": str(committed_path.relative_to(_REPO_ROOT)),
+        "recorded_report": str(recorded_path.relative_to(_REPO_ROOT)),
         "per_anchor": per_anchor,
         "pooled_off": _pool(per_anchor, "triple_off"),
         "pooled_on": _pool(per_anchor, "triple_on"),
@@ -501,7 +501,7 @@ def main(argv=None) -> int:
         masked_dir = _REPO_ROOT / "runs" / "bbw_masked_report"
         # The masked archive's labels are entity-masked (DRF -> "Downside Risk
         # Factor (XF1)" per the derived masked enum), so the drf strategy is
-        # pinned to index 0 explicitly; the cross-pin against the committed
+        # pinned to index 0 explicitly; the cross-pin against the recorded
         # masked report fails loud if that index were the wrong strategy.
         result["robustness_masked"] = run_section(
             [("drf", masked_dir)], _REPO_ROOT / MASKED_G3, cfg,

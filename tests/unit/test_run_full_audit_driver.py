@@ -2,7 +2,7 @@
 RQ3 items 5+7 — the full-audit driver (`scripts/run_full_audit.py`).
 
 This is how the full-audit wiring is verified WITHOUT the real confirmatory run (which
-is parked on the DSR pre-registration approval, O-A4). Two independent checks:
+requires the registered per-anchor DSR configuration, O-A4). Two independent checks:
 
   (a) the pure per-anchor path — `audit_anchor_full` on a SYNTHETIC scenario with
       INJECTED `n_trials`/`sr_std` (mirroring `test_auditor_report.py`) -> AuditReport
@@ -146,7 +146,7 @@ def _write_thresholds(tmp_path, body: str):
 
 
 def test_dsr_gate_refuses_when_block_absent(tmp_path):
-    # An auditor: block with NO dsr sub-block — the state of the committed file today.
+    # An auditor: block with NO dsr sub-block — the absent-configuration case.
     path = _write_thresholds(tmp_path, """
         auditor:
           primary_metric: average

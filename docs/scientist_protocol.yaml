@@ -465,7 +465,7 @@ amendments:                      # logged amendments appended here post-tag (see
       proposals share one parent, one development period, one mechanism library, one template set,
       and one evaluator, so "the Scientist is weak" cannot be distinguished from "the Scientist was
       barely exercised". This amendment adds the missing layer as a POST-HOC DIAGNOSTIC, and the
-      thesis admits the conflation as a design flaw regardless (the benchmark partially remedies it
+      the write-up admits the conflation as a design flaw regardless (the benchmark partially remedies it
       along the parent axis ONLY — period, library, templates, and evaluator remain shared).
       DESIGN: run the unchanged generation + gate stack over every audit-set anchor's fully
       corrected (all-ON) parent REGARDLESS of entry — parent set fixed by STRUCTURE (the RQ3 audit

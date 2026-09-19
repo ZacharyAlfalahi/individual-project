@@ -57,7 +57,7 @@ def enumerate_proposal_space(
         if not r.eligible:
             continue
         # ConfigDelta conditions on ONE variable; a multi-required-input mechanism would need the
-        # inputs crossed. None exist in the library today — fail loud rather than silently emit a
+        # inputs crossed. None exist in the registered library — fail loud rather than silently emit a
         # proposal that satisfies only one input (see review m5).
         if len(r.reachable) != 1:
             raise NotImplementedError(

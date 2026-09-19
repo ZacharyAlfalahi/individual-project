@@ -16,9 +16,12 @@ diagnostic-first protocol). Compares the clean-price and total-return panels:
 Output: data/development/headlines/accrual_validation.json
 
 Usage:
-  python scripts/run_accrual_validation.py
+  python scripts/run_accrual_validation.py [--total PATH] [--out PATH]
+      defaults: data/development/monthly_panel_total_return.parquet,
+                data/development/headlines/accrual_validation.json
 """
 
+import argparse
 import json
 import sys
 from datetime import datetime, timezone
@@ -41,6 +44,7 @@ from agents.quant.library.run_config import (  # noqa: E402
 from agents.quant.library.views import view  # noqa: E402
 from agents.quant.library.winsorize import winsorize_returns  # noqa: E402
 from build_mom6 import mom6_rulebook  # noqa: E402
+from scripts import basis_inputs  # noqa: E402
 
 DEV = REPO_ROOT / "data" / "development"
 CLEAN = DEV / "monthly_panel_maximal.parquet"
@@ -56,6 +60,29 @@ LAB = _CFG["bias_toggles"]["lab_filter"]
 GATE = _CFG["validation"]["gate_thresholds"]["accrual_validation"]
 
 
+def _rel(path: Path) -> str:
+    """Repo-relative path when inside the repo, else the path as given (never raises)."""
+    try:
+        return str(Path(path).relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description="Accrual validation (clean vs total-return panel).")
+    ap.add_argument("--total", type=Path, default=TOTAL,
+                    help="total-return panel (default data/development/monthly_panel_total_return.parquet)")
+    ap.add_argument("--out", type=Path, default=OUT,
+                    help="report path (default data/development/headlines/accrual_validation.json)")
+    return ap.parse_args(argv or [])
+
+
+def input_provenance(clean_path: Path, total_path: Path) -> dict:
+    """The two compared panels, repo-relative path + sha256 each."""
+    return {name: {"path": _rel(p), "sha256": basis_inputs.sha256(p)}
+            for name, p in (("clean_panel", clean_path), ("total_panel", total_path))}
+
+
 def _bbw_panel(panel_df, signals):
     cfg = RunConfig(PanelViewConfig("corr", False, False), ConstructionConfig(0, "none"), EvaluationConfig())
     p = view(panel_df, cfg, signals=signals).drop_duplicates(["cusip", "date"]).reset_index(drop=True)
@@ -65,7 +92,9 @@ def _bbw_panel(panel_df, signals):
 
 def bbw_means(p):
     comp, out = {}, {}
-    sub = p[["cusip", "date", "ret", "size", "rating", "var_5pct", "gamma", "rev"]]
+    # xret: crf_rev's control is xret (bbw_factors.py); mirror the
+    # factor builder's column set (build_bbw_factors.py) so the CRF components run.
+    sub = p[["cusip", "date", "ret", "size", "rating", "var_5pct", "gamma", "rev", "xret"]]
     for name in ["drf", "lrf"] + list(CRF_COMPONENTS):
         mr = run_bbw_factor(sub, name)["monthly_returns"]
         comp[name] = mr
@@ -97,13 +126,18 @@ def leadlag_drf_corr(comp):
     return float(j["c"].corr(j["d"]))
 
 
-def main():
-    for f in (CLEAN, TOTAL):
+def main(argv: list[str] | None = None):
+    args = parse_args(argv)
+    total_path, out = Path(args.total), Path(args.out)
+    if total_path != TOTAL and out == OUT:
+        print(f"ERROR: --total {total_path} with the default --out would overwrite the default report {OUT}; "
+              "pass --out", file=sys.stderr); sys.exit(2)
+    for f in (CLEAN, total_path):
         if not f.exists():
             print(f"ERROR: missing {f}", file=sys.stderr); sys.exit(1)
 
     clean = pd.read_parquet(CLEAN)
-    total = pd.read_parquet(TOTAL)
+    total = pd.read_parquet(total_path)
     signals = (pd.read_parquet(require_licensed_input(DEV / "signals" / "var_5pct.parquet", "var-5pct signal"))
                .merge(pd.read_parquet(require_licensed_input(DEV / "signals" / "gamma_illiq.parquet", "gamma-illiquidity signal")), on=["cusip", "date"], how="outer"))
     mom6_sig = pd.read_parquet(require_licensed_input(DEV / "signals" / "mom6.parquet", "mom6 signal panel"))
@@ -137,6 +171,7 @@ def main():
 
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
+        "inputs": input_provenance(CLEAN, total_path),
         "overall_pass": bool(overall_pass),
         "levels_corrected": {
             "crf_clean_pct": bc["crf"], "crf_total_pct": bt["crf"],
@@ -159,8 +194,8 @@ def main():
             "note": "ACT/* bonds priced on 30/360; surfaced so a surprising CRF month is cross-checkable.",
         },
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUT, "w") as f:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w") as f:
         json.dump(report, f, indent=2)
 
     print("Accrual validation (clean → total, corr family):")
@@ -174,9 +209,9 @@ def main():
     print(f"    lead/lag DRF corr: {ll_c:.3f} → {ll_t:.3f}")
     print(f"  FALLBACK EXPOSURE: eligible {report['fallback_exposure']['eligible_fallback_pct']:.2f}%; "
           f"CRF-long-leg months with a fallback bond: {months_with_fb}")
-    print(f"  OVERALL: {'PASS' if overall_pass else 'FAIL'}  → {OUT}")
+    print(f"  OVERALL: {'PASS' if overall_pass else 'FAIL'}  → {out}")
     sys.exit(0 if overall_pass else 1)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

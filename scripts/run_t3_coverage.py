@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 RQ2 coverage over the frozen 32-construction set (contract §5.2/§5.3; CI-5
-denominator; built 2026-09-04 on the typed spec deserialiser).
+denominator; built on the typed spec deserialiser).
 
 Mirrors the anchors' own chain EXACTLY, run on the paid Phase-F emissions:
 loaded emitted spec (spec_from_dict) -> `adapt_spec` with the hash-verified
@@ -54,7 +54,7 @@ from scripts.run_quant import load_inputs, summarize_run  # noqa: E402
 
 _DEFAULT_SPECS = _REPO_ROOT / "runs" / "corpus_corpus_report" / "bbw2021"
 _NOT_RUN_PAPERS = {
-    # dfps routed to review at extraction (exit 2, 2026-09-03 paid run): the
+    # dfps routed to review at extraction (exit 2): the
     # 'VaR' construction's sort_signal did not resolve, and v1 emits no partial
     # spec set (D31) -- every DFPS_2026 construction is therefore unobserved.
     "DFPS_2026": "extraction routed to review (D20/D31; no spec set emitted)",
@@ -166,7 +166,7 @@ def main(argv=None) -> int:
                          "already) are charged not_run; default: the DFPS_2026 "
                          "2026-09-03 review exit")
     ap.add_argument("--out", default=None,
-                    help="output JSON (default results/rq2_coverage_<date>.json; "
+                    help="output JSON (default results/rq2_coverage.json; "
                          "never the registered 2026-09-04 artefact)")
     args = ap.parse_args(argv)
 

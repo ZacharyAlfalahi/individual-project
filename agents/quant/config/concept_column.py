@@ -9,7 +9,7 @@ into a ``Binding``.
   * ``lookup(concept_id, params) -> str | None`` -- the bound column, or ``None``
     when the table has no row for that (concept, params). A ``None`` becomes a
     ``Binding(MISSING, ...)`` at the adapter, which the factory refuses with
-    ``MISSING_BINDING`` (one refusal owner, P4).
+    ``MISSING_BINDING`` (the resolver is its only emitter, P4).
 
 **Mirror rule (D27).** Exactly one column per (concept_id, canonical parameter
 tuple): the table is a *function*, so a bind is never ``AMBIGUOUS``. A duplicate

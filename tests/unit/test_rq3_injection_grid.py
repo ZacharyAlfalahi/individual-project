@@ -14,7 +14,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 import run_rq3_injection_grid as grid_mod  # noqa: E402
 from run_rq3_injection_grid import (  # noqa: E402
     _classify_coverage,
-    _committed_recovered_mde,
+    _recorded_recovered_mde,
     _coverage,
     _injected_bp,
     _signal_background,
@@ -36,14 +36,14 @@ def test_signal_background_dominates_at_five_times():
 
 @pytest.mark.skipif(
     not list((REPO_ROOT / "results" / "auditor" / "calibration").glob("run_*/calibration.json")),
-    reason="committed calibration artifact absent on this machine",
+    reason="recorded calibration artefact not shipped with the repository",
 )
-def test_recovered_and_mde_read_from_committed_calibration():
-    m = _committed_recovered_mde("meas_err")
-    assert 280.0 < m["recovered_bp"] < 340.0            # ~313 bp (committed calibration)
+def test_recovered_and_mde_read_from_recorded_calibration():
+    m = _recorded_recovered_mde("meas_err")
+    assert 280.0 < m["recovered_bp"] < 340.0            # recorded calibration bounds
     assert m["mde_structural"] is False and m["mde_bp"] is not None
     # stale_price's channel is structural (magnitude-independent): mde magnitude is 0 -> flagged.
-    assert _committed_recovered_mde("stale_price")["mde_structural"] is True
+    assert _recorded_recovered_mde("stale_price")["mde_structural"] is True
 
 
 def test_degeneracy_guard_predicate():

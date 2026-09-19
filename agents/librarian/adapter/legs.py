@@ -15,7 +15,7 @@ resolution (``signal_resolution``):
   * the combiner: ``single_leg`` pass-through / ``equal_average`` mean-over-available
     (adaptive divisor, ledger item 40) / ``other`` -> UNSUPPORTED_COMBINER.
 
-Refusal ownership (D29): the adapter collects ALL *adapter-layer* refusals into the
+Refusal collection (D29): the adapter collects ALL *adapter-layer* refusals into the
 run ``_Batch`` (run-to-completion); the FACTORY stays first-hit per leg (its
 ``ConfigRefusal`` lands on the leg's ``LegCall.result``). Both feed
 ``AdaptResult.refused`` (D28: any leg refused -> whole strategy refuses).

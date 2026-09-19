@@ -161,3 +161,25 @@ def test_live_client_uses_the_librarian_backend(monkeypatch):
     assert isinstance(resp, ExplainerResponse)
     assert resp.model_version == "stub-v1"
     assert json.loads(resp.text)["explanation"] == "ok"
+
+
+# --------------------------------------------------------------------------
+# Deterministic renderer: a coordinate without a t statistic
+# --------------------------------------------------------------------------
+
+def test_renderer_handles_a_coordinate_with_no_t_statistic(report):
+    """A bootstrap-routed or inert coordinate carries ``t_stat``/``p_value`` = None.
+
+    The deterministic renderer is the fallback that keeps a report renderable when the model
+    prose fails verification, so it must not raise on that shape: formatting None with ``:.4f``
+    would make the fallback itself the failure. Tripwire — it fires if the guard is removed.
+    """
+    from agents.auditor.explainer.renderer import render_report_dict
+
+    d = report.to_dict()
+    label = next(iter(d["inference"]))
+    d["inference"][label] = {**d["inference"][label], "t_stat": None, "p_value": None}
+
+    text = render_report_dict(d)
+
+    assert f"Effect {label}: " in text and "t n/a" in text and "p-value n/a" in text

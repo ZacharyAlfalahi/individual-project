@@ -53,6 +53,10 @@ _SEATBELT_PROFILE = """\
 (allow file-write* (literal "/dev/null"))
 """
 
+# Appended once per ``SandboxSpec.deny_read_paths`` entry. Seatbelt applies the last
+# matching rule, so these override the profile's ``(allow default)``.
+_SEATBELT_DENY_READ = '(deny file-read* (subpath "{path}"))\n'
+
 _SHIM_SITECUSTOMIZE = '''\
 """Jail-local network shim for the codegen sandbox (best-effort; see sandbox.py)."""
 
@@ -81,7 +85,11 @@ sys.addaudithook(_deny_socket_events)
 
 @dataclass(frozen=True)
 class SandboxSpec:
-    """What to run and under which bounds; ``mechanism`` is normally ``"auto"``."""
+    """What to run and under which bounds; ``mechanism`` is normally ``"auto"``.
+
+    ``deny_read_paths`` lists directory trees the generated code must not read (for example
+    the holdout partition or the oracle factor files). Only seatbelt can enforce it, so a
+    non-empty list under the shim raises rather than silently running unconfined."""
 
     python_bin: Path
     jail_dir: Path
@@ -90,6 +98,7 @@ class SandboxSpec:
     wall_clock_s: int = 600
     memory_mb: int = 8192
     mechanism: str = "auto"
+    deny_read_paths: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -177,6 +186,15 @@ def parse_output_csv(path: Path) -> pd.Series:
     return series.sort_index()
 
 
+def seatbelt_profile(jail: Path, deny_read_paths: tuple[Path, ...] = ()) -> str:
+    """The per-run seatbelt profile. With no deny paths it is the base P1 profile;
+    each deny path is resolved first, because seatbelt subpath rules match real paths only."""
+    profile = _SEATBELT_PROFILE.format(jail=jail)
+    for path in deny_read_paths:
+        profile += _SEATBELT_DENY_READ.format(path=Path(path).resolve())
+    return profile
+
+
 def run_sandboxed(code: str, spec: SandboxSpec) -> SandboxResult:
     """Execute ``code`` inside the jail and enforce the single-CSV contract.
 
@@ -188,6 +206,8 @@ def run_sandboxed(code: str, spec: SandboxSpec) -> SandboxResult:
     mechanism = detect_mechanism() if spec.mechanism == "auto" else spec.mechanism
     if mechanism not in ("seatbelt", "shim"):
         raise ValueError(f"unknown sandbox mechanism {spec.mechanism!r}")
+    if spec.deny_read_paths and mechanism != "seatbelt":
+        raise ValueError("deny_read_paths needs the seatbelt mechanism; the shim cannot deny reads")
 
     # Resolve to the real path: on darwin /tmp and /var are symlinks into
     # /private, and seatbelt subpath rules match real paths only.
@@ -217,7 +237,7 @@ def run_sandboxed(code: str, spec: SandboxSpec) -> SandboxResult:
         argv = [str(spec.python_bin), str(job_path)]
     else:
         profile_path = jail / "profile.sb"
-        profile_path.write_text(_SEATBELT_PROFILE.format(jail=jail), encoding="utf-8")
+        profile_path.write_text(seatbelt_profile(jail, spec.deny_read_paths), encoding="utf-8")
         argv = [
             str(_SANDBOX_EXEC),
             "-f",

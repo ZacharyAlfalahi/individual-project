@@ -4,7 +4,7 @@ that certify the measurement instruments into one citeable results JSON.
 These validations ALREADY PASS in the deterministic test suite; this driver runs the SAME shared
 data-generating processes (``evaluation/rq3_validation/recovery_dgps.py``, extracted verbatim from
 the test batteries) and library functions, and writes the recovered numbers to
-``results/auditor/rq3_validation_<date>.json``.
+``results/auditor/rq3_validation.json``.
 
 Blocks:
   * **characteristic-sort recovery** — a planted long-short alpha is recovered within ±3 SE of the
@@ -234,7 +234,7 @@ def build_validation_export() -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default=None,
-                    help="output path (default results/auditor/rq3_validation_<date>.json)")
+                    help="output path (default results/auditor/rq3_validation.json)")
     args = ap.parse_args(argv)
 
     result = build_validation_export()

@@ -2,7 +2,7 @@
 AuditCore on disk, and the spec's stale/renamed pointers fail closed (INV-13).
 
 This tests the Reporter's understanding of the actual `AuditCore.to_dict()` / quant `<anchor>.json`
-shapes against genuine committed artefacts, not a hand-built dict — so a wrong key-map belief is
+shapes against genuine recorded artefacts, not a hand-built dict — so a wrong key-map belief is
 caught here, not in production.
 """
 
@@ -20,7 +20,7 @@ _CORE = _REPO / "results/auditor/drf/drf_core.json"
 _QRES = _REPO / "results/quant/drf/drf.json"
 
 
-@pytest.mark.skipif(not _CORE.exists(), reason="committed audit-core artefact absent")
+@pytest.mark.skipif(not _CORE.exists(), reason="recorded audit-core artefact absent")
 def test_audit_core_pointer_map_resolves():
     d = json.loads(_CORE.read_text())
     # C1: core is flattened — audit_scope / saturated_bases / shapley are top-level.
@@ -59,7 +59,7 @@ def test_audit_core_pointer_map_resolves():
     assert resolve_json_pointer(d, "/bias_class_partition/data_quality_present") is True
 
 
-@pytest.mark.skipif(not _CORE.exists(), reason="committed audit-core artefact absent")
+@pytest.mark.skipif(not _CORE.exists(), reason="recorded audit-core artefact absent")
 def test_stale_or_renamed_pointers_fail_closed():
     d = json.loads(_CORE.read_text())
     for bad in (
@@ -77,7 +77,7 @@ def test_stale_or_renamed_pointers_fail_closed():
             resolve_json_pointer(d, bad)
 
 
-@pytest.mark.skipif(not _QRES.exists(), reason="committed quant result artefact absent")
+@pytest.mark.skipif(not _QRES.exists(), reason="recorded quant result artefact absent")
 def test_quant_result_pointers_resolve():
     d = json.loads(_QRES.read_text())
     # The persisted quant <anchor>.json is a plain summary-bearing dict — direct json_pointer.

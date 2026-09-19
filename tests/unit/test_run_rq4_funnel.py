@@ -1,6 +1,6 @@
-"""WS-D — the RQ4 development-funnel orchestrator. Offline core-wiring: case (from the committed
+"""WS-D — the RQ4 development-funnel orchestrator. Offline core-wiring: case (from the corrected
 str AuditReport) → eligibility → random+retrieval generation → G0-G5 → reporting. No LLM client,
-no network. Skips if the committed audit report / dev panel are absent."""
+no network. Skips if the corrected audit report / dev panel are absent."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _funnel():
 def test_build_case_str_enters():
     f = _funnel()
     if not f._STR_AUDIT.exists():
-        pytest.skip("committed str AuditReport absent")
+        pytest.skip("corrected str AuditReport absent (local pipeline output, not shipped with the repository)")
     case, params = f.build_case()
     assert case.strategy_id == "str"
     assert case.failed_check_ids == ("lib_gap",)          # str enters on lib_gap (θ=0.001, q=0.10)
@@ -45,7 +45,7 @@ def test_corrected_parent_direction_is_positive():
 def test_funnel_chains_offline_random_and_retrieval():
     f = _funnel()
     if not f._STR_AUDIT.exists():
-        pytest.skip("committed str AuditReport absent")
+        pytest.skip("corrected str AuditReport absent (local pipeline output, not shipped with the repository)")
     try:
         r = f.run_rq4_funnel(phase="dev", llm_clients=[], k=1, m=2, run_rehearsal=False)
     except FileNotFoundError:
@@ -65,7 +65,7 @@ def test_funnel_chains_offline_random_and_retrieval():
 def test_rehearsal_skipped_when_zero_survivors_is_terminal():
     f = _funnel()
     if not f._STR_AUDIT.exists():
-        pytest.skip("committed str AuditReport absent")
+        pytest.skip("corrected str AuditReport absent (local pipeline output, not shipped with the repository)")
     try:
         r = f.run_rq4_funnel(phase="dev", llm_clients=[], k=1, m=2, run_rehearsal=True)
     except FileNotFoundError:
@@ -183,7 +183,7 @@ def test_funnel_minilm_annotates_retrieval_arm_offline_stays_clean(monkeypatch):
     offline mode emits NO new keys (the byte-identical bar). Fake embedder — no model/network."""
     f = _funnel()
     if not f._STR_AUDIT.exists():
-        pytest.skip("committed str AuditReport absent")
+        pytest.skip("corrected str AuditReport absent (local pipeline output, not shipped with the repository)")
     monkeypatch.setattr(f.S, "minilm_embedder", lambda: f.deterministic_embedder())
     monkeypatch.setattr(f, "minilm_header", lambda: dict(_FAKE_HEADER))
     try:

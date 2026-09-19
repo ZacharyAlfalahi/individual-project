@@ -14,18 +14,19 @@ itself (1.0 > 0.90). So the gate is DIRECTIONAL: injecting the lead/lag error
 materially decorrelates the factor; removing it restores it.
 
 This gate is SIGN-INVARIANT (a correlation), so it is robust to the clean-price
-CRF sign-flip (Chunk-5 accrual fix) — confirmed here explicitly.
+CRF sign flip (accrual treatment) — confirmed here explicitly.
 
 Output: data/development/headlines/leadlag_gate.json
 
 Usage:
-  python scripts/run_leadlag_gate.py
+  python scripts/run_leadlag_gate.py [--factors-dir DIR] [--out PATH]
+      defaults: data/development/factors, data/development/headlines/leadlag_gate.json
 """
 
+import argparse
 import hashlib
 import json
 import os
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,7 +38,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 from agents.quant.library.lead_lag import inject_lead_lag  # noqa: E402
 
-FACTORS_FILE = REPO_ROOT / "data" / "development" / "factors" / "bbw_factors.parquet"
+FACTORS_DIR = REPO_ROOT / "data" / "development" / "factors"
+FACTORS_FILE = FACTORS_DIR / "bbw_factors.parquet"
 OUT = REPO_ROOT / "data" / "development" / "headlines" / "leadlag_gate.json"
 THRESHOLDS_FILE = REPO_ROOT / "docs" / "thresholds.yaml"
 
@@ -52,12 +54,39 @@ def thresholds_sha256() -> str:
     return hashlib.sha256(THRESHOLDS_FILE.read_bytes()).hexdigest()
 
 
-def git_commit() -> str:
+def _rel(path: Path) -> str:
+    """Repo-relative path when inside the repo, else the path as given (never raises)."""
     try:
-        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT,
-                              capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:
-        return "unknown"
+        return str(Path(path).relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description="BBW lead/lag gate.")
+    ap.add_argument("--factors-dir", type=Path, default=FACTORS_DIR,
+                    help="directory holding bbw_factors.parquet (default data/development/factors)")
+    ap.add_argument("--out", type=Path, default=OUT,
+                    help="report path (default data/development/headlines/leadlag_gate.json)")
+    return ap.parse_args(argv or [])
+
+
+def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
+    """(bbw_factors parquet, report json) from the parsed flags. A non-default factors input with the default
+    report path is refused — it would overwrite the default gate report with another basis's result."""
+    factors_file, out = Path(args.factors_dir) / FACTORS_FILE.name, Path(args.out)
+    if factors_file != FACTORS_FILE and out == OUT:
+        raise SystemExit(f"ERROR: --factors-dir {args.factors_dir} with the default --out would overwrite the "
+                         f"default gate report {OUT}; pass --out")
+    return factors_file, out
+
+
+def input_provenance(factors_file: Path) -> dict:
+    """Report keys recording a non-default factors input; empty (report unchanged) by default."""
+    if factors_file == FACTORS_FILE:
+        return {}
+    return {"factors_file": _rel(factors_file),
+            "factors_file_sha256": hashlib.sha256(factors_file.read_bytes()).hexdigest()}
 
 
 def _window_corr(correct: pd.DataFrame, defective: pd.DataFrame, window, col) -> tuple[float, int]:
@@ -70,16 +99,17 @@ def _window_corr(correct: pd.DataFrame, defective: pd.DataFrame, window, col) ->
     return float(j["correct"].corr(j["defective"])), int(len(j))
 
 
-def main():
-    if not FACTORS_FILE.exists():
-        print(f"ERROR: required input not found: {FACTORS_FILE} (run build_bbw_factors.py)",
+def main(argv: list[str] | None = None):
+    factors_file, out = resolve_paths(parse_args(argv))
+    if not factors_file.exists():
+        print(f"ERROR: required input not found: {factors_file} (run build_bbw_factors.py)",
               file=sys.stderr)
         sys.exit(1)
 
     cfg, gate_cfg = load_cfg()
     collapse_max = float(gate_cfg["collapse_max"])
     restore_min = float(gate_cfg["restore_min"])
-    factors = pd.read_parquet(FACTORS_FILE)
+    factors = pd.read_parquet(factors_file)
 
     arms = [
         ("drf", "drf_corr", int(cfg["drf_crf_lead_months"]), cfg["drf_crf_window"], "lead"),
@@ -100,7 +130,7 @@ def main():
         # shift. Over the window interior this recovers the correct factor, so
         # corr(correct, restored) returns to ~1.0 (>= restore_min). This actually
         # exercises the correction — a direction bug in inject_lead_lag would fail
-        # it — instead of asserting 1.0 as a literal.
+        # it.
         restored = inject_lead_lag(defective[["date", "strategy_ret"]],
                                    shift_months=-shift, window=tuple(window))
         corr_restored, _ = _window_corr(correct, restored, window, col)
@@ -124,8 +154,8 @@ def main():
 
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
-        "git_commit": git_commit(),
         "thresholds_sha256": thresholds_sha256(),
+        **input_provenance(factors_file),
         "family": "corr",
         "method": "inject as-published lead/lag error over its window; correlation "
                   "between correct and defective series collapses to ~the factor's "
@@ -142,15 +172,15 @@ def main():
                  "restored": bool(all_restore),
                  "direction_pass": bool(all_collapse and all_restore)},
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    tmp = OUT.with_suffix(".json.tmp")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(".json.tmp")
     with open(tmp, "w") as f:
         json.dump(report, f, indent=2)
-    os.replace(tmp, OUT)
+    os.replace(tmp, out)
     gate_pass = all_collapse and all_restore
-    print(f"  GATE: {'PASS' if gate_pass else 'FAIL'}  → {OUT}")
+    print(f"  GATE: {'PASS' if gate_pass else 'FAIL'}  → {out}")
     sys.exit(0 if gate_pass else 1)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

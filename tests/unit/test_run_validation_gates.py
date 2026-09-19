@@ -6,7 +6,7 @@ invariant to_rulebook omits) and PINS the differential's inertness: the gate
 verdict is byte-identical with the differential diagnostic present or absent, and
 the gate-path module (round_trip) does not import the differential computation.
 Without these two assertions, "the differential is non-gating" is a claim about
-today's code, not a property of it.
+the current implementation, not a property of it.
 """
 from __future__ import annotations
 

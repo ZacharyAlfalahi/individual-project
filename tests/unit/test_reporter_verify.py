@@ -19,7 +19,7 @@ from shared.reporting.canonical import NanValue
 from shared.reporting.claims import ArtefactType, ClaimRecord, SourceLocator
 
 needs_real = pytest.mark.skipif(
-    not (DRF_CORE.exists() and DRF_QUANT.exists()), reason="committed drf artefacts absent"
+    not (DRF_CORE.exists() and DRF_QUANT.exists()), reason="recorded drf artefacts absent (local pipeline output, not shipped with the repository)"
 )
 
 

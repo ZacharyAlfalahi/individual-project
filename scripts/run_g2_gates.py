@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-RQ2 anchor fidelity gates 1-2 (contract §7) to a committed results file
+RQ2 anchor fidelity gates 1-2 (contract §7) to a recorded results file
 (close-out item 5, 2026-09-05). Thin driver over the existing, tested
 evaluation/harness/round_trip.gate12_verdict: for each anchor it adapts the
 hand-authored gold once and reports gate 2 (rulebook byte-equality modulo the

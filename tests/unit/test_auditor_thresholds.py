@@ -164,3 +164,48 @@ def test_the_real_thresholds_file_is_pre_registered():
     assert cfg.vartheta > 0 and cfg.d_max > 0 and 0 < cfg.fdr_q < 1
     # the neighbouring-threshold sweep grid is pre-registered and brackets the headline.
     assert cfg.vartheta in cfg.vartheta_grid and len(cfg.vartheta_grid) >= 2
+
+
+def test_inert_relative_tol_is_registered_and_fail_loud(tmp_path):
+    """The inert tolerance decides whether a DOE coordinate is tested at all, so it is registered.
+
+    Two halves: the shipped thresholds carry it, and a file without it raises rather than falling
+    back to a module default (which would score a run against an unregistered constant).
+    """
+    from agents.auditor.thresholds import load_inert_relative_tol
+
+    assert load_inert_relative_tol() > 0
+
+    bare = tmp_path / "thresholds.yaml"
+    bare.write_text("auditor:\n  primary_metric: average\n", encoding="utf-8")
+    with pytest.raises(AuditorThresholdError, match="inert_relative_tol"):
+        load_inert_relative_tol(bare)
+
+
+def test_auditor_config_carries_the_registered_inert_tolerance():
+    """`from_thresholds` threads the registered value onto the config the audited path uses."""
+    from agents.auditor.checks.report import AuditorConfig
+    from agents.auditor.thresholds import load_inert_relative_tol
+
+    assert AuditorConfig.from_thresholds().inert_relative_tol == load_inert_relative_tol()
+
+
+@pytest.mark.parametrize("value,label", [
+    (".inf", "infinite"),
+    ("-1.0e-12", "negative"),
+    ("0", "zero"),
+    ("true", "boolean"),
+    ("'1e-12'", "string"),
+])
+def test_inert_relative_tol_rejects_malformed_values(tmp_path, value, label):
+    """Fail-loud on shapes a bare `float(value) > 0` check would wave through.
+
+    An INFINITE tolerance is the dangerous one: it marks every coordinate inert (p = 1, t = 0), so
+    a typo would silently suppress the tests this constant exists to route, with no error anywhere.
+    """
+    from agents.auditor.thresholds import load_inert_relative_tol
+
+    path = tmp_path / f"thresholds_{label}.yaml"
+    path.write_text(f"auditor:\n  inert_relative_tol: {value}\n", encoding="utf-8")
+    with pytest.raises(AuditorThresholdError, match="inert_relative_tol"):
+        load_inert_relative_tol(path)

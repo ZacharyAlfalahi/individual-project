@@ -694,7 +694,7 @@ def grade_seam_3(run_dir: Path, key: dict) -> SeamResult:
     # Emitted-spec adaptation through the typed deserialiser. When the run emitted
     # a spec: load it typed, adapt it, and byte-compare its G2 rulebook against the
     # key-derived rulebook. A run with NO spec (e.g. a Guard-1 emission refusal,
-    # the 2026-09-03 live outcome) stays NOT_GRADED with the reason recorded.
+    # the live outcome) stays NOT_GRADED with the reason recorded.
     spec_path = run_dir / "spec_0.json"
     if not spec_path.exists():
         s.not_graded("emitted_spec.adapt",

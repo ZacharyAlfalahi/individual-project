@@ -198,3 +198,61 @@ def test_compute_metrics_missing_series_pair_fails_loud():
     sel = select_arms(census, zoo, _TH)
     with pytest.raises(KeyError):
         compute_p2_metrics(census, sel, {}, None, _TH)   # no pairs supplied
+
+
+# --- the authorised below-floor departure ---------------------------------------
+
+def _below_floor_selection():
+    census = CensusResult(tuple(
+        [_refusal(f"r{i}") for i in range(2)] + [_compilable(f"c{i}") for i in range(3)]
+    ))
+    zoo = [f"r{i}" for i in range(2)] + [f"c{i}" for i in range(3)]
+    sel = select_arms(census, zoo, _TH)
+    assert sel.below_floor is True
+    return census, sel
+
+
+def test_floor_override_computes_below_floor_and_labels_it_descriptive():
+    census, sel = _below_floor_selection()
+    base = _series([0.01, -0.02, 0.03, 0.02, 0.015])
+    pairs = {pid: (base, base.copy()) for pid in sel.members()}
+
+    metrics = compute_p2_metrics(census, sel, pairs, None, _TH, floor_override="DEP-1")
+
+    assert metrics.suppressed is False           # numbers ARE emitted
+    assert metrics.floor_override == "DEP-1"
+    assert len(metrics.agreements) == 4          # 2 Arm A + 2 Arm B
+    # the suppression reason is retained and marked, so a below-floor number can never be
+    # read as a registered one
+    assert "below_floor_min_arm_a" in metrics.below_floor_reason
+    assert "DEP-1" in metrics.below_floor_reason
+    assert "descriptive" in metrics.below_floor_reason
+    assert metrics.to_dict()["floor_override"] == "DEP-1"
+
+
+def test_without_the_override_the_same_selection_is_suppressed():
+    census, sel = _below_floor_selection()
+    base = _series([0.01, -0.02, 0.03, 0.02, 0.015])
+    pairs = {pid: (base, base.copy()) for pid in sel.members()}
+
+    metrics = compute_p2_metrics(census, sel, pairs, None, _TH)
+
+    assert metrics.suppressed is True and metrics.agreements == ()
+    assert metrics.floor_override is None
+
+
+def test_override_is_refused_above_the_floor():
+    census = CensusResult(tuple([_refusal(f"r{i}") for i in range(5)]
+                                + [_compilable(f"c{i}") for i in range(5)]))
+    zoo = [f"r{i}" for i in range(5)] + [f"c{i}" for i in range(5)]
+    sel = select_arms(census, zoo, _TH)
+    base = _series([0.01, -0.02, 0.03, 0.02, 0.015])
+    pairs = {pid: (base, base.copy()) for pid in sel.members()}
+    with pytest.raises(ValueError, match="ABOVE-floor"):
+        compute_p2_metrics(census, sel, pairs, None, _TH, floor_override="DEP-1")
+
+
+def test_override_must_name_a_departure():
+    census, sel = _below_floor_selection()
+    with pytest.raises(ValueError, match="non-empty"):
+        compute_p2_metrics(census, sel, {}, None, _TH, floor_override="   ")

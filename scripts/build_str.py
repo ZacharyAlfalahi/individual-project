@@ -11,24 +11,20 @@ table binds to the engine-contract `xret` column (v2). Ranking on `xret` vs raw
 `ret` is identical (the safe rate nets out cross-sectionally each month).
 
 SIGN — the leg direction below is deliberate. DRR report this
-construction at −0.99%/mo (reversal: winners underperform). On our development
-corr panel it earns ≈ +0.95%/mo (t +5.1) — robust MOMENTUM, the opposite sign —
-because DRR's short-term reversal is a microstructure (LIB) premium that the corr
-cleaning removes (DRR's own clean estimate is only −0.17); the raw family that
-would carry it is outlier-corrupted (the raw-family `Infinity`). This is a RESULT,
-not a bug: the sign divergence is localised to the raw/LIB layer and owned by the
-§8 bias-toggle decomposition, NOT reconciled here. Do NOT flip the leg or sweep a
-parameter to manufacture −0.99; RQ3 gates on the raw->corr differential, never on
-a naive magnitude match to the paper.
+construction at −0.99%/mo (reversal: winners underperform). DRR's short-term
+reversal is a microstructure (LIB) premium that the corr cleaning removes (DRR's
+own clean estimate is only −0.17), so the corr-family factor need not carry the
+paper's sign. Any sign divergence is attributed by the §8 bias-toggle
+decomposition, NOT reconciled here. Do NOT flip the leg or sweep a parameter to
+match −0.99; RQ3 gates on the raw->corr differential, never on a naive magnitude
+match to the paper.
 
 This builder emits the AS-PUBLISHED str factor (lib_gap OFF, signal_lag=0) for
 both families. The lib_gap repair is reproduced faithfully by the daily
 month-begin/month-end decomposition (build_str_decomposition.py) and toggled in
 the bias lattice; it is not this builder's job.
 
-Weighting: value-weight by par `offering_amt` (panel `size`, §2.4) — now that
-FISD supplies real par sizes, str is VW (the earlier pre-FISD pattern-gate used
-equal weighting only because `size` was then a placeholder).
+Weighting: value-weight by par `offering_amt` (panel `size`, §2.4, from FISD).
 
 Family-indexed per A9: emits `str_raw` (raw family) and `str_corr` (corr,
 HEADLINE). Sort column = the grounded `prior_1m_excess_return` -> `xret` (D27 v2);
@@ -40,14 +36,16 @@ Output: data/development/factors/str.parquet with columns
 
 Usage:
   python scripts/build_str.py
+  python scripts/build_str.py --basis {total_return,clean}
+      input = basis_inputs.PANELS[basis][0]; outputs -> results/consistent_basis/<basis>/factors/
 
 Requires: data/development/monthly_panel_maximal.parquet (build_monthly_panel.py)
 """
 
+import argparse
 import hashlib
 import json
 import os
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,6 +56,8 @@ import pyarrow.parquet as pq
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from scripts import basis_inputs  # noqa: E402
 from agents.quant.library.characteristic_sort import run_characteristic_sort  # noqa: E402
 from agents.quant.library.run_config import (  # noqa: E402
     RunConfig, PanelViewConfig, ConstructionConfig, EvaluationConfig,
@@ -66,7 +66,7 @@ from agents.quant.library.views import view  # noqa: E402
 
 # Anchor headline uses the §2.1 total-return panel when present (BBW_ANCHOR_PANEL
 # overrides; clean maximal fallback). For str/mom6 the coupon carry largely
-# cancels in the long-short, so the basis barely matters — but kept consistent.
+# cancels in the long-short; the same panel is used for consistency.
 _TOTAL = REPO_ROOT / "data" / "development" / "monthly_panel_total_return.parquet"
 _CLEAN = REPO_ROOT / "data" / "development" / "monthly_panel_maximal.parquet"
 PANEL_FILE = Path(os.environ.get("BBW_ANCHOR_PANEL", str(_TOTAL if _TOTAL.exists() else _CLEAN)))
@@ -80,14 +80,29 @@ def thresholds_sha256() -> str:
     return hashlib.sha256(THRESHOLDS_FILE.read_bytes()).hexdigest()
 
 
-def git_commit() -> str:
+def _rel(path: Path) -> str:
+    """Repo-relative path when inside the repo, else the path as given (never raises)."""
     try:
-        return subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
-        ).stdout.strip()
-    except Exception:
-        return "unknown"
+        return str(Path(path).relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def resolve_paths(basis: str | None = None) -> tuple[Path, Path, Path]:
+    """(input panel, factor parquet, report json). No basis => the module defaults
+    (BBW_ANCHOR_PANEL honoured); a basis => its PANELS entry + the basis factors dir."""
+    if basis is None:
+        return PANEL_FILE, OUT_FILE, REPORT_OUT
+    out_dir = basis_inputs.factors_dir(basis)
+    return basis_inputs.PANELS[basis][0], out_dir / OUT_FILE.name, out_dir / REPORT_OUT.name
+
+
+def basis_provenance(basis: str | None, panel_file: Path) -> dict:
+    """Report keys identifying the basis input panel; empty without a basis."""
+    if basis is None:
+        return {}
+    return {"basis": basis, "input_panel": _rel(panel_file),
+            "input_panel_sha256": basis_inputs.sha256(panel_file)}
 
 
 def str_rulebook(signal_lag: int = 0) -> dict:
@@ -96,8 +111,8 @@ def str_rulebook(signal_lag: int = 0) -> dict:
     long the WINNERS (top decile 9, P10), short the LOSERS (bottom decile 0, P1).
     Leg = winners - losers, matching gold_str_drr_2026.md (long_leg: highest_signal,
     n_groups: 10). signal_lag=0 is the as-published lib_gap=OFF arm. (Read the
-    SIGN note in the module docstring: this earns momentum on the corr dev panel,
-    not DRR's −0.99 reversal, by design — do NOT flip the leg to chase the sign.)"""
+    SIGN note in the module docstring: the leg direction follows the gold spec —
+    do NOT flip the leg to match DRR's −0.99 reversal.)"""
     return {
         "score": "xret",
         "groups": 10,
@@ -132,8 +147,9 @@ def run_family(maximal: pd.DataFrame, family: str) -> dict:
     return {"monthly": mr, "summary": res["summary"]}
 
 
-def write_factor(factor: pd.DataFrame) -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def write_factor(factor: pd.DataFrame, out_file: Path | None = None) -> None:
+    out_file = OUT_FILE if out_file is None else out_file
+    out_file.parent.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pandas(factor, preserve_index=False)
     meta = dict(table.schema.metadata or {})
     meta.update({
@@ -149,13 +165,17 @@ def write_factor(factor: pd.DataFrame) -> None:
         b"family_policy": b"A9_no_cross_family_mixing",
     })
     table = table.replace_schema_metadata(meta)
-    tmp = OUT_FILE.with_suffix(".parquet.tmp")
+    tmp = out_file.with_suffix(".parquet.tmp")
     pq.write_table(table, str(tmp))
-    os.replace(tmp, OUT_FILE)
-    print(f"  Written: {OUT_FILE}")
+    os.replace(tmp, out_file)
+    print(f"  Written: {out_file}")
 
 
-def write_report(factor: pd.DataFrame, summaries: dict) -> None:
+def write_report(factor: pd.DataFrame, summaries: dict, report_out: Path | None = None,
+                 panel_file: Path | None = None, provenance: dict | None = None) -> None:
+    report_out = REPORT_OUT if report_out is None else report_out
+    panel_file = PANEL_FILE if panel_file is None else panel_file
+
     def _stats(fam: str) -> dict:
         s = factor[f"str_{fam}"].dropna()
         return {
@@ -169,9 +189,9 @@ def write_report(factor: pd.DataFrame, summaries: dict) -> None:
 
     report = {
         "run_timestamp": datetime.now(timezone.utc).isoformat(),
-        "git_commit": git_commit(),
         "thresholds_sha256": thresholds_sha256(),
-        "input_panel": str(PANEL_FILE.relative_to(REPO_ROOT)),
+        "input_panel": _rel(panel_file),
+        **(provenance or {}),
         "leg_convention": "winners - losers (long P10, short P1; DECILES, n_groups=10) "
                           "per DRR-2026 Table 1 Panel A and gold_str_drr_2026.md "
                           "(long_leg: highest_signal). Sort column = xret (grounded "
@@ -180,37 +200,50 @@ def write_report(factor: pd.DataFrame, summaries: dict) -> None:
         "lib_gap": "OFF (signal_lag=0, as-published). Repair handled by the daily "
                    "month-begin/month-end decomposition + bias lattice, not here.",
         "target_reference": "DRR-2026 Table 1 Panel A unadjusted single-sort ≈ -0.99%/mo "
-                            "(t -4.46), a REVERSAL. On our development corr panel this "
-                            "SAME construction earns POSITIVE momentum (see `sign`): DRR's "
-                            "reversal is a raw/LIB microstructure premium the corr cleaning "
-                            "removes (DRR's own clean estimate is only -0.17). The sign "
-                            "divergence is owned by the §8 bias-toggle decomposition, NOT "
+                            "(t -4.46), a REVERSAL. DRR's reversal is a raw/LIB "
+                            "microstructure premium the corr cleaning removes (DRR's own "
+                            "clean estimate is only -0.17), so the corr factor's sign (see "
+                            "`sign`) can differ. Any sign divergence is attributed by the "
+                            "§8 bias-toggle decomposition, NOT "
                             "reconciled here. Do NOT gate on a "
                             "naive |magnitude| match to -0.99.",
         "headline_series": "str_corr",
         "notes": "HEADLINE = str_corr. str_raw is the meas_err=OFF family and is "
                  "outlier-dominated: VW leg means inherit uncorrected price-error "
-                 "returns (xret_raw reaches ~10^6) that the corr family's filters "
+                 "returns that the corr family's filters "
                  "remove, so str_raw's level is not usable (kept for A9 family "
                  "completeness). The meas_err differential is examined at the leg "
                  "level in Chunk 4, not via this raw factor level.",
         "str_raw": _stats("raw"),
         "str_corr": _stats("corr"),
     }
-    tmp = REPORT_OUT.with_suffix(".tmp")
+    tmp = report_out.with_suffix(".tmp")
     with open(tmp, "w") as f:
         json.dump(report, f, indent=2)
-    os.replace(tmp, REPORT_OUT)
-    print(f"  Report: {REPORT_OUT}")
+    os.replace(tmp, report_out)
+    print(f"  Report: {report_out}")
 
 
-def main():
-    if not PANEL_FILE.exists():
-        print(f"ERROR: required input not found: {PANEL_FILE}", file=sys.stderr)
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description="Build the standalone str anchor factor.")
+    ap.add_argument("--basis", choices=basis_inputs.BASES, default=None,
+                    help="return basis: read basis_inputs.PANELS[basis][0] and write under "
+                         "results/consistent_basis/<basis>/factors/ (default: the "
+                         "BBW_ANCHOR_PANEL / data/development/factors behaviour)")
+    return ap.parse_args(argv or [])
+
+
+def main(argv: list[str] | None = None):
+    args = parse_args(argv)
+    panel_file, out_file, report_out = resolve_paths(args.basis)
+    if args.basis is not None and "BBW_ANCHOR_PANEL" in os.environ:
+        print("WARNING: BBW_ANCHOR_PANEL is ignored when --basis is given", file=sys.stderr)
+    if not panel_file.exists():
+        print(f"ERROR: required input not found: {panel_file}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Loading panel: {PANEL_FILE}")
-    maximal = pd.read_parquet(PANEL_FILE)
+    print(f"Loading panel: {panel_file}")
+    maximal = pd.read_parquet(panel_file)
     print(f"  {len(maximal):,} rows, {maximal['cusip'].nunique():,} cusips")
 
     summaries = {}
@@ -224,8 +257,8 @@ def main():
     factor = monthly["raw"].merge(monthly["corr"], on="date", how="outer").sort_values(
         "date").reset_index(drop=True)
 
-    write_factor(factor)
-    write_report(factor, summaries)
+    write_factor(factor, out_file)
+    write_report(factor, summaries, report_out, panel_file, basis_provenance(args.basis, panel_file))
 
     print("\nDone.")
     for fam in ("raw", "corr"):
@@ -234,12 +267,12 @@ def main():
             print(f"  str_{fam}: mean {s.mean()*100:+.3f}%/mo (sign {'NEG' if s.mean()<0 else 'POS'}), "
                   f"sd {s.std(ddof=1)*100:.3f}%, t {summaries[fam]['t_stat']:+.2f}, "
                   f"{len(s)} months")
-    print(f"  → {OUT_FILE}")
+    print(f"  → {out_file}")
     print("  Note: winners-losers deciles per DRR Table 1 Panel A (gold construction). "
-          "The corr premium is POSITIVE momentum, NOT DRR's -0.99 reversal — the reversal "
-          "is a raw/LIB microstructure premium the corr cleaning removes (§8 owns it). "
-          "do NOT flip the leg to chase the paper's sign.")
+          "DRR's -0.99 reversal is a raw/LIB microstructure premium the corr cleaning "
+          "removes (§8 attributes it); "
+          "do NOT flip the leg to match the paper's sign.")
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

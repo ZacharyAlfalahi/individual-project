@@ -79,7 +79,7 @@ Compiles each supported anchor's `StrategySpec` through the adapter into a `Quan
 
 ```bash
 python scripts/run_auditor.py --anchor mom6 --check core-sync-1   # core lattice, dev panel
-python scripts/run_full_audit.py --anchor all                     # full stack — refuses until the DSR pre-registration is committed (fail-loud, by design)
+python scripts/run_full_audit.py --anchor all                     # full stack — requires the registered per-anchor DSR configuration (fail-loud if absent)
 python -m pytest tests/unit/test_auditor_*.py -q                  # Layer A/B gates, calibration, inference
 ```
 
@@ -88,7 +88,7 @@ Runs each strategy through a `2^k` lattice of bias-toggle combinations (`meas_er
 ### Scientist (RQ4)
 
 ```bash
-python scripts/run_oneshot_holdout.py --rehearsal   # full pipeline on the dev pseudo-window; the REAL one-shot is refused here
+python scripts/run_oneshot_holdout.py --rehearsal   # full pipeline on the dev pseudo-window; the REAL run is gated (see --real)
 ```
 
 Entry is conditional on RQ3: a strategy enters only where a validated correction survived FDR, exceeded the materiality floor, and reduced the premium. Fixed six proposals per strategy from three sources (random / retrieval / generative) sharing one schema, gate stack, and evaluator; BH-FDR per source, then CPCV-qualified survivors advance to the single protected holdout (2022-01..2025-09 — never read during development). Supporting drivers: `scripts/run_p4_grid_sweep.py`, `scripts/run_r1_promotion_diagnostics.py`, and the executability/reachability censuses.
@@ -195,7 +195,7 @@ python scripts/run_ipca_shakedown.py  # in-sample K-sweep + recursive OOS
 ## Tests
 
 ```bash
-python -m pytest tests/unit/ -q                          # full unit suite (261 test files)
+python -m pytest tests/unit/ -q                          # full unit suite
 python -m pytest tests/synthetic/ -q                     # incl. the IPCA certification battery
 ```
 
