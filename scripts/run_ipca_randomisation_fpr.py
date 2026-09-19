@@ -38,11 +38,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
-from scipy import stats
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 
+from agents.auditor.checks.stats import ks_uniform  # noqa: E402
 from agents.auditor.ipca_differential.randomisation_fpr import randomisation_fpr  # noqa: E402
 from agents.auditor.thresholds import (  # noqa: E402
     load_ipca_fpr_config,
@@ -55,15 +55,18 @@ def uniformity(p_values: tuple[float, ...], q: int) -> dict:
     """Descriptive uniformity of the randomisation p-values. Discrete on 1/(q+1), so the
     continuous-uniform reference is approximate — reported, never gated."""
     p = np.asarray(p_values, dtype=float)
-    ks = stats.kstest(p, "uniform")
+    ks_d, ks_p = ks_uniform(p.tolist())
     deciles = np.histogram(p, bins=10, range=(0.0, 1.0))[0]
     return {
         "test": "one-sample Kolmogorov-Smirnov against U(0,1), DESCRIPTIVE",
+        "p_value_method": ("asymptotic Kolmogorov limit with the Stephens small-sample "
+                           "correction; conservative by up to ~0.02 against the exact "
+                           "finite-n distribution, and under 0.004 near 0.05"),
         "caveat": f"a randomisation p-value is discrete on multiples of 1/(Q+1) = {1 / (q + 1):.6f}, "
                   "so the continuous-uniform reference is approximate and conservative",
         "min_attainable": 1.0 / (q + 1),
-        "ks_d": float(ks.statistic),
-        "ks_p": float(ks.pvalue),
+        "ks_d": float(ks_d),
+        "ks_p": float(ks_p),
         "mean": float(p.mean()),
         "median": float(np.median(p)),
         "min": float(p.min()),

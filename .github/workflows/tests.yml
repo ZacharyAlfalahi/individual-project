@@ -21,6 +21,11 @@ jobs:
         # vendor SDKs (requirements_librarian) are intentionally omitted: RealModelClient
         # imports them lazily and every live path skips without API keys, so the full
         # suite is green on a clean clone without them.
+        #
+        # This list IS the dependency surface. tests/unit/test_dependency_surface.py fails
+        # locally if a module reaches outside it (scipy/statsmodels), so a package that
+        # happens to sit in a working venv cannot turn a green local run into a red
+        # collection here.
         run: pip install -r scripts/requirements_preprocess.txt -r scripts/requirements_parser.txt pydantic
       - name: Run the test suite (unit + synthetic)
         run: pytest tests/ -q

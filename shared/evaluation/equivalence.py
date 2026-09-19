@@ -24,9 +24,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-from scipy import stats
 
 from agents.auditor.checks.fdr import benjamini_hochberg
+from agents.auditor.checks.stats import student_t_cdf, student_t_sf
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _THRESHOLDS = _REPO_ROOT / "docs" / "thresholds.yaml"
@@ -111,8 +111,8 @@ def tost_p_values(alpha: float, se: float, df: int, delta: float) -> tuple[float
     one-sided p-values — equivalence needs BOTH one-sided nulls rejected."""
     if delta <= 0:
         raise EquivalenceInputError(f"the equivalence margin must be positive; got {delta}")
-    p_lower = float(stats.t.sf((alpha + delta) / se, df))   # H0: alpha <= -delta
-    p_upper = float(stats.t.cdf((alpha - delta) / se, df))  # H0: alpha >= +delta
+    p_lower = float(student_t_sf((alpha + delta) / se, df))   # H0: alpha <= -delta
+    p_upper = float(student_t_cdf((alpha - delta) / se, df))  # H0: alpha >= +delta
     return p_lower, p_upper, max(p_lower, p_upper)
 
 
